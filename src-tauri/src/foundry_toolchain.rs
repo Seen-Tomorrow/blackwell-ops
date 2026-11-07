@@ -1572,6 +1572,7 @@ pub async fn fetch_toolchain_asset(
         release_tag: release.tag_name,
         size: asset.size,
         digest: asset.digest,
+        version: None,
     })
 }
 

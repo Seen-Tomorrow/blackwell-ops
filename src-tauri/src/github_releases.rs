@@ -1,13 +1,8 @@
-//! Shared GitHub Releases API — portable App `.7z`, Full Bundle NSIS, provider packs, toolchain.
+//! Shared GitHub Releases API — channel manifests, App `.7z`, Full NSIS, engine packs, toolchain.
 //!
-//! Asset naming (GitHub release files):
-//! - Core: `CORE_*` — App `.7z`, Full NSIS Setup, optional `CORE_ggml-master-{profile}.7z`
-//! - Plugins: `PLUGIN_{provider}-{profile}.7z`
-//!
-//! Legacy names without prefix are still accepted for older releases.
-//!
-//! Full pack embeds NSIS core engines (ggml-master) inside Setup only — it does **not**
-//! upload separate CORE runtime packs unless you run pack-provider for ggml-master.
+//! Layout is frozen in `docs/RELEASE-CHANNELS.md`: rolling channel tags (`app`, `full`,
+//! `engines`, `toolchain`) whose `channel.json` manifest is the only client interface. Asset
+//! filenames are cosmetic — nothing in this module parses them.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,20 +14,16 @@ use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+use crate::release_channels::{
+    EngineChannelManifest, ProductChannelManifest, MANIFEST_ASSET, TAG_APP, TAG_ENGINES, TAG_FULL,
+};
 
 pub const GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
 
 pub const CHANNEL_APP_ONLY: &str = "app_only";
 pub const CHANNEL_FULL_BUNDLE: &str = "full_bundle";
 
-/// Release asset kind prefixes (Majestic pack/ship).
-pub const CORE_ASSET_PREFIX: &str = "CORE_";
-pub const PLUGIN_ASSET_PREFIX: &str = "PLUGIN_";
-
-/// App archive stem after optional CORE_ prefix: `Blackwell-Ops-App-vX.Y.Z.7z`.
-pub const APP_7Z_STEM: &str = "Blackwell-Ops-App-";
-
-/// NSIS core engine provider(s) — runtime packs use CORE_ when shipped separately.
+/// NSIS core engine provider(s) — the seeded engine, overlaid by catalog packs.
 pub fn is_core_engine_provider(provider_id: &str) -> bool {
     provider_id == crate::config::DEFAULT_PROVIDER_ID
 }
@@ -59,12 +50,13 @@ pub struct ResolvedAsset {
     pub release_tag: String,
     pub size: u64,
     pub digest: Option<String>,
+    /// Channel version/build the asset belongs to (app semver, engine build id).
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct GitHubRelease {
     pub tag_name: String,
-    pub body: Option<String>,
     pub assets: Vec<ReleaseAsset>,
 }
 
@@ -94,110 +86,6 @@ pub struct UpdateOfferings {
     pub any_available: bool,
 }
 
-/// True for semver app tags like `v1.0.9` — excludes special tags (`toolchain`, etc.).
-pub fn is_version_release_tag(tag: &str) -> bool {
-    let trimmed = tag.trim();
-    let core = trimmed.strip_prefix('v').unwrap_or(trimmed);
-    if core.is_empty() {
-        return false;
-    }
-    let parts: Vec<&str> = core.split('.').collect();
-    if parts.len() < 2 || parts.len() > 4 {
-        return false;
-    }
-    parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
-}
-
-pub fn tag_to_version(tag: &str) -> &str {
-    tag.strip_prefix('v').unwrap_or(tag)
-}
-
-/// Strip CORE_/PLUGIN_ for matching legacy logic.
-fn strip_asset_kind_prefix(name: &str) -> &str {
-    name.strip_prefix(CORE_ASSET_PREFIX)
-        .or_else(|| name.strip_prefix(PLUGIN_ASSET_PREFIX))
-        .unwrap_or(name)
-}
-
-/// Lean App update archive: `CORE_Blackwell-Ops-App-v1.0.12.7z` (or legacy without CORE_).
-pub fn is_app_update_archive(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    if !lower.ends_with(".7z") {
-        return false;
-    }
-    let body = strip_asset_kind_prefix(name);
-    let body_lower = body.to_ascii_lowercase();
-    if body.starts_with(APP_7Z_STEM) || body_lower.starts_with("blackwell-ops-app-") {
-        return true;
-    }
-    // Loose match: App + .7z (not provider packs)
-    body_lower.contains("app")
-        && !body_lower.contains("ggml-")
-        && !body_lower.contains("provider")
-        && !body_lower.starts_with("plugin_")
-}
-
-/// Legacy App-Only NSIS (older releases). Still accepted for transition.
-pub fn is_app_only_nsis_installer(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    (lower.contains("app-only") || lower.contains("app only"))
-        && lower.contains("setup")
-        && lower.ends_with(".exe")
-}
-
-/// Any App-channel asset (7z preferred, legacy NSIS fallback).
-pub fn is_app_update_asset(name: &str) -> bool {
-    is_app_update_archive(name) || is_app_only_nsis_installer(name)
-}
-
-/// Full Bundle NSIS — complete install including engine runtimes (`CORE_*Setup*.exe` preferred).
-pub fn is_full_bundle_nsis_installer(name: &str) -> bool {
-    if is_app_update_asset(name) {
-        return false;
-    }
-    let body = strip_asset_kind_prefix(name);
-    let lower = body.to_ascii_lowercase();
-    lower.contains("setup") && lower.ends_with(".exe")
-}
-
-/// Canonical provider pack name for new uploads.
-pub fn provider_pack_asset_name(provider_id: &str, profile: &str) -> String {
-    let bare = format!("{provider_id}-{profile}.7z");
-    if is_core_engine_provider(provider_id) {
-        format!("{CORE_ASSET_PREFIX}{bare}")
-    } else {
-        format!("{PLUGIN_ASSET_PREFIX}{bare}")
-    }
-}
-
-/// All names we accept when resolving a provider pack (new + legacy).
-pub fn provider_pack_asset_candidates(provider_id: &str, profile: &str) -> Vec<String> {
-    let bare_7z = format!("{provider_id}-{profile}.7z");
-    let bare_zip = format!("{provider_id}-{profile}.zip");
-    vec![
-        format!("{CORE_ASSET_PREFIX}{bare_7z}"),
-        format!("{PLUGIN_ASSET_PREFIX}{bare_7z}"),
-        bare_7z,
-        format!("{CORE_ASSET_PREFIX}{bare_zip}"),
-        format!("{PLUGIN_ASSET_PREFIX}{bare_zip}"),
-        bare_zip,
-    ]
-}
-
-/// Provider runtime pack: `CORE_|PLUGIN_{provider}-{profile}.7z` (+ legacy unprefixed) or the
-/// canonical `ENGINE_{provider}-{profile}-{buildId}.7z` written by `pack-provider-runtime.ps1`.
-pub fn is_provider_pack_asset(name: &str, provider_id: &str, profile: &str) -> bool {
-    if provider_pack_asset_candidates(provider_id, profile)
-        .iter()
-        .any(|c| name.eq_ignore_ascii_case(c))
-    {
-        return true;
-    }
-    let prefix = format!("ENGINE_{provider_id}-{profile}-").to_ascii_lowercase();
-    let lower = name.to_ascii_lowercase();
-    lower.starts_with(&prefix) && lower.ends_with(".7z")
-}
-
 pub fn apply_github_auth(req: RequestBuilder) -> RequestBuilder {
     if let Ok(Some(pat)) = crate::secrets::get_secret("github_pat") {
         let trimmed = pat.trim();
@@ -218,7 +106,6 @@ fn github_pat_present() -> bool {
 
 fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
     let tag_name = body.get("tag_name")?.as_str()?.to_string();
-    let body_text = body.get("body").and_then(|b| b.as_str()).map(String::from);
     let assets = body
         .get("assets")
         .and_then(|a| a.as_array())
@@ -243,11 +130,7 @@ fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
         })
         .unwrap_or_default();
 
-    Some(GitHubRelease {
-        tag_name,
-        body: body_text,
-        assets,
-    })
+    Some(GitHubRelease { tag_name, assets })
 }
 
 // ── Single GitHub REST gateway ─────────────────────────────────────────────
@@ -258,8 +141,12 @@ fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
 // per day re-hit the API 100 times.
 
 /// TTLs per resource class. The releases list is shared by every pack/offering check.
-const RELEASES_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
-const TAG_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+/// Channel tags change on every ship; 10 min keeps a post-ship refresh snappy while a
+/// background check does not hit the API at poll rate. `force` bypasses it.
+const CHANNEL_TAG_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+/// `channel.json` content cache. Separate from the tag cache: a manifest can be replaced
+/// (rollback) without the tag/release metadata changing.
+const CHANNEL_MANIFEST_TTL: Duration = Duration::from_secs(5 * 60);
 const LATEST_TAG_CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 /// `force` re-fetches issued within this window share one round-trip (the Updates tab
 /// fires 3 parallel force calls; without this they'd be 3 separate API hits).
@@ -570,17 +457,88 @@ async fn github_get_json_conditional(
     }
 }
 
+/// One release by tag. Channel tags are rolling, so the response is cached briefly.
 pub async fn fetch_release_by_tag(tag: &str) -> Result<GitHubRelease, String> {
-    // Serve from the shared releases list first (0 API calls for recent semver tags).
-    if let Ok(releases) = fetch_recent_version_releases(40).await {
-        if let Some(rel) = releases.into_iter().find(|r| r.tag_name == tag) {
-            return Ok(rel);
+    fetch_release_by_tag_ex(tag, false).await
+}
+
+pub async fn fetch_release_by_tag_ex(tag: &str, force: bool) -> Result<GitHubRelease, String> {
+    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/tags/{tag}");
+    let body = github_get_json_cached(&url, CHANNEL_TAG_CACHE_TTL, force).await?;
+    parse_release(&body).ok_or_else(|| format!("Invalid release payload for tag '{tag}'"))
+}
+
+/// Fetch and parse `<tag>/channel.json` — the only way the client learns about artifacts.
+async fn fetch_channel_manifest_value(
+    tag: &str,
+    force: bool,
+) -> Result<(GitHubRelease, serde_json::Value), String> {
+    if !crate::release_channels::has_tag(tag) {
+        return Err(format!(
+            "'{tag}' is not a release channel — see src-tauri/release-channels.json"
+        ));
+    }
+    let release = fetch_release_by_tag_ex(tag, force).await?;
+    let asset = find_asset_by_name(&release, MANIFEST_ASSET).ok_or_else(|| {
+        format!("Channel '{tag}' has no {MANIFEST_ASSET} — publish it with the release tool")
+    })?;
+    let body = fetch_asset_json(&asset.download_url, force).await?;
+    Ok((release, body))
+}
+
+pub async fn fetch_product_manifest(
+    tag: &str,
+    force: bool,
+) -> Result<ProductChannelManifest, String> {
+    let (_release, body) = fetch_channel_manifest_value(tag, force).await?;
+    let manifest: ProductChannelManifest = serde_json::from_value(body)
+        .map_err(|e| format!("Channel '{tag}': invalid {MANIFEST_ASSET}: {e}"))?;
+    manifest.validate(tag)?;
+    Ok(manifest)
+}
+
+pub async fn fetch_engine_manifest(force: bool) -> Result<EngineChannelManifest, String> {
+    let (_release, body) = fetch_channel_manifest_value(TAG_ENGINES, force).await?;
+    let manifest: EngineChannelManifest = serde_json::from_value(body)
+        .map_err(|e| format!("Channel '{TAG_ENGINES}': invalid {MANIFEST_ASSET}: {e}"))?;
+    manifest.validate(TAG_ENGINES)?;
+    Ok(manifest)
+}
+
+/// Fetch a release-asset JSON. Deliberately unauthenticated: release downloads redirect to a
+/// signed object URL, and an Authorization header there is rejected. Disk-cached; `force`
+/// bypasses the TTL.
+async fn fetch_asset_json(url: &str, force: bool) -> Result<serde_json::Value, String> {
+    if !force {
+        if let Some(entry) = read_github_cache(url) {
+            if cache_age(&entry) < CHANNEL_MANIFEST_TTL {
+                return Ok(entry.body);
+            }
         }
     }
-    // Not in the list (e.g. the `toolchain` tag) → conditional cached fetch (1h TTL).
-    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/tags/{tag}");
-    let body = github_get_json_cached(&url, TAG_CACHE_TTL, false).await?;
-    parse_release(&body).ok_or_else(|| format!("Invalid release payload for tag '{tag}'"))
+    let resp = GITHUB_CLIENT
+        .get(url)
+        .header("User-Agent", "Blackwell-Ops")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download {url}: {e}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("Download returned {status} for {url}"));
+    }
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse {url}: {e}"))?;
+    write_github_cache(
+        url,
+        &GitHubCacheEntry {
+            fetched_at: now_unix_secs(),
+            etag: None,
+            body: body.clone(),
+        },
+    );
+    Ok(body)
 }
 
 /// Latest release `tag_name` for an arbitrary GitHub repo (e.g. the DEV-only pi
@@ -647,93 +605,11 @@ pub async fn fetch_repo_latest_release(repo: &str) -> Result<RepoReleaseNotes, S
     })
 }
 
-/// Recent semver releases (newest first). Shared 30m TTL + single-flight.
-pub async fn fetch_recent_version_releases(per_page: u32) -> Result<Vec<GitHubRelease>, String> {
-    fetch_recent_version_releases_ex(per_page, false).await
-}
-
-/// `force` revalidates against GitHub (bypasses the disk TTL) but still dedups within
-/// the shared gateway window. Every pack/offering check shares one releases-list fetch
-/// plus the persistent disk cache (keyed by the full URL, incl. `per_page`).
-pub async fn fetch_recent_version_releases_ex(
-    per_page: u32,
-    force: bool,
-) -> Result<Vec<GitHubRelease>, String> {
-    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases?per_page={per_page}");
-    let body = github_get_json_cached(&url, RELEASES_CACHE_TTL, force).await?;
-    let releases = body
-        .as_array()
-        .ok_or_else(|| "GitHub releases response was not an array".to_string())?;
-
-    let mut out = Vec::new();
-    for release in releases {
-        let draft = release.get("draft").and_then(|v| v.as_bool()).unwrap_or(false);
-        let prerelease = release
-            .get("prerelease")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        if draft || prerelease {
-            continue;
-        }
-        let Some(parsed) = parse_release(release) else {
-            continue;
-        };
-        if is_version_release_tag(&parsed.tag_name) {
-            out.push(parsed);
-        }
-    }
-
-    Ok(out)
-}
-
 pub fn find_asset_by_name(release: &GitHubRelease, name: &str) -> Option<ReleaseAsset> {
     release
         .assets
         .iter()
         .find(|a| a.name == name)
-        .cloned()
-}
-
-/// Prefer lean App `.7z`, then legacy App-Only NSIS.
-pub fn find_app_only_installer(release: &GitHubRelease) -> Option<ReleaseAsset> {
-    let seven_z = release
-        .assets
-        .iter()
-        .find(|a| is_app_update_archive(&a.name))
-        .cloned();
-    if seven_z.is_some() {
-        return seven_z;
-    }
-    release
-        .assets
-        .iter()
-        .find(|a| is_app_only_nsis_installer(&a.name))
-        .cloned()
-}
-
-pub fn find_full_bundle_installer(release: &GitHubRelease) -> Option<ReleaseAsset> {
-    release
-        .assets
-        .iter()
-        .find(|a| is_full_bundle_nsis_installer(&a.name))
-        .cloned()
-}
-
-pub fn find_provider_pack(
-    release: &GitHubRelease,
-    provider_id: &str,
-    profile: &str,
-) -> Option<ReleaseAsset> {
-    // Prefer canonical CORE_/PLUGIN_ .7z, then legacy unprefixed, then any match.
-    for candidate in provider_pack_asset_candidates(provider_id, profile) {
-        if let Some(a) = find_asset_by_name(release, &candidate) {
-            return Some(a);
-        }
-    }
-    release
-        .assets
-        .iter()
-        .find(|a| is_provider_pack_asset(&a.name, provider_id, profile))
         .cloned()
 }
 
@@ -755,7 +631,21 @@ pub fn version_gt(a: &str, b: &str) -> bool {
     false
 }
 
-fn empty_offering(channel: &str, label: &str, summary: &str) -> UpdateChannelOffering {
+fn offering_text(channel: &str) -> (&'static str, &'static str) {
+    match channel {
+        CHANNEL_APP_ONLY => (
+            "App update",
+            "Portable UI + templates (~few MB) - keeps your engines",
+        ),
+        _ => (
+            "Full install",
+            "Setup: app + pre-built CUDA engines — first install or engine refresh",
+        ),
+    }
+}
+
+fn empty_offering(channel: &str) -> UpdateChannelOffering {
+    let (label, summary) = offering_text(channel);
     UpdateChannelOffering {
         channel: channel.to_string(),
         available: false,
@@ -768,26 +658,32 @@ fn empty_offering(channel: &str, label: &str, summary: &str) -> UpdateChannelOff
     }
 }
 
-fn offering_from_hit(
+/// Build an offering from a channel manifest. Only a strictly newer version is offered: the
+/// old "no engines → offer an older Full setup" path is gone (engines come from `engines`).
+fn offering_from_manifest(
     channel: &str,
-    label: &str,
-    summary: &str,
-    release: &GitHubRelease,
-    asset: &ReleaseAsset,
+    tag: &str,
+    manifest: &ProductChannelManifest,
+    current_version: &str,
 ) -> UpdateChannelOffering {
+    let latest = &manifest.latest;
+    if !version_gt(&latest.version, current_version) {
+        return empty_offering(channel);
+    }
+    let (label, summary) = offering_text(channel);
     UpdateChannelOffering {
         channel: channel.to_string(),
         available: true,
-        version: tag_to_version(&release.tag_name).to_string(),
-        tag: release.tag_name.clone(),
-        size_bytes: asset.size,
+        version: latest.version.clone(),
+        tag: tag.to_string(),
+        size_bytes: latest.size_bytes,
         label: label.to_string(),
         summary: summary.to_string(),
-        release_notes: release.body.clone(),
+        release_notes: latest.notes.clone(),
     }
 }
 
-/// Scan recent releases and build App-Only / Full Bundle offerings.
+/// Read the `app` and `full` manifests and build the two update offerings.
 pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOfferings, String> {
     fetch_update_offerings_ex(current_version, false).await
 }
@@ -796,70 +692,28 @@ pub async fn fetch_update_offerings_ex(
     current_version: &str,
     force: bool,
 ) -> Result<UpdateOfferings, String> {
-    let engines_available = crate::profile_binaries::launch_engines_available();
-    let releases = fetch_recent_version_releases_ex(40, force).await?;
-
-    let mut app_hit: Option<(GitHubRelease, ReleaseAsset)> = None;
-    let mut full_hit: Option<(GitHubRelease, ReleaseAsset)> = None;
-
-    for release in releases {
-        let ver = tag_to_version(&release.tag_name);
-        if app_hit.is_none() {
-            if let Some(asset) = find_app_only_installer(&release) {
-                if version_gt(ver, current_version) {
-                    app_hit = Some((release.clone(), asset));
-                }
-            }
-        }
-        if full_hit.is_none() {
-            if let Some(asset) = find_full_bundle_installer(&release) {
-                let newer = version_gt(ver, current_version);
-                let need_engines = !engines_available;
-                if newer || need_engines {
-                    full_hit = Some((release.clone(), asset));
-                }
-            }
-        }
-        if app_hit.is_some() && full_hit.is_some() {
-            break;
-        }
+    let app_manifest = fetch_product_manifest(TAG_APP, force).await;
+    let full_manifest = fetch_product_manifest(TAG_FULL, force).await;
+    if let (Err(app_err), Err(_)) = (&app_manifest, &full_manifest) {
+        return Err(app_err.clone());
     }
 
-    let app_only = if let Some((release, asset)) = app_hit {
-        offering_from_hit(
-            CHANNEL_APP_ONLY,
-            "App update",
-            "Portable UI + templates (~few MB) - keeps your engines",
-            &release,
-            &asset,
-        )
-    } else {
-        empty_offering(
-            CHANNEL_APP_ONLY,
-            "App update",
-            "Portable UI + templates (~few MB) - keeps your engines",
-        )
+    let app_only = match &app_manifest {
+        Ok(m) => offering_from_manifest(CHANNEL_APP_ONLY, TAG_APP, m, current_version),
+        Err(e) => {
+            log::warn!("[app-update] app channel unavailable: {e}");
+            empty_offering(CHANNEL_APP_ONLY)
+        }
+    };
+    let full_bundle = match &full_manifest {
+        Ok(m) => offering_from_manifest(CHANNEL_FULL_BUNDLE, TAG_FULL, m, current_version),
+        Err(e) => {
+            log::warn!("[app-update] full channel unavailable: {e}");
+            empty_offering(CHANNEL_FULL_BUNDLE)
+        }
     };
 
-    let full_bundle = if let Some((release, asset)) = full_hit {
-        offering_from_hit(
-            CHANNEL_FULL_BUNDLE,
-            "Full install",
-            "Setup: app + pre-built CUDA engines — first install or engine refresh",
-            &release,
-            &asset,
-        )
-    } else {
-        empty_offering(
-            CHANNEL_FULL_BUNDLE,
-            "Full install",
-            "Setup: app + pre-built CUDA engines — first install or engine refresh",
-        )
-    };
-
-    let recommended = if !engines_available && full_bundle.available {
-        CHANNEL_FULL_BUNDLE.to_string()
-    } else if app_only.available {
+    let recommended = if app_only.available {
         CHANNEL_APP_ONLY.to_string()
     } else if full_bundle.available {
         CHANNEL_FULL_BUNDLE.to_string()
@@ -868,10 +722,9 @@ pub async fn fetch_update_offerings_ex(
     };
 
     let any_available = app_only.available || full_bundle.available;
-
     Ok(UpdateOfferings {
         current_version: current_version.to_string(),
-        engines_available,
+        engines_available: crate::profile_binaries::launch_engines_available(),
         app_only,
         full_bundle,
         recommended,
@@ -879,111 +732,127 @@ pub async fn fetch_update_offerings_ex(
     })
 }
 
-/// Resolve provider pack URL from the newest semver release that contains the asset.
-/// Prefer matching against an already-fetched releases list (see `find_provider_pack_in`).
-#[allow(dead_code)]
-pub async fn find_provider_pack_offering(
-    provider_id: &str,
-    profile: &str,
-) -> Option<(String, u64)> {
-    find_provider_pack_offering_ex(provider_id, profile, false).await
-}
-
-#[allow(dead_code)]
-pub async fn find_provider_pack_offering_ex(
-    provider_id: &str,
-    profile: &str,
-    force: bool,
-) -> Option<(String, u64)> {
-    let releases = fetch_recent_version_releases_ex(40, force).await.ok()?;
-    find_provider_pack_in(&releases, provider_id, profile)
-}
-
-/// In-memory pack lookup (no network) — use after one shared releases fetch.
-pub fn find_provider_pack_in(
-    releases: &[GitHubRelease],
-    provider_id: &str,
-    profile: &str,
-) -> Option<(String, u64)> {
-    for release in releases {
-        if let Some(asset) = find_provider_pack(release, provider_id, profile) {
-            return Some((release.tag_name.clone(), asset.size));
-        }
+fn channel_tag_for(channel: &str) -> Result<&'static str, String> {
+    match channel {
+        CHANNEL_APP_ONLY => Ok(TAG_APP),
+        CHANNEL_FULL_BUNDLE => Ok(TAG_FULL),
+        other => Err(format!("Unknown update channel: {other}")),
     }
-    None
 }
 
-pub async fn resolve_provider_pack_asset(
-    provider_id: &str,
-    profile: &str,
-) -> Result<ResolvedAsset, String> {
-    // Identity first: the embedded engine manifest names the exact asset (build id in the
-    // filename) and pins its digest. Name-pattern scanning stays only as the fork fallback for
-    // providers this app build does not know about.
-    let def = crate::engine_packs::engine_pack(provider_id, profile);
-    let releases = fetch_recent_version_releases(40).await?;
-    for release in releases {
-        let found = match def {
-            Some(d) => find_asset_by_name(&release, &d.asset),
-            None => find_provider_pack(&release, provider_id, profile),
-        };
-        if let Some(asset) = found {
-            return Ok(ResolvedAsset {
-                download_url: asset.download_url,
-                name: asset.name,
-                release_tag: release.tag_name,
-                size: asset.size,
-                digest: asset.digest,
-            });
-        }
-    }
-    Err(match def {
-        Some(d) => format!(
-            "Engine pack '{}' ({}, CUDA {}) for {provider_id}/{profile} not found on recent GitHub releases — ship it with pack-provider-runtime.ps1 + majestic.",
-            d.asset, d.label, d.cuda
-        ),
-        None => format!(
-            "No provider pack '{provider_id}-{profile}.7z' found on recent GitHub releases"
-        ),
-    })
-}
-
+/// Resolve the installer named by a channel manifest to a download URL + pinned digest.
 pub async fn resolve_installer_asset_for_version(
     channel: &str,
-    current_version: &str,
+    _current_version: &str,
 ) -> Result<ResolvedAsset, String> {
-    let offerings = fetch_update_offerings(current_version).await?;
-    let pick = match channel {
-        CHANNEL_APP_ONLY => &offerings.app_only,
-        CHANNEL_FULL_BUNDLE => &offerings.full_bundle,
-        other => return Err(format!("Unknown update channel: {other}")),
-    };
-    if !pick.available {
-        return Err(format!(
-            "No {} installer available on GitHub",
-            pick.label
-        ));
-    }
-
-    let releases = fetch_recent_version_releases(40).await?;
-    let release = releases
-        .into_iter()
-        .find(|r| r.tag_name == pick.tag)
-        .ok_or_else(|| format!("Release '{}' not found", pick.tag))?;
-
-    let asset = match channel {
-        CHANNEL_APP_ONLY => find_app_only_installer(&release),
-        CHANNEL_FULL_BUNDLE => find_full_bundle_installer(&release),
-        _ => None,
-    }
-    .ok_or_else(|| format!("Installer asset missing on release '{}'", pick.tag))?;
+    let tag = channel_tag_for(channel)?;
+    let manifest = fetch_product_manifest(tag, false).await?;
+    let latest = &manifest.latest;
+    let release = fetch_release_by_tag(tag).await?;
+    let asset = find_asset_by_name(&release, &latest.asset).ok_or_else(|| {
+        format!(
+            "Channel '{tag}' lists '{}' but the release has no such asset",
+            latest.asset
+        )
+    })?;
 
     Ok(ResolvedAsset {
         download_url: asset.download_url,
         name: asset.name,
-        release_tag: release.tag_name,
-        size: asset.size,
-        digest: asset.digest,
+        release_tag: tag.to_string(),
+        size: asset.size.max(latest.size_bytes),
+        digest: Some(latest.sha256.clone()),
+        version: Some(latest.version.clone()),
+    })
+}
+
+/// Resolve an engine pack.
+///
+/// The `engines` channel manifest is authoritative: an engine can be published at any time,
+/// independent of an app build. The embedded `engines.json` is the build-time record and the
+/// **offline/repair fallback** — if the channel cannot be read, the pack this build pins by
+/// name and digest is still installable.
+pub async fn resolve_provider_pack_asset(
+    provider_id: &str,
+    profile: &str,
+) -> Result<ResolvedAsset, String> {
+    let release = match fetch_release_by_tag(TAG_ENGINES).await {
+        Ok(r) => Some(r),
+        Err(e) => {
+            log::warn!("[engine-pack] '{TAG_ENGINES}' release unavailable: {e}");
+            None
+        }
+    };
+    let manifest = match fetch_engine_manifest(false).await {
+        Ok(m) => Some(m),
+        Err(e) => {
+            log::warn!("[engine-pack] '{TAG_ENGINES}' manifest unavailable: {e}");
+            None
+        }
+    };
+
+    if let (Some(manifest), Some(release)) = (manifest.as_ref(), release.as_ref()) {
+        let entry = manifest.entry(provider_id, profile).ok_or_else(|| {
+            format!(
+                "Engine {provider_id}/{profile} is not published on the '{TAG_ENGINES}' channel."
+            )
+        })?;
+        if let Some(def) = crate::engine_packs::engine_pack(provider_id, profile) {
+            if def.asset != entry.asset {
+                log::info!(
+                    "[engine-pack] {provider_id}/{profile}: channel has {} (build {}), \
+                     build-time record has {} — using the channel",
+                    entry.asset,
+                    entry.build,
+                    def.asset
+                );
+            }
+        }
+        let asset = find_asset_by_name(release, &entry.asset).ok_or_else(|| {
+            format!(
+                "Channel '{TAG_ENGINES}' lists '{}' but the release has no such asset",
+                entry.asset
+            )
+        })?;
+        return Ok(ResolvedAsset {
+            download_url: asset.download_url,
+            name: asset.name,
+            release_tag: TAG_ENGINES.to_string(),
+            size: asset.size.max(entry.size_bytes),
+            digest: Some(entry.sha256.clone()),
+            version: Some(entry.build.clone()),
+        });
+    }
+
+    // Offline / repair fallback: the digests compiled into this build.
+    let def = crate::engine_packs::engine_pack(provider_id, profile).ok_or_else(|| {
+        format!(
+            "Engine {provider_id}/{profile}: the '{TAG_ENGINES}' channel is unavailable and this \
+             build pins no pack for it."
+        )
+    })?;
+    let release = release.ok_or_else(|| {
+        format!("Engine {provider_id}/{profile}: the '{TAG_ENGINES}' release is unavailable")
+    })?;
+    log::info!(
+        "[engine-pack] fallback to build-time pin {} ({}) for {provider_id}/{profile}",
+        def.asset,
+        def.label
+    );
+    let asset = find_asset_by_name(&release, &def.asset).ok_or_else(|| {
+        format!(
+            "Engine pack '{}' for {provider_id}/{profile} is no longer published",
+            def.asset
+        )
+    })?;
+
+    Ok(ResolvedAsset {
+        download_url: asset.download_url,
+        name: asset.name,
+        release_tag: TAG_ENGINES.to_string(),
+        size: asset.size.max(def.size_bytes),
+        digest: Some(def.sha256.clone()),
+        version: Some(def.build.clone()),
     })
 }
 
@@ -1106,6 +975,45 @@ fn schedule_app_exit(app_handle: &tauri::AppHandle, delay_secs: u64) {
     });
 }
 
+/// Replace `app_root/foundry/patches` from a staged App update payload.
+///
+/// Full replace, never a merge: a vendor patch that was renamed or retired upstream must
+/// not survive in the install, or Foundry keeps applying a stale diff against a moved tree
+/// (and an empty patch set builds *unpatched* silently — SSE fusion then falls back to
+/// polling). Returns the number of `*.patch` files installed; `0` means the archive carried
+/// none, and the existing directory is left untouched.
+fn install_foundry_patches_from_payload(payload: &Path, app_root: &Path) -> Result<usize, String> {
+    let staged = payload.join("foundry").join("patches");
+    if !staged.is_dir() {
+        return Ok(0);
+    }
+
+    let mut patches = 0usize;
+    for entry in std::fs::read_dir(&staged)
+        .map_err(|e| format!("read staged foundry patches {}: {e}", staged.display()))?
+    {
+        let entry = entry.map_err(|e| format!("staged foundry patch entry: {e}"))?;
+        if entry.path().extension().and_then(|x| x.to_str()) == Some("patch") {
+            patches += 1;
+        }
+    }
+    if patches == 0 {
+        return Ok(0);
+    }
+
+    let dest = app_root.join("foundry").join("patches");
+    if dest.exists() {
+        std::fs::remove_dir_all(&dest).map_err(|e| {
+            format!(
+                "Failed to clear {} before foundry patch update: {e}",
+                dest.display()
+            )
+        })?;
+    }
+    copy_dir_recursive(&staged, &dest)?;
+    Ok(patches)
+}
+
 /// Apply lean App `.7z`: extract to staging, merge templates + bin, schedule exe swap + relaunch.
 pub fn apply_app_update_archive(
     archive_path: &Path,
@@ -1142,27 +1050,16 @@ pub fn apply_app_update_archive(
         );
     }
 
-    // Plugin metadata: preferred app/runtime-catalog/, legacy app/runtime/catalog/
-    let catalog_candidates = [
-        payload.join("runtime-catalog"),
-        payload.join("runtime").join("catalog"),
-    ];
-    let mut catalog_merged = false;
-    for catalog_src in &catalog_candidates {
-        if catalog_src.is_dir() || catalog_src.join("plugins.json").is_file() {
-            let catalog_dst = app_root.join("runtime-catalog");
-            if catalog_src.is_dir() {
-                crate::archive_util::copy_dir_merge(catalog_src, &catalog_dst)?;
-            }
-            catalog_merged = true;
-            log::info!(
-                "[app-update] Merged plugin catalog -> {}",
-                catalog_dst.display()
-            );
-            break;
-        }
-    }
-    if !catalog_merged {
+    // Plugin metadata ships at app/runtime-catalog/ (same tree as engine overlays).
+    let catalog_src = payload.join("runtime-catalog");
+    if catalog_src.join("plugins.json").is_file() {
+        let catalog_dst = app_root.join("runtime-catalog");
+        crate::archive_util::copy_dir_merge(&catalog_src, &catalog_dst)?;
+        log::info!(
+            "[app-update] Merged plugin catalog -> {}",
+            catalog_dst.display()
+        );
+    } else {
         log::warn!(
             "[app-update] App archive has no runtime-catalog/plugins.json — engine catalog may be stale"
         );
@@ -1229,6 +1126,18 @@ pub fn apply_app_update_archive(
         let bin_dst = app_root.join("bin");
         crate::archive_util::copy_dir_merge(&staged_bin, &bin_dst)?;
         log::info!("[app-update] Merged bin/ helpers");
+    }
+
+    // Foundry vendor patches. The App archive carries the product patch set (the same
+    // files NSIS stages as a resource), but an app-only update never reached app-root
+    // patches otherwise: they stayed frozen at installer vintage, so a rebased/renamed
+    // patch never shipped and Foundry kept applying the stale one. Replace wholesale.
+    match install_foundry_patches_from_payload(&payload, &app_root) {
+        Ok(0) => log::warn!(
+            "[app-update] App archive has no foundry/patches/*.patch — installed vendor patches left untouched"
+        ),
+        Ok(n) => log::info!("[app-update] Replaced foundry/patches ({n} vendor patch(es))"),
+        Err(e) => return Err(e),
     }
 
     let current_exe = std::env::current_exe()
@@ -1426,47 +1335,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn version_tags_only() {
-        assert!(is_version_release_tag("v1.0.9"));
-        assert!(!is_version_release_tag("toolchain"));
-    }
-
-    #[test]
-    fn installer_asset_names() {
-        assert!(is_app_update_archive("Blackwell-Ops-App-v1.0.12.7z"));
-        assert!(is_app_update_archive("CORE_Blackwell-Ops-App-v1.0.12.7z"));
-        assert!(is_app_only_nsis_installer("Blackwell Ops App-Only Setup 1.0.9.exe"));
-        assert!(is_app_update_asset("Blackwell-Ops-App-v1.0.12.7z"));
-        assert!(is_full_bundle_nsis_installer("Blackwell Ops Setup 1.0.9.exe"));
-        assert!(is_full_bundle_nsis_installer("CORE_Blackwell Ops_1.0.10_x64-setup.exe"));
-        assert!(is_full_bundle_nsis_installer("Blackwell Ops_1.0.10_x64-setup.exe"));
-        assert!(!is_full_bundle_nsis_installer("Blackwell Ops App-Only Setup 1.0.9.exe"));
-        assert!(!is_full_bundle_nsis_installer("Blackwell-Ops-App-v1.0.12.7z"));
-        assert!(!is_full_bundle_nsis_installer("CORE_Blackwell-Ops-App-v1.0.12.7z"));
-        assert!(!is_full_bundle_nsis_installer("blackwell-ops.exe"));
-        assert!(is_provider_pack_asset(
-            "ggml-master-edge.7z",
-            "ggml-master",
-            "edge"
-        ));
-        assert!(is_provider_pack_asset(
-            "CORE_ggml-master-edge.7z",
-            "ggml-master",
-            "edge"
-        ));
-        assert!(is_provider_pack_asset(
-            "PLUGIN_ggml-tom-stable.7z",
-            "ggml-tom",
-            "stable"
-        ));
-        assert_eq!(
-            provider_pack_asset_name("ggml-master", "edge"),
-            "CORE_ggml-master-edge.7z"
-        );
-        assert_eq!(
-            provider_pack_asset_name("ggml-tom", "stable"),
-            "PLUGIN_ggml-tom-stable.7z"
-        );
+    fn version_gt_is_numeric_per_part() {
+        assert!(version_gt("1.1.13", "1.1.9"));
+        assert!(version_gt("1.2.0", "1.1.99"));
+        assert!(!version_gt("1.1.13", "1.1.13"));
+        assert!(!version_gt("1.1.9", "1.1.13"));
     }
 
     #[test]
@@ -1481,32 +1354,59 @@ mod tests {
     }
 
     #[test]
-    fn find_provider_pack_in_scans_list_without_network() {
-        let empty = find_provider_pack_in(&[], "ggml-master", "edge");
-        assert!(empty.is_none());
+    fn offering_requires_a_strictly_newer_version() {
+        let manifest: ProductChannelManifest = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "channel": "app",
+            "latest": {
+                "version": "1.1.13",
+                "asset": "APP_UPDATE_Blackwell-Ops-v1.1.13.7z",
+                "sizeBytes": 1024,
+                "sha256": "c".repeat(64),
+                "notes": "notes"
+            },
+            "releases": []
+        }))
+        .unwrap();
 
+        let newer = offering_from_manifest(CHANNEL_APP_ONLY, TAG_APP, &manifest, "1.1.12");
+        assert!(newer.available);
+        assert_eq!(newer.version, "1.1.13");
+        assert_eq!(newer.tag, TAG_APP);
+        assert_eq!(newer.release_notes.as_deref(), Some("notes"));
+
+        // Same version and a downgrade are both "no update" — the old need-engines path that
+        // offered an older Full setup is gone.
+        assert!(!offering_from_manifest(CHANNEL_APP_ONLY, TAG_APP, &manifest, "1.1.13").available);
+        assert!(!offering_from_manifest(CHANNEL_APP_ONLY, TAG_APP, &manifest, "1.2.0").available);
+    }
+
+    #[test]
+    fn channel_manifest_must_name_a_real_asset() {
+        let empty = empty_offering(CHANNEL_APP_ONLY);
+        assert!(!empty.available);
+        assert!(empty.version.is_empty());
+
+        let manifest = fetch_manifest_fixture();
         let release = GitHubRelease {
-            tag_name: "v1.0.99".into(),
-            body: None,
-            assets: vec![ReleaseAsset {
-                name: "CORE_ggml-master-edge.7z".into(),
-                download_url: "https://example.invalid/x.7z".into(),
-                size: 42,
-                digest: None,
-            }],
+            tag_name: TAG_APP.into(),
+            assets: vec![],
         };
-        let hit = find_provider_pack_in(&[release], "ggml-master", "edge");
-        assert_eq!(hit, Some(("v1.0.99".into(), 42)));
-        let miss = find_provider_pack_in(
-            &[GitHubRelease {
-                tag_name: "v1.0.99".into(),
-                body: None,
-                assets: vec![],
-            }],
-            "ds4",
-            "edge",
-        );
-        assert!(miss.is_none());
+        assert!(find_asset_by_name(&release, &manifest.latest.asset).is_none());
+    }
+
+    fn fetch_manifest_fixture() -> ProductChannelManifest {
+        serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "channel": "app",
+            "latest": {
+                "version": "1.1.13",
+                "asset": "APP_UPDATE_Blackwell-Ops-v1.1.13.7z",
+                "sizeBytes": 1024,
+                "sha256": "d".repeat(64)
+            }
+        }))
+        .unwrap()
     }
 
     #[test]
@@ -1558,5 +1458,62 @@ mod tests {
         assert_eq!(read.body["tag_name"], "v9.9.9");
         assert!(cache_age(&read) < Duration::from_secs(5));
         let _ = std::fs::remove_file(&path);
+    }
+
+    fn patch_fixture(tag: &str) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "bw-foundry-pat-{tag}-{}-{}",
+            std::process::id(),
+            now_unix_secs()
+        ));
+        let payload = root.join("payload");
+        let app = root.join("app");
+        std::fs::create_dir_all(payload.join("foundry").join("patches")).unwrap();
+        std::fs::create_dir_all(app.join("foundry").join("patches")).unwrap();
+        (root, payload, app)
+    }
+
+    #[test]
+    fn app_update_replaces_foundry_patches_wholesale() {
+        let (root, payload, app) = patch_fixture("replace");
+        let installed = app.join("foundry").join("patches");
+        let staged = payload.join("foundry").join("patches");
+        std::fs::write(installed.join("retired.patch"), "old").unwrap();
+        std::fs::write(installed.join("extra.patch"), "old").unwrap();
+        std::fs::write(staged.join("current.patch"), "new").unwrap();
+
+        let n = install_foundry_patches_from_payload(&payload, &app).unwrap();
+
+        assert_eq!(n, 1);
+        // Full replace: every previously installed file must be gone, not merged over.
+        assert!(!installed.join("retired.patch").exists());
+        assert!(!installed.join("extra.patch").exists());
+        assert_eq!(
+            std::fs::read_to_string(installed.join("current.patch")).unwrap(),
+            "new"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn app_update_without_patches_keeps_installed_set() {
+        let (root, payload, app) = patch_fixture("none");
+        let installed = app.join("foundry").join("patches");
+        std::fs::write(installed.join("installed.patch"), "kept").unwrap();
+        // A staged dir with no *.patch is "nothing to install", not "wipe the set".
+        std::fs::write(
+            payload.join("foundry").join("patches").join("readme.txt"),
+            "x",
+        )
+        .unwrap();
+
+        let n = install_foundry_patches_from_payload(&payload, &app).unwrap();
+
+        assert_eq!(n, 0);
+        assert_eq!(
+            std::fs::read_to_string(installed.join("installed.patch")).unwrap(),
+            "kept"
+        );
+        std::fs::remove_dir_all(&root).ok();
     }
 }

@@ -63,6 +63,7 @@ mod binary_update;
 mod plugin_catalog;
 mod distribution;
 mod github_releases;
+mod release_channels;
 mod profile_binaries;
 mod secrets;
 
@@ -666,9 +667,10 @@ async fn main() {
             binary_update::get_plugin_catalog,
             binary_update::revert_binary_to_bundled,
             // DEV distribution / majestic wrappers
-            distribution::get_distribution_dashboard,
-            distribution::set_provider_distribution,
-            distribution::regenerate_distribution_catalog,
+            distribution::get_distribution_state,
+            distribution::preview_release_plan,
+            distribution::run_release_plan,
+            distribution::run_local_rel_refresh,
             distribution::run_dev_release_action,
             distribution::get_dev_release_job_status,
 

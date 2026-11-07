@@ -1,13 +1,14 @@
-//! Engine pack manifest — committed and embedded, not fetched.
+//! Engine pack record — committed, embedded, and used as the build-time pin.
 //!
-//! Identity (asset name + sha256) of every downloadable engine pack comes from
-//! `runtime-catalog/engines.json`, which `scripts/pack-provider-runtime.ps1` writes. Embedding it
-//! means the digest arrives over a different trust path than the bytes (see
-//! `docs/SUPPLY-CHAIN-SHA-CHECKS.md`), and a swapped release asset is refused rather than
-//! extracted. Consequence, accepted in `docs/ENGINE-PACKS.md`: a new engine becomes visible to
-//! users with an app release, while the pack itself downloads on demand.
+//! `runtime-catalog/engines.json` is written by `scripts/pack-provider-runtime.ps1`. Two jobs:
 //!
-//! The installer seeds only `recommended` (EDGE); everything else is a pack.
+//! 1. **Build-time record** — names/digests of the packs this app was built with, asserted by
+//!    tests and used as the offline/repair fallback when the `engines` channel is unreachable.
+//! 2. **Installer bookkeeping** — `recommended` marks the seeded profile.
+//!
+//! It is **not** the authority for what can be installed: engines ship independently of app
+//! builds, so the `engines` channel manifest (`docs/RELEASE-CHANNELS.md`) is what the client
+//! offers and verifies. The embedded digest is only the stronger fallback path.
 
 use std::sync::OnceLock;
 
@@ -35,7 +36,11 @@ pub struct EnginePackDef {
     pub sha256: String,
     pub size_bytes: u64,
     pub cuda: String,
-    pub engine_version: String,
+    /// Engine identity, `b<build>-<sha8>` (matches the channel manifest's `build`).
+    pub build: String,
+    /// Human-readable llama version (`0.8.0-dev`); empty when upstream prints no semver.
+    #[serde(default)]
+    pub llama_version: String,
     /// Read by the packaging script and asserted in tests; the installer seed is chosen by the
     /// release build, not looked up at runtime.
     #[serde(default)]
@@ -96,13 +101,19 @@ mod tests {
             assert_eq!(p.sha256, p.sha256.to_lowercase(), "{}: sha256 lowercase", p.asset);
             assert!(
                 p.asset.starts_with("ENGINE_") && p.asset.ends_with(".7z"),
-                "{}: asset naming is ENGINE_{{provider}}-{{profile}}-{{build}}.7z",
+                "{}: asset naming is ENGINE_{{provider}}-{{profile}}-{{version}}-{{build}}.7z",
                 p.asset
             );
             assert!(
                 p.asset.contains(&p.provider) && p.asset.contains(&p.profile),
                 "{}: asset name must identify its provider/profile",
                 p.asset
+            );
+            assert!(
+                p.asset.contains(&p.build),
+                "{}: asset name must carry the build id {} (channel manifest points at it)",
+                p.asset,
+                p.build
             );
             assert!(p.size_bytes > 1_000_000, "{}: implausible size", p.asset);
         }

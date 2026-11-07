@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "channels": [
+    {
+      "tag": "full",
+      "assetClass": "FULL_SETUP",
+      "product": "Blackwell-Ops",
+      "kind": "installer",
+      "versionToken": "semver",
+      "retention": 10,
+      "retentionUnit": "version",
+      "latest": true,
+      "title": "Blackwell Ops - FULL installers",
+      "blurb": "First install and repair. App plus the EDGE engine seed; the setup wizard pulls the CUDA runtime."
+    },
+    {
+      "tag": "app",
+      "assetClass": "APP_UPDATE",
+      "product": "Blackwell-Ops",
+      "kind": "archive",
+      "versionToken": "semver",
+      "retention": 10,
+      "retentionUnit": "version",
+      "latest": false,
+      "title": "Blackwell Ops - APP updates",
+      "blurb": "Lean portable update (UI, templates, foundry patches). Keeps your engines."
+    },
+    {
+      "tag": "engines",
+      "assetClass": "ENGINE",
+      "product": "ggml-master",
+      "kind": "archive",
+      "versionToken": "build",
+      "retention": 10,
+      "retentionUnit": "build",
+      "latest": false,
+      "title": "Blackwell Ops - ENGINE packs",
+      "blurb": "Per engine/profile CUDA packs, published independently of the app. `channel.json` pins each asset's digest."
+    },
+    {
+      "tag": "toolchain",
+      "assetClass": null,
+      "product": "toolchain",
+      "kind": "archive",
+      "versionToken": "manifest",
+      "retention": 10,
+      "retentionUnit": "version",
+      "latest": false,
+      "title": "Toolchain packs",
+      "blurb": "CUDA runtimes and Foundry build tools, resolved by name from the embedded manifest."
+    },
+    {
+      "tag": "link",
+      "assetClass": "OYM_link",
+      "product": "",
+      "kind": "archive",
+      "versionToken": "build",
+      "retention": 10,
+      "retentionUnit": "build",
+      "latest": false,
+      "title": "OYM-Link - updates",
+      "blurb": "Remote client updates. Own version line, independent of Blackwell Ops."
+    },
+    {
+      "tag": "link-setup",
+      "assetClass": "OYM_link_SETUP",
+      "product": "",
+      "kind": "installer",
+      "versionToken": "semver",
+      "retention": 10,
+      "retentionUnit": "version",
+      "latest": false,
+      "title": "OYM-Link - installers",
+      "blurb": "Remote client first install."
+    }
+  ]
+}

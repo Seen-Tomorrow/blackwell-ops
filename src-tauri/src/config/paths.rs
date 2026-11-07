@@ -250,16 +250,10 @@ fn sync_plugin_catalog_tree(source: &std::path::Path, app_root: &std::path::Path
 
 #[cfg(debug_assertions)]
 fn sync_dev_plugin_catalog(app_root: &std::path::Path) {
-    // Prefer repo runtime-catalog/, then legacy runtime/catalog/
-    let repo_runtime = app_root.join("../../runtime");
-    let preferred = app_root.join("../../runtime-catalog");
-    if (preferred.join("plugins.json").is_file() || preferred.is_dir())
-        && sync_plugin_catalog_tree(&preferred, app_root, "dev-runtime-catalog")
-    {
-        return;
-    }
-    if repo_runtime.is_dir() {
-        let _ = sync_plugin_catalog_tree(&repo_runtime, app_root, "dev");
+    // Repo runtime-catalog/ is the only catalog location in DEV.
+    let repo_catalog = app_root.join("../../runtime-catalog");
+    if repo_catalog.join("plugins.json").is_file() {
+        let _ = sync_plugin_catalog_tree(&repo_catalog, app_root, "dev-runtime-catalog");
     }
 }
 

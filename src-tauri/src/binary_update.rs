@@ -270,6 +270,20 @@ fn is_newer_pack(installed: &str, latest: &str) -> bool {
     }
 }
 
+/// Human label for a published engine pack: `0.8.0-dev (build 12017)` — the shape the ENGINE
+/// page already renders (`engineVersionParts`). Falls back to the build id when upstream
+/// prints no semver.
+fn engine_display_version(llama_version: &str, build: &str) -> String {
+    let version = llama_version.trim();
+    if version.is_empty() {
+        return build.to_string();
+    }
+    match version_build_number(build) {
+        Some(n) => format!("{version} (build {n})"),
+        None => version.to_string(),
+    }
+}
+
 fn is_placeholder_install_version(v: &str) -> bool {
     // Single authoritative list lives in engine_build_info.
     crate::engine_build_info::is_placeholder_build_version(v)
@@ -301,10 +315,10 @@ pub fn get_pack_update_provider_ids() -> Vec<String> {
     ids
 }
 
-/// Scan recent releases for `{provider}-{profile}.7z` packs.
-/// `available` = **update** for an installed profile with a known release tag that differs —
-/// not “pack exists on GitHub” (that would forever light the header badge).
-/// `force`: bypass releases-list TTL (Updates page Refresh).
+/// Read the `engines` channel manifest for pack availability.
+/// `available` = **update** for an installed profile whose build differs from the published
+/// one — not "a pack exists" (that would forever light the header badge).
+/// `force`: bypass the manifest TTL (Updates page Refresh).
 #[tauri::command]
 pub async fn check_binary_updates(
     app_handle: tauri::AppHandle,
@@ -341,20 +355,10 @@ pub async fn check_binary_updates(
         cfg.providers.iter().find(|p| p.id == provider_id).cloned()
     };
 
-    let releases = crate::github_releases::fetch_recent_version_releases_ex(40, force).await?;
+    let manifest = crate::github_releases::fetch_engine_manifest(force).await?;
     let mut results = Vec::new();
 
     for &(profile, label) in PROFILES {
-        let mut found: Option<(String, String)> = None; // version, tag
-        for release in &releases {
-            if crate::github_releases::find_provider_pack(release, &provider_id, profile).is_some()
-            {
-                let ver = crate::github_releases::tag_to_version(&release.tag_name).to_string();
-                found = Some((ver, release.tag_name.clone()));
-                break;
-            }
-        }
-
         let has_binary = provider
             .as_ref()
             .map(|p| {
@@ -369,26 +373,27 @@ pub async fn check_binary_updates(
             })
             .unwrap_or(false);
 
-        // Engine identity is the build, never the product/release tag: `downloaded_version_per_env`
-        // holds app versions like "1.1.3" and cannot be compared with `bNNNNN-sha`.
+        // Engine identity is the build, never a release/tag label: the installed side is the
+        // probed build-info (`bNNNNN-sha`), the published side is the engines-channel build.
         let installed_version = provider
             .as_ref()
             .and_then(|p| p.build_info_per_env.get(profile).map(|b| b.version.clone()));
 
-        // Same for the published side: compare against the pack's engine version, not the
-        // release tag. Fall back to the tag only for forks with no embedded pack manifest.
-        let (pack_available, latest_version) = match &found {
-            Some((tag_version, _)) => {
-                let engine_version = crate::engine_packs::engine_pack(&provider_id, profile)
-                    .map(|p| p.engine_version.clone())
-                    .filter(|v| !v.trim().is_empty())
-                    .unwrap_or_else(|| tag_version.clone());
-                (true, engine_version)
-            }
-            None => (false, String::new()),
+        // Offer whatever the engines channel publishes for this profile. Engines are independent
+        // of app builds: a pack shipped on its own is offered and installed immediately.
+        let entry = manifest.entry(&provider_id, profile);
+        let (pack_available, latest_build, pack_size_bytes, cuda) = match entry {
+            Some(e) => (true, e.build.clone(), e.size_bytes, Some(e.cuda.clone())),
+            None => (
+                false,
+                String::new(),
+                0,
+                crate::foundry_toolchain::cuda_version_for_binary_profile(profile),
+            ),
         };
 
         // Header/CONFIG badges: only real versioned upgrades of something already installed.
+        // Comparison runs on the machine identity (build id), display uses llama's version.
         let available = pack_available
             && has_binary
             && installed_version
@@ -397,7 +402,12 @@ pub async fn check_binary_updates(
                 .unwrap_or(false)
             && installed_version
                 .as_ref()
-                .is_some_and(|inst| is_newer_pack(inst, &latest_version));
+                .is_some_and(|inst| is_newer_pack(inst, &latest_build));
+
+        let latest_version = match entry {
+            Some(e) => engine_display_version(&e.version, &e.build),
+            None => String::new(),
+        };
 
         // Always return both profiles for UI (core may be NSIS-only with no separate pack).
         results.push(BinaryUpdateInfo {
@@ -407,12 +417,8 @@ pub async fn check_binary_updates(
             latest_version,
             available,
             pack_available,
-            pack_size_bytes: crate::engine_packs::engine_pack(&provider_id, profile)
-                .map(|p| p.size_bytes)
-                .unwrap_or(0),
-            cuda: crate::engine_packs::engine_pack(&provider_id, profile)
-                .map(|p| p.cuda.clone())
-                .or_else(|| crate::foundry_toolchain::cuda_version_for_binary_profile(profile)),
+            pack_size_bytes,
+            cuda,
         });
     }
 
@@ -488,10 +494,7 @@ pub async fn download_binary_update(
             provider_id: provider_id.clone(),
             profile: profile.clone(),
             status: "downloading".to_string(),
-            message: format!(
-                "Downloading {}…",
-                crate::github_releases::provider_pack_asset_name(&provider_id, &profile)
-            ),
+            message: format!("Downloading {provider_id}/{profile} engine pack…"),
         },
     );
 
@@ -519,10 +522,11 @@ pub async fn download_binary_update(
     Ok(task_id)
 }
 
-/// After 7z extract: activate catalog path and record **product** release tag.
+/// After 7z extract: activate catalog path and record the engine build (download stamp).
 ///
 /// Core: does **not** overwrite NSIS bundled inventory (pack lives under `runtime-catalog/`).
-/// Plugins: catalog install is the runtime/ tree; engine build-info stays mtime-based, not the app tag.
+/// Plugins: catalog install is the runtime/ tree; the authoritative identity is build-info
+/// (probed after activation), the recorded stamp is what the UPDATES comparison reads.
 pub fn activate_provider_pack(
     app_handle: &tauri::AppHandle,
     provider_id: &str,
@@ -546,7 +550,8 @@ pub fn activate_provider_pack(
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
         let tag = release_tag.trim().to_string();
 
-        // Product tag for UPDATES comparison only — not engine build identity.
+        // Download stamp for the UPDATES comparison (engine build id). The authoritative
+        // identity is still build-info, which is probed from the binary after activation.
         provider
             .downloaded_version_per_env
             .insert(profile.to_string(), tag.clone());
@@ -653,7 +658,7 @@ fn offerings_to_legacy_app_update(offerings: &crate::github_releases::UpdateOffe
     };
     AppUpdateInfo {
         available: true,
-        version: pick.tag.clone(),
+        version: pick.version.clone(),
         current_version: offerings.current_version.clone(),
         release_notes: pick.release_notes.clone(),
     }
@@ -906,7 +911,7 @@ pub async fn revert_binary_to_bundled(
 }
 #[cfg(test)]
 mod version_tests {
-    use super::is_newer_pack;
+    use super::{engine_display_version, is_newer_pack};
 
     #[test]
     fn same_commit_is_not_an_update() {
@@ -921,5 +926,25 @@ mod version_tests {
     #[test]
     fn newer_pack_is_an_update() {
         assert!(is_newer_pack("b11800-6abcdef", "b11870-74bca395"));
+    }
+
+    #[test]
+    fn probed_version_and_channel_build_compare_by_build_number() {
+        assert!(!is_newer_pack("0.8.0-dev (build 12017)", "b12017-5047748f"));
+        assert!(is_newer_pack("0.8.0-dev (build 12017)", "b12187-5047748f"));
+        assert!(!is_newer_pack("0.9.0-dev (build 12187)", "b12017-5047748f"));
+    }
+
+    #[test]
+    fn engine_display_keeps_the_llama_name() {
+        assert_eq!(
+            engine_display_version("0.8.0-dev", "b12017-5047748f"),
+            "0.8.0-dev (build 12017)"
+        );
+        // Forks that print no semver keep the machine identity.
+        assert_eq!(
+            engine_display_version("", "b12017-5047748f"),
+            "b12017-5047748f"
+        );
     }
 }

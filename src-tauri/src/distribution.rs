@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 static RELEASE_JOB_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -18,6 +18,9 @@ const DEFAULT_PROFILES: &[&str] = &["edge", "stable"];
 pub struct DistributionPolicy {
     pub policy_version: u32,
     pub nsis_core: BTreeMap<String, Vec<String>>,
+    /// Profiles published as downloadable engine packs (docs/RELEASE-CHANNELS.md).
+    #[serde(default)]
+    pub engine_packs: BTreeMap<String, Vec<String>>,
     pub plugins: BTreeMap<String, Vec<String>>,
     #[serde(default = "default_plugin_profiles")]
     pub default_plugin_profiles: Vec<String>,
@@ -37,58 +40,13 @@ impl Default for DistributionPolicy {
         Self {
             policy_version: POLICY_VERSION,
             nsis_core,
+            engine_packs: BTreeMap::new(),
             plugins: BTreeMap::new(),
             default_plugin_profiles: default_plugin_profiles(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProfileReadiness {
-    pub profile: String,
-    pub runtime_binary: bool,
-    pub foundry_artifact: bool,
-    pub ready: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProviderDistributionRow {
-    pub id: String,
-    pub display_name: String,
-    /// `core` | `plugin` | `local`
-    pub role: String,
-    pub optional_download: bool,
-    pub factory_exists: bool,
-    pub profiles: Vec<String>,
-    pub readiness: Vec<ProfileReadiness>,
-    pub all_ready: bool,
-    pub pack_commands: Vec<String>,
-    pub notes: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DistributionDashboard {
-    pub policy_path: String,
-    pub catalog_path: String,
-    pub app_version: String,
-    pub nsis_core: BTreeMap<String, Vec<String>>,
-    pub plugins: BTreeMap<String, Vec<String>>,
-    pub providers: Vec<ProviderDistributionRow>,
-    pub release_job_running: bool,
-    pub workflow_notes: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetDistributionInput {
-    pub provider_id: String,
-    /// `plugin` | `local` (core is fixed to policy nsisCore)
-    pub role: String,
-    pub profiles: Option<Vec<String>>,
-}
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -101,27 +59,14 @@ fn policy_path() -> PathBuf {
     repo_root().join("scripts").join("distribution-policy.json")
 }
 
-fn catalog_src_path() -> PathBuf {
-    // Canonical: runtime-catalog/plugins.json (engine overlays share this tree).
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("runtime-catalog")
-        .join("plugins.json")
-}
 
-fn factory_src_path(provider_id: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("runtime")
-        .join(provider_id)
-        .join("config")
-        .join(format!("{provider_id}-default-config.json"))
-}
-
-fn runtime_src_profile_exe(provider_id: &str, profile: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("runtime")
+fn foundry_artifact_release_dir(provider_id: &str, profile: &str) -> PathBuf {
+    crate::config::app_root_dir()
+        .join("foundry")
+        .join("artifacts")
         .join(provider_id)
         .join(profile)
-        .join("llama-server.exe")
+        .join("Release")
 }
 
 fn foundry_artifact_exe(provider_id: &str, profile: &str) -> PathBuf {
@@ -167,426 +112,861 @@ pub fn save_policy(policy: &DistributionPolicy) -> Result<(), String> {
     Ok(())
 }
 
-fn set_factory_optional_download(provider_id: &str, optional: bool) -> Result<(), String> {
-    let path = factory_src_path(provider_id);
-    if !path.is_file() {
-        return Ok(());
-    }
-    let raw = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
-    let mut root: serde_json::Value =
-        serde_json::from_str(&raw).map_err(|e| format!("Invalid factory JSON: {e}"))?;
-    if let Some(obj) = root.as_object_mut() {
-        obj.insert(
-            "optionalDownload".to_string(),
-            serde_json::Value::Bool(optional),
-        );
-    }
-    let out = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    let body = format!("{out}\n");
-    std::fs::write(&path, &body)
-        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
 
-    // Also update live runtime next to debug exe if present
-    let live = crate::config::factory_default_config_path(provider_id);
-    if live.is_file() {
-        let _ = std::fs::write(&live, &body);
-    }
-    Ok(())
+// ── Release state + plans (docs/DISTRIBUTION-PANEL.md) ─────────────────────
+
+/// Engine identity found on disk (build-info.txt beside the binaries).
+#[derive(Debug, Clone)]
+struct EngineSource {
+    version: String,
+    build: String,
 }
 
-/// Build plugins.json from policy + factory metadata (DEV + pack scripts).
-pub fn regenerate_plugin_catalog_from_policy() -> Result<PathBuf, String> {
-    let policy = load_policy()?;
-    let mut plugins = Vec::new();
+fn parse_engine_build_number(build: &str) -> Option<u64> {
+    build
+        .strip_prefix('b')?
+        .split('-')
+        .next()?
+        .parse::<u64>()
+        .ok()
+}
 
-    for (id, profiles) in &policy.plugins {
-        let factory_path = factory_src_path(id);
-        let (display_name, description, template_type, template_version) =
-            if factory_path.is_file() {
-                let raw = std::fs::read_to_string(&factory_path).unwrap_or_default();
-                let v: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
-                let display = v
-                    .get("display_name")
-                    .or_else(|| v.get("displayName"))
-                    .and_then(|x| x.as_str())
-                    .unwrap_or(id)
-                    .to_string();
-                let desc = v
-                    .get("description")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let tt = v
-                    .get("template_type")
-                    .or_else(|| v.get("templateType"))
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("ggml-llama")
-                    .to_string();
-                let tv = v
-                    .get("templateVersion")
-                    .and_then(|x| x.as_u64())
-                    .unwrap_or(1) as u32;
-                (display, desc, tt, tv)
-            } else {
-                (
-                    id.clone(),
-                    format!("Optional engine plugin ({id})"),
-                    "ggml-llama".into(),
-                    1,
-                )
-            };
-
-        plugins.push(serde_json::json!({
-            "id": id,
-            "displayName": display_name,
-            "description": if description.is_empty() {
-                format!("Optional engine plugin ({id})")
-            } else {
-                description
-            },
-            "templateType": template_type,
-            "templateVersion": template_version,
-            "profiles": profiles,
-        }));
-    }
-
-    let catalog = serde_json::json!({
-        "catalogVersion": 1,
-        "plugins": plugins,
+/// Read `build-info.txt`:
+/// - foundry: `<version> (build N)` + `commit <sha>`
+/// - pack sidecar: `<version> (build N)` or `b<build>-<sha>`
+fn read_engine_build_info(dir: &std::path::Path) -> Option<EngineSource> {
+    let text = std::fs::read_to_string(dir.join("build-info.txt")).ok()?;
+    let mut lines = text.lines();
+    let first = lines.next()?.trim();
+    let commit = lines.find_map(|line| {
+        line.trim()
+            .strip_prefix("commit ")
+            .map(|s| s.trim().to_string())
     });
-    let out = serde_json::to_string_pretty(&catalog).map_err(|e| e.to_string())?;
 
-    let dest = catalog_src_path();
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
+    if let Some(rest) = first.strip_prefix('b') {
+        return Some(EngineSource {
+            version: String::new(),
+            build: format!("b{rest}"),
+        });
     }
-    std::fs::write(&dest, out.clone() + "\n")
-        .map_err(|e| format!("Failed to write {}: {e}", dest.display()))?;
-
-    // Live app catalog next to debug/release exe
-    let live_catalog = crate::config::app_root_dir()
-        .join("runtime-catalog")
-        .join("plugins.json");
-    if let Some(parent) = live_catalog.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(&live_catalog, out + "\n");
-
-    Ok(dest)
-}
-
-fn profile_readiness(provider_id: &str, profile: &str) -> ProfileReadiness {
-    let runtime_binary = runtime_src_profile_exe(provider_id, profile).is_file()
-        || crate::config::app_root_dir()
-            .join("runtime")
-            .join(provider_id)
-            .join(profile)
-            .join("llama-server.exe")
-            .is_file();
-    let foundry_artifact = foundry_artifact_exe(provider_id, profile).is_file();
-    ProfileReadiness {
-        profile: profile.to_string(),
-        runtime_binary,
-        foundry_artifact,
-        ready: runtime_binary || foundry_artifact,
-    }
-}
-
-fn role_for(provider_id: &str, policy: &DistributionPolicy) -> String {
-    if policy.nsis_core.contains_key(provider_id) {
-        "core".into()
-    } else if policy.plugins.contains_key(provider_id) {
-        "plugin".into()
-    } else {
-        "local".into()
-    }
-}
-
-fn build_row(
-    p: &crate::types::ProviderConfig,
-    policy: &DistributionPolicy,
-) -> ProviderDistributionRow {
-    let role = role_for(&p.id, policy);
-    let profiles = match role.as_str() {
-        "core" => policy
-            .nsis_core
-            .get(&p.id)
-            .cloned()
-            .unwrap_or_else(|| DEFAULT_PROFILES.iter().map(|s| s.to_string()).collect()),
-        "plugin" => policy
-            .plugins
-            .get(&p.id)
-            .cloned()
-            .unwrap_or_else(|| policy.default_plugin_profiles.clone()),
-        _ => policy.default_plugin_profiles.clone(),
-    };
-    let readiness: Vec<ProfileReadiness> = profiles
-        .iter()
-        .map(|pr| profile_readiness(&p.id, pr))
+    let idx = first.rfind("(build ")?;
+    let version = first[..idx].trim().to_string();
+    let digits: String = first[idx + 7..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
         .collect();
-    let all_ready = !readiness.is_empty() && readiness.iter().all(|r| r.ready);
-    let mut notes = Vec::new();
-    let factory_exists = factory_src_path(&p.id).is_file();
-    if role == "plugin" && !factory_exists {
-        notes.push("Factory JSON missing — EXPORT FACTORY or turn Plugin ON again".into());
+    let build_no: u64 = digits.parse().ok()?;
+    let build = match commit {
+        Some(sha) if sha.len() >= 8 => format!("b{build_no}-{}", &sha[..8]),
+        _ => format!("b{build_no}"),
+    };
+    Some(EngineSource { version, build })
+}
+
+/// Newest engine build available to pack: Foundry's published artifacts (the only binary root).
+fn engine_source(provider: &str, profile: &str) -> Option<EngineSource> {
+    let dir = foundry_artifact_release_dir(provider, profile);
+    if !dir.join("llama-server.exe").is_file() {
+        return None;
     }
-    for r in &readiness {
-        if !r.ready {
+    read_engine_build_info(&dir)
+}
+
+fn sha256_file(path: &std::path::Path) -> Option<String> {
+    use std::io::Read;
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = file.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Some(hex::encode(hasher.finalize()))
+}
+
+/// Digest cache: reopening the panel must not re-hash a 150 MB installer or a 110 MB pack.
+/// Keyed by path and invalidated by (size, mtime); a file swapped in place has a new mtime.
+fn sha256_file_cached(path: &std::path::Path) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+    static CACHE: LazyLock<Mutex<HashMap<std::path::PathBuf, (u64, u128, String)>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let key = path.to_path_buf();
+    if let Ok(cache) = CACHE.lock() {
+        if let Some((len, stamp, sha)) = cache.get(&key) {
+            if *len == meta.len() && *stamp == mtime {
+                return Some(sha.clone());
+            }
+        }
+    }
+    let sha = sha256_file(path)?;
+    if let Ok(mut cache) = CACHE.lock() {
+        cache.insert(key, (meta.len(), mtime, sha.clone()));
+    }
+    Some(sha)
+}
+
+fn bump_patch_version(v: &str) -> String {
+    let mut parts: Vec<u64> = v.split('.').filter_map(|p| p.parse().ok()).collect();
+    if parts.is_empty() {
+        return v.to_string();
+    }
+    let last = parts.len() - 1;
+    parts[last] += 1;
+    parts
+        .iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+fn parse_engine_id(id: &str) -> Option<(&str, &str)> {
+    let rest = id.strip_prefix("engine:")?;
+    let (provider, profile) = rest.split_once(':')?;
+    if provider.is_empty() || profile.is_empty() {
+        return None;
+    }
+    Some((provider, profile))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactStatus {
+    pub id: String,
+    /// `app` | `full` | `engine`
+    pub kind: String,
+    pub channel: String,
+    pub label: String,
+    pub version: String,
+    pub build: String,
+    pub staged: bool,
+    pub staged_bytes: u64,
+    pub staged_sha256: String,
+    pub published: bool,
+    pub published_version: String,
+    pub published_build: String,
+    /// Identity of the last packed artifact (engines: engines.json; app/full: app version).
+    pub packed_version: String,
+    pub packed_build: String,
+    /// `absent` | `needs-pack` | `needs-ship` | `published`
+    pub state: String,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Preflight {
+    pub ship_unlocked: bool,
+    pub release_exe: bool,
+    pub pi_pinned: String,
+    pub foundry_ready: Vec<String>,
+    pub foundry_missing: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelStatus {
+    pub tag: String,
+    pub title: String,
+    pub latest_version: String,
+    pub latest_build: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct JobSummary {
+    pub id: String,
+    pub started_at: String,
+    pub ended_at: String,
+    pub result: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DistributionState {
+    pub app_version: String,
+    pub policy_path: String,
+    pub artifacts: Vec<ArtifactStatus>,
+    pub preflight: Preflight,
+    pub channels: Vec<ChannelStatus>,
+    pub job: DevReleaseJobStatus,
+    pub history: Vec<JobSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanStep {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub args: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedJob {
+    pub id: String,
+    pub version: String,
+    pub summary: String,
+    pub steps: Vec<PlanStep>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleasePlan {
+    #[serde(default)]
+    pub schema_version: u32,
+    pub artifacts: Vec<String>,
+    pub phases: Vec<String>,
+    #[serde(default)]
+    pub bump: String,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub allow_repair: bool,
+}
+
+fn jobs_dir() -> PathBuf {
+    majestic_out_dir().join("jobs")
+}
+
+fn read_release_history(limit: usize) -> Vec<JobSummary> {
+    let Ok(rd) = std::fs::read_dir(jobs_dir()) else {
+        return Vec::new();
+    };
+    let mut rows: Vec<JobSummary> = rd
+        .flatten()
+        .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+        .filter_map(|raw| serde_json::from_str::<JobSummary>(&raw).ok())
+        .collect();
+    rows.sort_by(|a, b| b.ended_at.cmp(&a.ended_at));
+    rows.truncate(limit);
+    rows
+}
+
+fn read_staged(dir: &std::path::Path, name: &str, published_size: u64, published_sha: &str) -> (bool, u64, String) {
+    let path = dir.join(name);
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return (false, 0, String::new());
+    };
+    if !meta.is_file() {
+        return (false, 0, String::new());
+    }
+    let bytes = meta.len();
+    // Hash only when the size matches the published asset — otherwise the digest cannot match
+    // and the read would be wasted (engine packs are ~110 MB).
+    let sha = if published_size > 0 && bytes == published_size && !published_sha.is_empty() {
+        sha256_file_cached(&path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    (true, bytes, sha)
+}
+
+/// Size only — engine rows trust `engines.json` digests and never hash a 110 MB pack here.
+fn staged_size(dir: &std::path::Path, name: &str) -> Option<u64> {
+    let meta = std::fs::metadata(dir.join(name)).ok()?;
+    meta.is_file().then_some(meta.len())
+}
+
+async fn build_distribution_state(
+    app_handle: &tauri::AppHandle,
+    force: bool,
+) -> Result<DistributionState, String> {
+    use crate::release_channels::{asset_name, TAG_APP, TAG_FULL};
+
+    let app_version = app_handle.package_info().version.to_string();
+    let dir = majestic_out_dir();
+    let app_manifest = crate::github_releases::fetch_product_manifest(TAG_APP, force).await;
+    let full_manifest = crate::github_releases::fetch_product_manifest(TAG_FULL, force).await;
+    let engine_manifest = crate::github_releases::fetch_engine_manifest(force).await;
+    let policy = load_policy().unwrap_or_default();
+
+    let mut artifacts = Vec::new();
+
+    for (id, tag, label) in [("app", TAG_APP, "App update (.7z)"), ("full", TAG_FULL, "FULL setup (.exe)")] {
+        let name = asset_name(tag, &app_version).unwrap_or_default();
+        let manifest = if tag == TAG_APP { &app_manifest } else { &full_manifest };
+        let published = manifest.as_ref().ok().map(|m| &m.latest);
+        let pub_sha = published.map(|l| l.sha256.clone()).unwrap_or_default();
+        let pub_size = published.map(|l| l.size_bytes).unwrap_or(0);
+        let pub_version = published.map(|l| l.version.clone()).unwrap_or_default();
+
+        let (staged, bytes, sha) = read_staged(&dir, &name, pub_size, &pub_sha);
+        let mut state = if staged { "packed" } else { "absent" };
+        if staged && !pub_sha.is_empty() && sha.eq_ignore_ascii_case(&pub_sha) {
+            state = "published";
+        }
+        if !staged && !pub_version.is_empty() {
+            state = "published";
+        }
+
+        let mut notes = Vec::new();
+        if !pub_version.is_empty() && !crate::github_releases::version_gt(&app_version, &pub_version) {
             notes.push(format!(
-                "{}: no runtime/ or foundry artifact — Foundry-build then pack",
-                r.profile
+                "channel publishes v{pub_version} — bump before shipping a new version"
             ));
         }
-    }
-    let pack_commands = if role == "plugin" || role == "core" {
-        profiles
-            .iter()
-            .map(|pr| {
-                format!(
-                    "npm run majestic:pack:provider -- -ProviderId {} -ProfileId {}",
-                    p.id, pr
-                )
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    ProviderDistributionRow {
-        id: p.id.clone(),
-        display_name: p.display_name.clone(),
-        role,
-        optional_download: p.optional_download,
-        factory_exists,
-        profiles,
-        readiness,
-        all_ready,
-        pack_commands,
-        notes,
-    }
-}
-
-#[tauri::command]
-pub fn get_distribution_dashboard(
-    app_handle: tauri::AppHandle,
-) -> Result<DistributionDashboard, String> {
-    assert_dev()?;
-    let policy = load_policy()?;
-    let providers = {
-        let ctx = app_handle.state::<crate::engine::AppContext>();
-        let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
-        cfg.providers.clone()
-    };
-
-    let mut rows: Vec<ProviderDistributionRow> = providers
-        .iter()
-        .map(|p| build_row(p, &policy))
-        .collect();
-
-    // Policy plugins not currently in PROVIDERS (e.g. after UNINSTALL) still show here
-    // so DEV can Catalog ON/OFF + Pack without re-installing first.
-    let live_ids: std::collections::HashSet<_> =
-        providers.iter().map(|p| p.id.as_str()).collect();
-    for (id, profiles) in &policy.plugins {
-        if live_ids.contains(id.as_str()) {
-            continue;
+        if staged && state != "published" {
+            notes.push(format!("staged {name} is not the published asset yet"));
         }
-        let readiness: Vec<ProfileReadiness> = profiles
-            .iter()
-            .map(|pr| profile_readiness(id, pr))
-            .collect();
-        let all_ready = !readiness.is_empty() && readiness.iter().all(|r| r.ready);
-        let factory_exists = factory_src_path(id).is_file();
-        let mut notes = vec![
-            "Not in PROVIDERS (uninstalled or no engines) — Catalog ON still ships metadata".into(),
-        ];
-        if !factory_exists {
-            notes.push("Factory JSON missing under src-tauri/runtime".into());
-        }
-        rows.push(ProviderDistributionRow {
-            id: id.clone(),
-            display_name: id.clone(),
-            role: "plugin".into(),
-            optional_download: true,
-            factory_exists,
-            profiles: profiles.clone(),
-            readiness,
-            all_ready,
-            pack_commands: profiles
-                .iter()
-                .map(|pr| {
-                    format!(
-                        "npm run majestic:pack:provider -- -ProviderId {id} -ProfileId {pr}"
-                    )
-                })
-                .collect(),
+
+        artifacts.push(ArtifactStatus {
+            id: id.into(),
+            kind: id.into(),
+            channel: tag.into(),
+            label: label.into(),
+            version: app_version.clone(),
+            build: String::new(),
+            staged,
+            staged_bytes: bytes,
+            staged_sha256: sha,
+            published: !pub_version.is_empty(),
+            published_version: pub_version,
+            published_build: String::new(),
+            packed_version: app_version.clone(),
+            packed_build: String::new(),
+            state: state.into(),
             notes,
         });
     }
 
-    rows.sort_by(|a, b| {
-        let rank = |r: &str| match r {
-            "core" => 0,
-            "plugin" => 1,
-            _ => 2,
-        };
-        rank(&a.role)
-            .cmp(&rank(&b.role))
-            .then_with(|| a.id.cmp(&b.id))
-    });
+    // Engines: the row is about what *can be packed*, not what was packed last time.
+    // Source = newest of the runtime mirror (pack input) and the Foundry artifacts.
+    let mut engine_map = policy.engine_packs.clone();
+    if engine_map.is_empty() {
+        engine_map = policy.nsis_core.clone();
+    }
+    for (provider, profiles) in &engine_map {
+        for profile in profiles {
+            let packed = crate::engine_packs::engine_pack(provider, profile);
+            let entry = engine_manifest
+                .as_ref()
+                .ok()
+                .and_then(|m| m.entry(provider, profile));
+            let source = engine_source(provider, profile);
+            // Engine rows never hash the pack: `engines.json` carries the digest computed at
+            // pack time, and ship re-verifies the file against it before upload.
+            let (staged, bytes) = match packed {
+                Some(p) => match staged_size(&dir, &p.asset) {
+                    Some(size) => (true, size),
+                    None => (false, 0),
+                },
+                None => (false, 0),
+            };
+            let sha = String::new();
+            let packed_build = packed.map(|p| p.build.clone()).unwrap_or_default();
+            let source_build = source.as_ref().map(|s| s.build.clone());
+            let source_newer = match (source_build.as_deref(), packed_build.as_str()) {
+                (Some(s), packed) if !packed.is_empty() => {
+                    parse_engine_build_number(s).unwrap_or(0)
+                        > parse_engine_build_number(packed).unwrap_or(0)
+                }
+                (Some(_), _) => true,
+                _ => false,
+            };
+            let published_matches_pack = match (entry, packed) {
+                (Some(e), Some(p)) => {
+                    e.build == p.build && staged && e.sha256.eq_ignore_ascii_case(&p.sha256)
+                }
+                _ => false,
+            };
 
-    Ok(DistributionDashboard {
+            let mut state = "absent";
+            if source.is_some() || packed.is_some() {
+                state = if packed.is_none() || source_newer || !staged {
+                    "needs-pack"
+                } else if published_matches_pack {
+                    "published"
+                } else {
+                    "needs-ship"
+                };
+            }
+
+            let mut notes = Vec::new();
+            if let (Some(src), Some(p)) = (&source, packed) {
+                if source_newer {
+                    notes.push(format!(
+                        "new build available: {} {} (packed {})",
+                        src.version, src.build, p.build
+                    ));
+                }
+            }
+            if packed.is_none() {
+                notes.push("not packed yet — Pack builds it from the mirror/Foundry".into());
+            } else if !published_matches_pack {
+                notes.push("packed build is not published on the engines channel".into());
+            }
+            if !staged && packed.is_some() {
+                notes.push("staged pack missing from .majestic-out — re-pack before shipping".into());
+            }
+
+            let shown = source.clone().unwrap_or_else(|| EngineSource {
+                version: packed.map(|p| p.llama_version.clone()).unwrap_or_default(),
+                build: packed_build.clone(),
+            });
+
+            artifacts.push(ArtifactStatus {
+                id: format!("engine:{provider}:{profile}"),
+                kind: "engine".into(),
+                channel: crate::release_channels::TAG_ENGINES.into(),
+                label: format!("{} {}", provider, profile.to_uppercase()),
+                version: shown.version,
+                build: shown.build,
+                staged,
+                staged_bytes: bytes,
+                staged_sha256: sha,
+                published: entry.is_some(),
+                published_version: entry.map(|e| e.version.clone()).unwrap_or_default(),
+                published_build: entry.map(|e| e.build.clone()).unwrap_or_default(),
+                packed_version: packed.map(|p| p.llama_version.clone()).unwrap_or_default(),
+                packed_build,
+                state: state.into(),
+                notes,
+            });
+        }
+    }
+
+    let mut foundry_ready = Vec::new();
+    let mut foundry_missing = Vec::new();
+    let mut foundry_map = policy.engine_packs.clone();
+    if foundry_map.is_empty() {
+        foundry_map = policy.nsis_core.clone();
+    }
+    for (provider, profiles) in &foundry_map {
+        for profile in profiles {
+            let label = format!("{provider}/{profile}");
+            if foundry_artifact_exe(provider, profile).is_file() {
+                foundry_ready.push(label);
+            } else {
+                foundry_missing.push(label);
+            }
+        }
+    }
+
+    let mut channels = Vec::new();
+    for (tag, manifest) in [(TAG_APP, &app_manifest), (TAG_FULL, &full_manifest)] {
+        if let Ok(m) = manifest {
+            channels.push(ChannelStatus {
+                tag: tag.into(),
+                title: crate::release_channels::channel(tag)
+                    .map(|c| c.title.clone())
+                    .unwrap_or_else(|| tag.to_string()),
+                latest_version: m.latest.version.clone(),
+                latest_build: String::new(),
+            });
+        }
+    }
+    if let Ok(m) = &engine_manifest {
+        if let Some(first) = m.engines.first() {
+            channels.push(ChannelStatus {
+                tag: crate::release_channels::TAG_ENGINES.into(),
+                title: crate::release_channels::channel(crate::release_channels::TAG_ENGINES)
+                    .map(|c| c.title.clone())
+                    .unwrap_or_else(|| "engines".to_string()),
+                latest_version: first.version.clone(),
+                latest_build: first.build.clone(),
+            });
+        }
+    }
+
+    Ok(DistributionState {
+        app_version,
         policy_path: policy_path().display().to_string(),
-        catalog_path: catalog_src_path().display().to_string(),
-        app_version: app_handle.package_info().version.to_string(),
-        nsis_core: policy.nsis_core,
-        plugins: policy.plugins,
-        providers: rows,
-        release_job_running: RELEASE_JOB_RUNNING.load(Ordering::SeqCst),
-        workflow_notes: vec![
-            "Weekly Full: NSIS = ggml-master only (nsisCore in policy)".into(),
-            "Pack+Ship App: bump + clean REL rebuild + PE identity assert + App .7z + ship".into(),
-            "Ship refuses DEV ProductName / version mismatch inside App .7z".into(),
-            "Pack+Ship provider: engines for current tag (no bump)".into(),
-            "Plugin ON writes policy + optionalDownload + catalog - does not upload".into(),
-            "Job output: Tauri console [majestic] lines + visible Majestic console".into(),
-        ],
+        artifacts,
+        preflight: Preflight {
+            ship_unlocked: repo_root()
+                .join("scripts")
+                .join("majestic")
+                .join(".majestic-enabled")
+                .is_file(),
+            release_exe: repo_root()
+                .join("src-tauri")
+                .join("target")
+                .join("release")
+                .join("blackwell-ops.exe")
+                .is_file(),
+            pi_pinned: std::fs::read_to_string(
+                repo_root().join("src-tauri").join("pi-pinned-version.txt"),
+            )
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+            foundry_ready,
+            foundry_missing,
+        },
+        channels,
+        job: get_dev_release_job_status()?,
+        history: read_release_history(10),
+    })
+}
+
+async fn build_planned_job(
+    app_handle: &tauri::AppHandle,
+    plan: &ReleasePlan,
+    force: bool,
+) -> Result<PlannedJob, String> {
+    use crate::release_channels::{TAG_APP, TAG_FULL};
+
+    let current = app_handle.package_info().version.to_string();
+    let app_pub = crate::github_releases::fetch_product_manifest(TAG_APP, force)
+        .await
+        .ok()
+        .map(|m| m.latest);
+    let full_pub = crate::github_releases::fetch_product_manifest(TAG_FULL, force)
+        .await
+        .ok()
+        .map(|m| m.latest);
+
+    let mut phases = std::collections::BTreeSet::new();
+    for phase in &plan.phases {
+        match phase.as_str() {
+            "pack" | "ship" => {
+                phases.insert(phase.clone());
+            }
+            other => return Err(format!("unknown phase '{other}' (pack|ship)")),
+        }
+    }
+    if phases.is_empty() {
+        return Err("plan has no phases".into());
+    }
+    if plan.artifacts.is_empty() {
+        return Err("plan has no artifacts".into());
+    }
+    for artifact in &plan.artifacts {
+        match artifact.as_str() {
+            "app" | "full" | "link" | "toolchain" => {}
+            other if other.starts_with("engine:") => {
+                if parse_engine_id(other).is_none() {
+                    return Err(format!("invalid engine artifact '{other}'"));
+                }
+            }
+            other => return Err(format!("unknown artifact '{other}'")),
+        }
+    }
+
+    let bump = plan.bump.trim().to_ascii_lowercase();
+    if !matches!(bump.as_str(), "" | "none" | "patch") {
+        return Err(format!("unknown bump '{bump}' (none|patch)"));
+    }
+    let do_bump = bump == "patch";
+    let has_app = plan.artifacts.iter().any(|a| a == "app");
+    let has_full = plan.artifacts.iter().any(|a| a == "full");
+    let has_link = plan.artifacts.iter().any(|a| a == "link");
+    let has_toolchain = plan.artifacts.iter().any(|a| a == "toolchain");
+    if do_bump && !(has_app || has_full) {
+        return Err("engines never bump — bump applies to app/full only".into());
+    }
+    let version = if do_bump {
+        bump_patch_version(&current)
+    } else {
+        current.clone()
+    };
+
+    let ship = phases.contains("ship");
+    if ship && !plan.allow_repair {
+        if has_app {
+            if let Some(latest) = &app_pub {
+                if !crate::github_releases::version_gt(&version, &latest.version) {
+                    return Err(format!(
+                        "app channel already publishes v{} — bump first (or allow repair)",
+                        latest.version
+                    ));
+                }
+            }
+        }
+        if has_full {
+            if let Some(latest) = &full_pub {
+                if !crate::github_releases::version_gt(&version, &latest.version) {
+                    return Err(format!(
+                        "full channel already publishes v{} — bump first (or allow repair)",
+                        latest.version
+                    ));
+                }
+            }
+        }
+    }
+
+    let engines: Vec<(String, String)> = plan
+        .artifacts
+        .iter()
+        .filter_map(|a| parse_engine_id(a))
+        .map(|(p, q)| (p.to_string(), q.to_string()))
+        .collect();
+
+    let mut steps: Vec<PlanStep> = Vec::new();
+    if do_bump {
+        steps.push(PlanStep {
+            id: "bump".into(),
+            label: format!("Bump {current} → {version}"),
+            args: serde_json::json!({}),
+        });
+    }
+    if phases.contains("pack") {
+        if has_full {
+            steps.push(PlanStep {
+                id: "pack:full".into(),
+                label: "Pack FULL (engines → app → NSIS)".into(),
+                args: serde_json::json!({}),
+            });
+        } else {
+            if has_app {
+                steps.push(PlanStep {
+                    id: "pack:app".into(),
+                    label: "Pack App .7z".into(),
+                    args: serde_json::json!({}),
+                });
+            }
+            for (provider, profile) in &engines {
+                steps.push(PlanStep {
+                    id: format!("pack:engine:{provider}:{profile}"),
+                    label: format!("Pack engine {provider}/{profile}"),
+                    args: serde_json::json!({ "provider": provider, "profile": profile }),
+                });
+            }
+        }
+        if has_link {
+            steps.push(PlanStep {
+                id: "pack:link".into(),
+                label: "Build + pack OYM-Link".into(),
+                args: serde_json::json!({}),
+            });
+        }
+        if has_toolchain {
+            steps.push(PlanStep {
+                id: "pack:toolchain".into(),
+                label: "Build toolchain packs".into(),
+                args: serde_json::json!({}),
+            });
+        }
+    }
+    if ship {
+        if has_full {
+            steps.push(PlanStep {
+                id: "ship:app".into(),
+                label: "Ship app channel".into(),
+                args: serde_json::json!({ "channel": "app" }),
+            });
+            steps.push(PlanStep {
+                id: "ship:full".into(),
+                label: "Ship full channel".into(),
+                args: serde_json::json!({ "channel": "full" }),
+            });
+        } else if has_app {
+            steps.push(PlanStep {
+                id: "ship:app".into(),
+                label: "Ship app channel".into(),
+                args: serde_json::json!({ "channel": "app" }),
+            });
+        }
+
+        let engine_targets: Vec<(String, String)> = if has_full {
+            crate::engine_packs::all()
+                .iter()
+                .map(|p| (p.provider.clone(), p.profile.clone()))
+                .collect()
+        } else {
+            engines.clone()
+        };
+        if !engine_targets.is_empty() {
+            let profiles: Vec<serde_json::Value> = engine_targets
+                .iter()
+                .map(|(provider, profile)| {
+                    serde_json::json!({ "provider": provider, "profile": profile })
+                })
+                .collect();
+            steps.push(PlanStep {
+                id: "ship:engines".into(),
+                label: "Ship engines channel".into(),
+                args: serde_json::json!({ "profiles": profiles }),
+            });
+        }
+        if has_link {
+            steps.push(PlanStep {
+                id: "ship:link".into(),
+                label: "Ship OYM-Link".into(),
+                args: serde_json::json!({}),
+            });
+        }
+        if has_toolchain {
+            steps.push(PlanStep {
+                id: "ship:toolchain".into(),
+                label: "Ship toolchain channel".into(),
+                args: serde_json::json!({}),
+            });
+        }
+    }
+
+    let summary = format!(
+        "v{version}: {}",
+        steps
+            .iter()
+            .map(|s| s.label.clone())
+            .collect::<Vec<_>>()
+            .join(" → ")
+    );
+    Ok(PlannedJob {
+        id: format!(
+            "{}-{}",
+            chrono::Local::now().format("%Y%m%d-%H%M%S"),
+            if has_full {
+                "full"
+            } else if has_app {
+                "app"
+            } else {
+                "engines"
+            }
+        ),
+        version,
+        summary,
+        steps,
     })
 }
 
 #[tauri::command]
-pub fn set_provider_distribution(
+pub async fn get_distribution_state(
     app_handle: tauri::AppHandle,
-    input: SetDistributionInput,
-) -> Result<DistributionDashboard, String> {
+    force: Option<bool>,
+) -> Result<DistributionState, String> {
     assert_dev()?;
-    let role = input.role.trim().to_ascii_lowercase();
-    if role != "plugin" && role != "local" {
-        return Err("role must be 'plugin' or 'local' (core is fixed in policy nsisCore)".into());
-    }
-
-    let mut policy = load_policy()?;
-    if policy.nsis_core.contains_key(&input.provider_id) {
-        return Err(format!(
-            "'{}' is NSIS core — edit distribution-policy.json nsisCore only if intentional",
-            input.provider_id
-        ));
-    }
-
-    let profiles = input
-        .profiles
-        .filter(|p| !p.is_empty())
-        .unwrap_or_else(|| policy.default_plugin_profiles.clone());
-
-    // optionalDownload = product type (optional fork, not NSIS core) — always true for non-core.
-    // policy.plugins = shipping: include in App catalog / Majestic packs (Plugin ON).
-    // Plugin OFF (local) only drops shipping; keeps optionalDownload so empty shells stay hidden
-    // and UNINSTALL still works when engines are on disk.
-    if role == "plugin" {
-        policy.plugins.insert(input.provider_id.clone(), profiles);
-        ensure_factory_shell(&app_handle, &input.provider_id)?;
-        set_factory_optional_download(&input.provider_id, true)?;
-    } else {
-        policy.plugins.remove(&input.provider_id);
-        // Leave optionalDownload=true on factory if already a plugin-shaped fork.
-        set_factory_optional_download(&input.provider_id, true)?;
-    }
-
-    save_policy(&policy)?;
-    regenerate_plugin_catalog_from_policy()?;
-
-    // Live config: always optional for non-core toggles (shipping is policy-only).
-    {
-        let ctx = app_handle.state::<crate::engine::AppContext>();
-        let mut cfg = ctx.config.lock().map_err(|e| e.to_string())?;
-        if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == input.provider_id) {
-            p.optional_download = true;
-            let _ = crate::config::persist_user_providers_meta(&cfg.providers);
-        }
-    }
-
-    get_distribution_dashboard(app_handle)
-}
-
-fn ensure_factory_shell(
-    app_handle: &tauri::AppHandle,
-    provider_id: &str,
-) -> Result<(), String> {
-    let path = factory_src_path(provider_id);
-    if path.is_file() {
-        return Ok(());
-    }
-    let provider = {
-        let ctx = app_handle.state::<crate::engine::AppContext>();
-        let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
-        cfg.providers.iter().find(|p| p.id == provider_id).cloned()
-    };
-    let Some(p) = provider else {
-        return Err(format!("Provider '{provider_id}' not in live config"));
-    };
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
-    }
-    let mut spawn = crate::config::load_master_spawn_profile_map();
-    spawn.insert(
-        "fit_adapter".into(),
-        serde_json::Value::String("ggml_master".into()),
-    );
-    spawn.insert(
-        "fusion_adapter".into(),
-        serde_json::Value::String("ggml_master".into()),
-    );
-    if !p.spawn_profile.essential_param_keys.is_empty() {
-        spawn.insert(
-            "essentialParamKeys".into(),
-            serde_json::to_value(&p.spawn_profile.essential_param_keys).unwrap_or_default(),
-        );
-        spawn.insert(
-            "simple_param_keys".into(),
-            serde_json::to_value(&p.spawn_profile.essential_param_keys).unwrap_or_default(),
-        );
-    }
-    let seed = serde_json::json!({
-        "id": p.id,
-        "display_name": p.display_name,
-        "description": format!("Optional engine plugin ({})", p.id),
-        "binary_name": "llama-server.exe",
-        "git_url": p.git_url,
-        "branch": p.branch,
-        "build_profile": p.build_profile,
-        "template_type": p.template_type,
-        "optionalDownload": true,
-        "templateVersion": 1,
-        "groupOrder": p.group_order,
-        "params": [],
-        "spawn_profile": spawn
-    });
-    let out = serde_json::to_string_pretty(&seed).map_err(|e| e.to_string())?;
-    std::fs::write(&path, out + "\n")
-        .map_err(|e| format!("Failed to seed factory {}: {e}", path.display()))?;
-    Ok(())
+    build_distribution_state(&app_handle, force.unwrap_or(false)).await
 }
 
 #[tauri::command]
-pub fn regenerate_distribution_catalog() -> Result<String, String> {
+pub async fn preview_release_plan(
+    app_handle: tauri::AppHandle,
+    plan: ReleasePlan,
+) -> Result<PlannedJob, String> {
     assert_dev()?;
-    let path = regenerate_plugin_catalog_from_policy()?;
-    Ok(path.display().to_string())
+    build_planned_job(&app_handle, &plan, false).await
 }
 
+#[tauri::command]
+pub async fn run_release_plan(
+    app_handle: tauri::AppHandle,
+    plan: ReleasePlan,
+) -> Result<PlannedJob, String> {
+    assert_dev()?;
+    if let Some(j) = read_job_status_file() {
+        if j.get("state").and_then(|x| x.as_str()) == Some("running") {
+            return Err("A release job is already running — wait for it or clear a stale status file.".into());
+        }
+    }
+
+    let planned = build_planned_job(&app_handle, &plan, false).await?;
+    let dir = majestic_out_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create .majestic-out: {e}"))?;
+    let plan_path = dir.join("release-plan.json");
+    let doc = serde_json::json!({
+        "schemaVersion": 1,
+        "id": planned.id,
+        "version": planned.version,
+        "summary": planned.summary,
+        "steps": planned.steps,
+        "plan": plan,
+    });
+    std::fs::write(
+        &plan_path,
+        serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write release-plan.json: {e}"))?;
+
+    // spawn_detached_plan blocks (Start-Process handshake + 1.2 s pid check); keep it off the
+    // async runtime's worker threads.
+    {
+        let app = app_handle.clone();
+        let planned_for_spawn = planned.clone();
+        tokio::task::spawn_blocking(move || {
+            spawn_detached_plan(&app, &plan_path, &planned_for_spawn)
+        })
+        .await
+        .map_err(|e| format!("Spawn join failed: {e}"))??;
+    }
+    Ok(planned)
+}
+
+/// DEV-only: local portable install used for manual REL testing (DISTRIBUTION → REFRESH LOCAL REL).
+/// Override with `BLACKWELL_LOCAL_REL_DIR` when the test box moves.
+const LOCAL_REL_DIR: &str = r"C:\AI-MASTER\Blackwell OPS portable";
+
+/// Build the current tree as a REL exe and copy it + the Foundry EDGE artifact + the factory
+/// template into the local portable install. No pack, no bump, no upload. Reuses the plan
+/// runner (as a single `refresh:local-rel` step) so progress/log/history work unchanged.
+#[tauri::command]
+pub async fn run_local_rel_refresh(
+    app_handle: tauri::AppHandle,
+) -> Result<PlannedJob, String> {
+    assert_dev()?;
+    if let Some(j) = read_job_status_file() {
+        if j.get("state").and_then(|x| x.as_str()) == Some("running") {
+            return Err("A release job is already running — wait for it or clear a stale status file.".into());
+        }
+    }
+
+    let version = app_handle.package_info().version.to_string();
+    let dest = std::env::var("BLACKWELL_LOCAL_REL_DIR").unwrap_or_else(|_| LOCAL_REL_DIR.to_string());
+    let planned = PlannedJob {
+        id: format!(
+            "{}-local-rel",
+            chrono::Local::now().format("%Y%m%d-%H%M%S")
+        ),
+        version: version.clone(),
+        summary: format!("Refresh local REL {version} from the current tree"),
+        steps: vec![PlanStep {
+            id: "refresh:local-rel".into(),
+            label: "Build REL + copy EDGE, template, learned cache".into(),
+            args: serde_json::json!({ "dest": dest }),
+        }],
+    };
+
+    let dir = majestic_out_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create .majestic-out: {e}"))?;
+    let plan_path = dir.join("release-plan.json");
+    let doc = serde_json::json!({
+        "schemaVersion": 1,
+        "id": planned.id,
+        "version": planned.version,
+        "summary": planned.summary,
+        "steps": planned.steps,
+        "plan": { "artifacts": [], "phases": [] },
+    });
+    std::fs::write(
+        &plan_path,
+        serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write release-plan.json: {e}"))?;
+
+    {
+        let app = app_handle.clone();
+        let planned_for_spawn = planned.clone();
+        tokio::task::spawn_blocking(move || {
+            spawn_detached_plan(&app, &plan_path, &planned_for_spawn)
+        })
+        .await
+        .map_err(|e| format!("Spawn join failed: {e}"))??;
+    }
+    Ok(planned)
+}
+/// Inline DEV actions only: `check_app`, `check_full`, `bump`, `bump_pi`, `update_harness`.
+/// Pack/ship run through `run_release_plan` (docs/DISTRIBUTION-PANEL.md).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DevReleaseAction {
-    /// Single steps or chains:
-    /// check_app | check_full | pack_app | pack_full | ship_app | ship_full |
-    /// pack_provider | ship_provider | bump |
-    /// pack_ship_app (bump+pack+ship) | pack_ship_full | pack_ship_provider
     pub action: String,
-    pub provider_id: Option<String>,
-    pub profile_id: Option<String>,
 }
 
 fn emit_log(app: &tauri::AppHandle, line: &str) {
@@ -608,11 +988,29 @@ fn job_status_path() -> PathBuf {
     majestic_out_dir().join("job-status.json")
 }
 
+/// Write the status via temp + rename: a poll must never read a half-written file (that used to
+/// parse as "no job" and stop the panel's polling for the rest of a long job).
+fn write_job_status_atomic(value: &serde_json::Value) -> std::io::Result<()> {
+    let path = job_status_path();
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_string_pretty(value).unwrap_or_default())?;
+    std::fs::rename(&tmp, &path)
+}
+
 fn chain_runner_ps1() -> PathBuf {
     repo_root()
         .join("scripts")
         .join("majestic")
-        .join("run-detached-chain.ps1")
+        .join("run-release-plan.ps1")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanStepStatus {
+    pub id: String,
+    pub label: String,
+    /// `pending` | `running` | `ok` | `failed`
+    pub state: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -625,14 +1023,28 @@ pub struct DevReleaseJobStatus {
     pub provider_id: String,
     pub profile_id: String,
     pub log_tail: Vec<String>,
+    /// Step list for plan jobs (empty for inline actions).
+    #[serde(default)]
+    pub steps: Vec<PlanStepStatus>,
     /// true while status file says running (panel should poll)
     pub running: bool,
 }
 
 fn read_job_status_file() -> Option<serde_json::Value> {
     let path = job_status_path();
-    let raw = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&raw).ok()
+    // Retry a few times: another process may be replacing the file, and a single failed parse
+    // must not look like "no job" (that stops polling).
+    for attempt in 0..4 {
+        if let Ok(raw) = std::fs::read_to_string(&path) {
+            if let Ok(value) = serde_json::from_str(&raw) {
+                return Some(value);
+            }
+        }
+        if attempt < 3 {
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+    }
+    None
 }
 
 /// If status says running but the process is gone (or never started), mark failed.
@@ -650,7 +1062,7 @@ fn heal_stale_running_job() {
         .unwrap_or("");
     // Never started (seed) for > 15s, or dead pid
     let stale_seed = pid == 0 && job_status_is_older_than_secs(updated, 15);
-    let dead_pid = pid > 0 && !windows_pid_alive(pid as u32);
+    let dead_pid = pid > 0 && !runner_pid_alive(pid as u32);
     if !stale_seed && !dead_pid {
         return;
     }
@@ -660,7 +1072,7 @@ fn heal_stale_running_job() {
         .unwrap_or("?")
         .to_string();
     let msg = if stale_seed {
-        "Detached PowerShell never started (stale seed). Retry Pack, or run manually: scripts/majestic/run-detached-chain.ps1"
+        "Detached PowerShell never started (stale seed). Retry the job, or run scripts/majestic/run-release-plan.ps1 -PlanFile .majestic-out/release-plan.json manually"
     } else {
         "Detached job process exited without writing final status"
     };
@@ -672,11 +1084,10 @@ fn heal_stale_running_job() {
         "providerId": j.get("providerId").and_then(|x| x.as_str()).unwrap_or(""),
         "profileId": j.get("profileId").and_then(|x| x.as_str()).unwrap_or(""),
         "pid": pid,
+        // Keep the step strip meaningful after a crash; the panel renders whatever is here.
+        "steps": j.get("steps").cloned().unwrap_or(serde_json::json!([])),
     });
-    let _ = std::fs::write(
-        job_status_path(),
-        serde_json::to_string_pretty(&failed).unwrap_or_default(),
-    );
+    let _ = write_job_status_atomic(&failed);
     let _ = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -701,24 +1112,13 @@ fn job_status_is_older_than_secs(updated_at: &str, secs: i64) -> bool {
 }
 
 #[cfg(windows)]
-fn windows_pid_alive(pid: u32) -> bool {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let out = std::process::Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
-    match out {
-        Ok(o) => {
-            let s = String::from_utf8_lossy(&o.stdout);
-            s.contains(&pid.to_string())
-        }
-        Err(_) => true, // unknown — don't mark failed
-    }
+fn runner_pid_alive(pid: u32) -> bool {
+    // In-process OpenProcess check — `tasklist` here spawned on every panel poll.
+    crate::engine_utils::is_process_alive(pid)
 }
 
 #[cfg(not(windows))]
-fn windows_pid_alive(_pid: u32) -> bool {
+fn runner_pid_alive(_pid: u32) -> bool {
     true
 }
 
@@ -744,33 +1144,41 @@ pub fn get_dev_release_job_status() -> Result<DevReleaseJobStatus, String> {
     assert_dev()?;
     heal_stale_running_job();
     let v = read_job_status_file();
-    let (state, chain, message, updated_at, provider_id, profile_id) = match v {
-        Some(j) => (
-            j.get("state")
-                .and_then(|x| x.as_str())
-                .unwrap_or("idle")
-                .to_string(),
-            j.get("chain")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string(),
-            j.get("message")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string(),
-            j.get("updatedAt")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string(),
-            j.get("providerId")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string(),
-            j.get("profileId")
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string(),
-        ),
+    let (state, chain, message, updated_at, provider_id, profile_id, steps) = match v {
+        Some(j) => {
+            let steps = j
+                .get("steps")
+                .cloned()
+                .and_then(|s| serde_json::from_value::<Vec<PlanStepStatus>>(s).ok())
+                .unwrap_or_default();
+            (
+                j.get("state")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("idle")
+                    .to_string(),
+                j.get("chain")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                j.get("message")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                j.get("updatedAt")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                j.get("providerId")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                j.get("profileId")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                steps,
+            )
+        }
         None => (
             "idle".into(),
             String::new(),
@@ -778,6 +1186,7 @@ pub fn get_dev_release_job_status() -> Result<DevReleaseJobStatus, String> {
             String::new(),
             String::new(),
             String::new(),
+            Vec::new(),
         ),
     };
     let running = state == "running";
@@ -789,6 +1198,7 @@ pub fn get_dev_release_job_status() -> Result<DevReleaseJobStatus, String> {
         provider_id,
         profile_id,
         log_tail: read_log_tail(200),
+        steps,
         running,
     })
 }
@@ -842,22 +1252,7 @@ pub async fn run_dev_release_action(
         return result?;
     }
 
-    if let Some(j) = read_job_status_file() {
-        if j.get("state").and_then(|x| x.as_str()) == Some("running") {
-            return Err(
-                "A detached pack/ship job is already running — open DISTRIBUTION and wait, or delete .majestic-out/job-status.json if stale."
-                    .into(),
-            );
-        }
-    }
-
-    tokio::task::spawn_blocking({
-        let app = app_handle.clone();
-        let action = action.clone();
-        move || spawn_detached_chain(&app, &action)
-    })
-    .await
-    .map_err(|e| format!("Spawn join failed: {e}"))?
+    Err("Legacy pack/ship actions are retired — use run_release_plan (DISTRIBUTION panel).".into())
 }
 
 fn run_check_inline(app: &tauri::AppHandle, action: &DevReleaseAction) -> Result<String, String> {
@@ -997,7 +1392,11 @@ fn run_majestic_step(app: &tauri::AppHandle, mode_args: &[&str]) -> Result<(), S
     Ok(())
 }
 
-fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Result<String, String> {
+fn spawn_detached_plan(
+    app: &tauri::AppHandle,
+    plan_path: &std::path::Path,
+    planned: &PlannedJob,
+) -> Result<(), String> {
     let root = repo_root();
     let runner = chain_runner_ps1();
     if !runner.is_file() {
@@ -1005,87 +1404,71 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
     }
 
     let out = majestic_out_dir();
-    std::fs::create_dir_all(&out)
-        .map_err(|e| format!("Failed to create .majestic-out: {e}"))?;
+    std::fs::create_dir_all(&out).map_err(|e| format!("Failed to create .majestic-out: {e}"))?;
 
     let log = job_log_path();
     let status = job_status_path();
 
-    // Seed status so the panel can poll immediately after app restart.
+    // Seed the step list so the panel can render progress before the runner starts.
+    let step_status: Vec<serde_json::Value> = planned
+        .steps
+        .iter()
+        .map(|s| serde_json::json!({ "id": s.id, "label": s.label, "state": "pending" }))
+        .collect();
     let seed = serde_json::json!({
         "state": "running",
-        "chain": action.action,
-        "message": "Spawning detached PowerShell…",
+        "chain": "plan",
+        "message": planned.summary,
         "updatedAt": chrono::Local::now().to_rfc3339(),
-        "providerId": action.provider_id.clone().unwrap_or_default(),
-        "profileId": action.profile_id.clone().unwrap_or_default(),
+        "providerId": "",
+        "profileId": "",
         "pid": 0,
+        "steps": step_status,
     });
-    std::fs::write(
-        &status,
-        serde_json::to_string_pretty(&seed).unwrap_or_default(),
-    )
-    .map_err(|e| format!("Failed to write job status: {e}"))?;
+    write_job_status_atomic(&seed)
+        .map_err(|e| format!("Failed to write job status: {e}"))?;
     std::fs::write(
         &log,
         format!(
-            "[{}] App spawning detached chain: {}\n",
+            "[{}] App spawning detached plan {}\n",
             chrono::Local::now().to_rfc3339(),
-            action.action
+            planned.id
         ),
     )
     .ok();
 
-    // Detached visible console without CREATE_BREAKAWAY_FROM_JOB.
-    // Breakaway fails with ERROR_ACCESS_DENIED (os error 5) when cargo/tauri/dev
-    // hosts put the process in a job that does not allow breakaway — common on Windows.
-    // Same pattern as engine::spawn_nobsproof_cmd_window: hidden Start-Process helper.
+    // Detached WINDOWLESS job without CREATE_BREAKAWAY_FROM_JOB (breakaway is denied by the
+    // cargo/tauri job object → os error 5). Same pattern as the old chain spawner: a hidden
+    // Start-Process helper, then cmd-start and CREATE_NEW_CONSOLE as fallbacks.
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
 
     let runner_s = runner.to_string_lossy().replace('\'', "''");
     let root_s = root.to_string_lossy().replace('\'', "''");
-    let chain_s = action.action.replace('\'', "''");
+    let plan_s = plan_path.to_string_lossy().replace('\'', "''");
 
-    let mut ps_arg_list = format!(
-        "'-NoProfile','-ExecutionPolicy','Bypass','-File','{runner_s}','-Chain','{chain_s}'"
+    let ps_arg_list = format!(
+        "'-NoProfile','-ExecutionPolicy','Bypass','-File','{runner_s}','-PlanFile','{plan_s}'"
     );
-    if let Some(pid) = action.provider_id.as_ref().filter(|s| !s.is_empty()) {
-        let p = pid.replace('\'', "''");
-        ps_arg_list.push_str(&format!(",'-ProviderId','{p}'"));
-    }
-    if let Some(prof) = action.profile_id.as_ref().filter(|s| !s.is_empty()) {
-        let p = prof.replace('\'', "''");
-        ps_arg_list.push_str(&format!(",'-ProfileId','{p}'"));
-    }
 
     emit_log(
         app,
         &format!(
-            "Starting DETACHED job with VISIBLE console (log: {}) - survives app restart",
+            "Starting DETACHED plan (windowless; log: {}) - survives app restart",
             log.display()
         ),
     );
-    emit_log(
-        app,
-        &format!(
-            "$ Start-Process powershell -File {} -Chain {}",
-            runner.display(),
-            action.action
-        ),
-    );
 
-    // Start-Process -PassThru returns the real console process Id (not the helper).
-    // Scrub TAURI_* from the helper process first so the child does not inherit
-    // conf.dev merge env from the running DEV app (ships "Blackwell Ops DEV").
+    // Start-Process -PassThru returns the real PowerShell process Id (not the helper).
+    // Scrub TAURI_* first so the child does not inherit conf.dev merge env from the DEV app.
     let launcher = format!(
         "foreach($n in @('TAURI_CONFIG','TAURI_ANDROID_PACKAGE_NAME','TAURI_ANDROID_PACKAGE_NAME_PREFIX','TAURI_DEV_HOST')){{ \
            Remove-Item \"Env:$n\" -ErrorAction SilentlyContinue }}; \
          $env:NODE_ENV='production'; \
          $wd='{root_s}'; $al=@({ps_arg_list}); \
          $p=Start-Process -FilePath pwsh.exe -WorkingDirectory $wd \
-         -ArgumentList $al -WindowStyle Normal -PassThru; \
+         -ArgumentList $al -WindowStyle Hidden -PassThru; \
          if($null -eq $p){{ exit 1 }}; Write-Output $p.Id"
     );
 
@@ -1117,7 +1500,7 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
                 .unwrap_or(0);
             spawned = true;
             if child_pid > 0 {
-                emit_log(app, &format!("Spawned detached powershell pid={child_pid}"));
+                emit_log(app, &format!("Spawned detached plan pid={child_pid}"));
             } else {
                 emit_log(app, "Start-Process succeeded (pid not parsed; script will write status)");
             }
@@ -1138,31 +1521,22 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
         }
     }
 
-    // Fallback: cmd start (empty title "" required).
+    // Fallback: cmd start with /b (empty title "" required, no new window).
     if !spawned {
-        // Empty quoted title ("") is required; unquoted first token becomes the window title.
-        let mut start_args: Vec<String> = vec![
+        let start_args: Vec<String> = vec![
             "/C".into(),
             "start".into(),
             "".into(),
+            "/b".into(),
             "pwsh.exe".into(),
             "-NoProfile".into(),
             "-ExecutionPolicy".into(),
             "Bypass".into(),
             "-File".into(),
             runner.to_string_lossy().into_owned(),
-            "-Chain".into(),
-            action.action.clone(),
+            "-PlanFile".into(),
+            plan_path.to_string_lossy().into_owned(),
         ];
-        if let Some(pid) = action.provider_id.as_ref().filter(|s| !s.is_empty()) {
-            start_args.push("-ProviderId".into());
-            start_args.push(pid.clone());
-        }
-        if let Some(prof) = action.profile_id.as_ref().filter(|s| !s.is_empty()) {
-            start_args.push("-ProfileId".into());
-            start_args.push(prof.clone());
-        }
-
         match std::process::Command::new("cmd.exe")
             .args(&start_args)
             .current_dir(&root)
@@ -1185,23 +1559,16 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
 
     // Last resort: CREATE_NEW_CONSOLE only (no breakaway — that was the access-denied bug).
     if !spawned {
-        let mut cmd = std::process::Command::new("pwsh.exe");
-        cmd.args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            &runner.to_string_lossy(),
-            "-Chain",
-            &action.action,
-        ]);
-        if let Some(pid) = action.provider_id.as_ref().filter(|s| !s.is_empty()) {
-            cmd.args(["-ProviderId", pid]);
-        }
-        if let Some(prof) = action.profile_id.as_ref().filter(|s| !s.is_empty()) {
-            cmd.args(["-ProfileId", prof]);
-        }
-        let child = cmd
+        let child = std::process::Command::new("pwsh.exe")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                &runner.to_string_lossy(),
+                "-PlanFile",
+                &plan_path.to_string_lossy(),
+            ])
             .current_dir(&root)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -1219,28 +1586,26 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
         emit_log(app, &format!("Spawned CREATE_NEW_CONSOLE pid={child_pid}"));
     }
 
-    // Child should rewrite status with its own $PID within a second.
+    // The child rewrites status with its own $PID within a second; seed it if it did not.
     std::thread::sleep(std::time::Duration::from_millis(1200));
     if let Ok(raw) = std::fs::read_to_string(&status) {
         if raw.contains("\"pid\":0") || raw.contains("\"pid\": 0") {
             if child_pid > 0 {
                 let fallback = serde_json::json!({
                     "state": "running",
-                    "chain": action.action,
-                    "message": format!("Spawned pid {child_pid} (awaiting script bootstrap)"),
+                    "chain": "plan",
+                    "message": planned.summary,
                     "updatedAt": chrono::Local::now().to_rfc3339(),
-                    "providerId": action.provider_id.clone().unwrap_or_default(),
-                    "profileId": action.profile_id.clone().unwrap_or_default(),
+                    "providerId": "",
+                    "profileId": "",
                     "pid": child_pid,
+                    "steps": step_status,
                 });
-                let _ = std::fs::write(
-                    &status,
-                    serde_json::to_string_pretty(&fallback).unwrap_or_default(),
-                );
+                let _ = write_job_status_atomic(&fallback);
                 emit_log(
                     app,
                     &format!(
-                        "WARN: script had not rewritten status yet; seeded pid={child_pid}. Watch console + {}",
+                        "WARN: script had not rewritten status yet; seeded pid={child_pid}. Watch the job log: {}",
                         log.display()
                     ),
                 );
@@ -1248,7 +1613,7 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
                 emit_log(
                     app,
                     &format!(
-                        "WARN: status still pid=0 — watch console + {}",
+                        "WARN: status still pid=0 — watch the job log: {}",
                         log.display()
                     ),
                 );
@@ -1256,10 +1621,10 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
         } else {
             emit_log(
                 app,
-                "Detached job process is running - watch the Majestic console window + job-log.txt",
+                "Detached plan is running (windowless) — progress is in the DISTRIBUTION job log",
             );
         }
     }
 
-    Ok("detached".into())
+    Ok(())
 }

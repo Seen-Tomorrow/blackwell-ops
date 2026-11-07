@@ -62,30 +62,19 @@ pub struct PluginCatalogResponse {
     pub plugins: Vec<PluginCatalogEntry>,
 }
 
-/// Preferred: `runtime-catalog/plugins.json` (alongside CORE engine overlays).
-/// Legacy fallback: `runtime/catalog/plugins.json` (older App packs / NSIS).
+/// `runtime-catalog/plugins.json` — the same tree the engine overlays and App updates use.
+/// The NSIS seed ships it there via the resource mapping; there is no legacy fallback.
 pub fn catalog_file_path() -> PathBuf {
-    let preferred = crate::config::app_root_dir()
+    crate::config::app_root_dir()
         .join("runtime-catalog")
-        .join("plugins.json");
-    if preferred.is_file() {
-        return preferred;
-    }
-    let legacy = crate::config::app_root_dir()
-        .join("runtime")
-        .join("catalog")
-        .join("plugins.json");
-    if legacy.is_file() {
-        return legacy;
-    }
-    preferred
+        .join("plugins.json")
 }
 
 pub fn load_catalog_file() -> Result<PluginCatalogFile, String> {
     let path = catalog_file_path();
     if !path.is_file() {
         log::debug!(
-            "[plugin-catalog] No catalog at runtime-catalog/plugins.json (or legacy runtime/catalog/) — App update should ship it"
+            "[plugin-catalog] No catalog at runtime-catalog/plugins.json — App update should ship it"
         );
         return Ok(PluginCatalogFile {
             catalog_version: 1,
@@ -121,6 +110,11 @@ fn is_release_style_version(v: &str) -> bool {
     }
     if n.contains('(') {
         return false;
+    }
+    // Engine identity is a build id (`b12017-5047748f`), not a semver — still a real version.
+    let mut chars = n.chars();
+    if matches!(chars.next(), Some('b')) && chars.next().is_some_and(|c| c.is_ascii_digit()) {
+        return true;
     }
     let mut parts = n.split('.');
     let major = parts.next().unwrap_or("");
@@ -178,19 +172,19 @@ pub async fn build_plugin_catalog(
     let file = load_catalog_file()?;
     let mut entries = Vec::new();
 
-    // One shared releases list for all plugin×profile pack lookups (TTL/single-flight).
-    let releases = match crate::github_releases::fetch_recent_version_releases_ex(40, force).await {
-        Ok(r) => {
+    // One manifest fetch for all plugin×profile pack lookups (TTL/single-flight).
+    let engine_manifest = match crate::github_releases::fetch_engine_manifest(force).await {
+        Ok(m) => {
             if cfg!(debug_assertions) {
                 log::info!(
-                    "[plugin-catalog] pack scan using {} version tags (force={force})",
-                    r.len()
+                    "[plugin-catalog] engines manifest: {} pack(s) (force={force})",
+                    m.engines.len()
                 );
             }
-            Some(r)
+            Some(m)
         }
         Err(e) => {
-            log::warn!("[plugin-catalog] GitHub releases unavailable: {e}");
+            log::warn!("[plugin-catalog] engines channel unavailable: {e}");
             None
         }
     };
@@ -208,11 +202,11 @@ pub async fn build_plugin_catalog(
                 any_installed = true;
             }
 
-            let pack_hit = releases.as_ref().and_then(|rels| {
-                crate::github_releases::find_provider_pack_in(rels, &plugin.id, profile)
-            });
+            let pack_hit = engine_manifest
+                .as_ref()
+                .and_then(|m| m.entry(&plugin.id, profile));
             let (pack_available, pack_version, size_bytes) = match pack_hit {
-                Some((tag, size)) => (true, tag, size),
+                Some(entry) => (true, entry.build.clone(), entry.size_bytes),
                 None => (false, String::new(), 0),
             };
 
