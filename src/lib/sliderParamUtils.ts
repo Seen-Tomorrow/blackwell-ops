@@ -53,6 +53,8 @@ export interface SliderParamSharedProps {
   forecastFreeGb?: number;
   /** When false, hero rail stays the theme track (MARKS mode). */
   forecastRibbonOnTrack?: boolean;
+  /** Model's trained context window — labeled on the scale, never a tick/mark. */
+  trainedCtx?: number | null;
 }
 
 export function parseSliderValues(values: (string | number)[]): number[] {

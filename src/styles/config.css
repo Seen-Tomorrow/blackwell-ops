@@ -1789,6 +1789,21 @@ select option {
   letter-spacing: 0.02em;
 }
 
+/* Trained context window — a note on the scale, never a tick or a hit target. */
+.ctx-slider-trained {
+  color: color-mix(in srgb, var(--theme-text-muted) 82%, transparent);
+  font-size: var(--type-hairline);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.ctx-slider-trained-label {
+  color: color-mix(in srgb, var(--theme-text-muted) 92%, transparent);
+  padding: 0 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel) 72%, transparent);
+}
+
 .ctx-slider-track-host--hero {
   align-self: stretch;
 }

@@ -119,6 +119,8 @@ export interface MultiAgentBoosterProps {
   learnedMarks?: number[];
   forecastCurve?: Array<{ ctx: number; gb: number }>;
   forecastFreeGb?: number;
+  /** Model's trained context window — printed on the CTX scale, not a mark. */
+  trainedCtx?: number | null;
   onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
   /**
    * Which product sliders to show. Default all on (Master).
@@ -199,6 +201,7 @@ export default function MultiAgentBooster({
   learnedMarks,
   forecastCurve,
   forecastFreeGb,
+  trainedCtx = null,
   onPruneCustom,
   flagToggles = [],
   showAgents = true,
@@ -703,6 +706,7 @@ export default function MultiAgentBooster({
         learnedMarks={learnedMarks}
         forecastCurve={forecastCurve}
         forecastFreeGb={forecastFreeGb}
+        trainedCtx={trainedCtx}
         onPruneCustom={onPruneCustom}
         standalone={false}
         kvUnified={kvUnified}

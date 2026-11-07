@@ -78,6 +78,8 @@ export interface CockpitCtxStripProps {
   learnedMarks?: number[];
   forecastCurve?: Array<{ ctx: number; gb: number }>;
   forecastFreeGb?: number;
+  /** Model's trained context window — printed on the scale, not as a mark. */
+  trainedCtx?: number | null;
   onPruneCustom?: (ctxs: number[]) => void | Promise<number | void>;
   /** DEV: wipe every LEARNED point for the current model + kv/split, to restart a test. */
   onPruneConfig?: () => void | Promise<number | void>;
@@ -101,6 +103,7 @@ export default function CockpitCtxStrip({
   learnedMarks,
   forecastCurve,
   forecastFreeGb,
+  trainedCtx = null,
   onPruneCustom,
   onPruneConfig,
   standalone = true,
@@ -207,6 +210,7 @@ export default function CockpitCtxStrip({
               layout="hero"
               forecastCurve={forecastCurve}
               forecastFreeGb={forecastFreeGb}
+              trainedCtx={trainedCtx}
               forecastRibbonOnTrack={ribbonPlace !== "marks"}
             />
           </div>

@@ -73,6 +73,7 @@ export default function CustomSliderParam({
   forecastCurve,
   forecastFreeGb,
   forecastRibbonOnTrack = true,
+  trainedCtx = null,
 }: SliderParamSharedProps) {
   const hero = layout === "hero";
   const areaH = hero ? HERO_TRACK_AREA_HEIGHT_PX : TRACK_AREA_HEIGHT_PX;
@@ -250,6 +251,16 @@ export default function CustomSliderParam({
 
   const thumbPct = thumbCenterPercent(safeValue, min, max, trackWidthPx, thumbW);
 
+  // Trained context window — printed as a label on the scale, never a tick.
+  const trainedNum =
+    typeof trainedCtx === "number" && Number.isFinite(trainedCtx) ? trainedCtx : null;
+  const trainedInRange = trainedNum != null && trainedNum >= min && trainedNum <= max;
+  const trainedOnPreset = trainedInRange && presetCtxSet.has(trainedNum!);
+  const trainedPct =
+    trainedInRange && trackWidthPx > 0
+      ? thumbCenterPercent(trainedNum!, min, max, trackWidthPx)
+      : null;
+
   const fitsBoundaryCtx =
     hero && forecastCurve && forecastCurve.length > 0 && forecastFreeGb != null && forecastFreeGb > 0
       ? findMaxFittingCtx(min, max, step, forecastFreeGb, forecastCurve)
@@ -332,7 +343,8 @@ export default function CustomSliderParam({
           trackWidthPx > 0 ? thumbCenterPercent(pNum, min, max, trackWidthPx) : 0;
         const isDefault = hasDefault && pNum === defaultNumeric;
         const isSelected = safeValue === pNum && !isDefault;
-        const showLabel = labelVisible(idx, pNum, safeValue === pNum);
+        const isTrained = trainedOnPreset && pNum === trainedNum;
+        const showLabel = isTrained || labelVisible(idx, pNum, safeValue === pNum);
         return (
           <div
             key={`${paramKey}-tick-${pNum}`}
@@ -380,6 +392,9 @@ export default function CustomSliderParam({
                 }
               >
                 {formatTokenLabel(pNum)}
+                {isTrained ? (
+                  <span className="ctx-slider-trained"> (trained)</span>
+                ) : null}
               </span>
             ) : null}
           </div>
@@ -443,6 +458,22 @@ export default function CustomSliderParam({
           </div>
         );
       })}
+      {trainedInRange && !trainedOnPreset && trainedPct != null ? (
+        <div
+          className="absolute z-[2] pointer-events-none"
+          style={{
+            left: `${trainedPct}%`,
+            top: 0,
+            transform: "translateX(-50%)",
+            visibility: trackWidthPx > 0 ? "visible" : "hidden",
+          }}
+        >
+          <span className="ctx-slider-tick-tooltip ctx-slider-trained-label type-micro font-mono whitespace-nowrap">
+            {formatTokenLabel(trainedNum!)}
+            <span className="ctx-slider-trained"> (trained)</span>
+          </span>
+        </div>
+      ) : null}
       <div
         role="slider"
         tabIndex={0}
