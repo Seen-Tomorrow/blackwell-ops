@@ -3,7 +3,23 @@
    the background process, the target selector, and the cache controls. */
 
 [data-foundry-page] {
-  background: transparent;
+  /* Margin furniture — a drafting-sheet frame for the 1080 column. */
+  --fnd-rail: color-mix(in srgb, var(--theme-text) 14%, transparent);
+  --fnd-tick: color-mix(in srgb, var(--theme-text) 10%, transparent);
+  /* Warm workbench light under the header band, visible in the side margins. */
+  background-color: transparent;
+  background-image:
+    radial-gradient(
+      55% 24% at 50% 0%,
+      color-mix(in srgb, var(--theme-warn) 8%, transparent) 0%,
+      transparent 72%
+    ),
+    /* Verticals complete the shell's 40px horizontal lines into a drafting grid. */
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--theme-accent) 2.5%, transparent) 0 1px,
+      transparent 1px 40px
+    );
   box-sizing: border-box;
   /*
    * The app footer (and a docked console) is fixed chrome OUTSIDE the zoomed
@@ -33,12 +49,49 @@
 }
 
 .fnd-page-scroll {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
   width: min(1080px, 100%);
+  /* Rails frame the whole sheet, not just the card — the short content leaves
+     the lower page empty, and an open-ended rail reads as a cut-off drawing. */
+  min-height: 100%;
   margin: 0 auto;
   padding: 1rem;
+}
+
+/*
+ * The column is the sheet: two measurement rails with 40px ticks run down its
+ * margins, fading out where the content ends. They use the gutter the narrow
+ * layout leaves behind instead of painting it black, and stay off the LOG tab
+ * (which is full-height on purpose).
+ */
+.fnd-page-scroll::before,
+.fnd-page-scroll::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--fnd-rail) 0 0),
+    repeating-linear-gradient(180deg, var(--fnd-tick) 0 1px, transparent 1px 40px);
+  background-size: 1px 100%, 9px 100%;
+  background-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 86%, transparent 100%);
+}
+
+.fnd-page-scroll::before {
+  left: -9px;
+  background-position: right 0, left 0;
+}
+
+.fnd-page-scroll::after {
+  right: -9px;
+  background-position: left 0, left 0;
 }
 
 .fnd-page-card {
