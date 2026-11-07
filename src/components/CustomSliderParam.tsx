@@ -392,9 +392,7 @@ export default function CustomSliderParam({
                 }
               >
                 {formatTokenLabel(pNum)}
-                {isTrained ? (
-                  <span className="ctx-slider-trained"> (trained)</span>
-                ) : null}
+                {isTrained ? <span className="ctx-slider-trained"> T</span> : null}
               </span>
             ) : null}
           </div>
@@ -470,7 +468,7 @@ export default function CustomSliderParam({
         >
           <span className="ctx-slider-tick-tooltip ctx-slider-trained-label type-micro font-mono whitespace-nowrap">
             {formatTokenLabel(trainedNum!)}
-            <span className="ctx-slider-trained"> (trained)</span>
+            <span className="ctx-slider-trained"> T</span>
           </span>
         </div>
       ) : null}

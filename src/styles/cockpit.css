@@ -1483,6 +1483,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   margin: 0 0.05rem;
 }
 
+/* "T" matches the trained note printed on the context scale. */
+.full-auto-cockpit__ctx-legend-t {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--theme-text-muted) 92%, transparent);
+}
+
 .full-auto-cockpit__ctx-swatch {
   display: inline-block;
   width: 2px;
@@ -1576,12 +1583,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   align-items: center;
   gap: 0.35ch;
   flex-shrink: 0;
-  /* sep 1ch + gap + per-slot 11ch — fixed so chevrons never drift */
+  /* sep 1ch + gap + per-slot 11ch — sized for "512K / slot" when it exists */
   width: calc(1ch + 0.35ch + 11ch);
 }
 
+/* No per-slot readout: take the space out so the nudge buttons sit right
+   after the CTX value instead of drifting to the legend. */
 .full-auto-cockpit__ctx-slot-block--empty {
-  visibility: hidden;
+  display: none;
 }
 
 .full-auto-cockpit__ctx-sep {

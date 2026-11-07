@@ -135,7 +135,8 @@ export default function CockpitCtxStrip({
 
   const hasGhost =
     (forecastCurve?.length ?? 0) > 0 && forecastFreeGb != null && forecastFreeGb > 0;
-  const legendIdle = !hasLearned && !hasGhost;
+  const hasTrained = trainedCtx != null && trainedCtx > 0;
+  const legendIdle = !hasLearned && !hasGhost && !hasTrained;
   const ribbonProps = {
     min: sliderRange.min,
     max: sliderRange.max,
@@ -347,7 +348,7 @@ export default function CockpitCtxStrip({
           </span>
           <span
             className={`full-auto-cockpit__ctx-legend${legendIdle ? " full-auto-cockpit__ctx-legend--idle" : ""}`}
-            title="Cyan ticks = LEARNED launches. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
+            title="Cyan ticks = LEARNED launches. T = trained context window. Amber ≤N = VRAM limit. Ribbon paint = need vs free."
             aria-hidden={legendIdle || undefined}
           >
             {hasLearned ? (
@@ -361,7 +362,16 @@ export default function CockpitCtxStrip({
                 snap
               </>
             ) : null}
-            {hasLearned && hasGhost ? (
+            {hasLearned && hasTrained ? (
+              <span className="full-auto-cockpit__ctx-legend-sep">·</span>
+            ) : null}
+            {hasTrained ? (
+              <>
+                <span className="full-auto-cockpit__ctx-legend-t">T</span>
+                trained
+              </>
+            ) : null}
+            {(hasLearned || hasTrained) && hasGhost ? (
               <span className="full-auto-cockpit__ctx-legend-sep">·</span>
             ) : null}
             {hasGhost ? (
