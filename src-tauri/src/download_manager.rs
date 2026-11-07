@@ -310,6 +310,12 @@ fn remove_quant_batch(batch_id: &str) {
 /// Maximum number of concurrent downloads.
 const DEFAULT_MAX_CONCURRENT: usize = 3;
 
+/// Toolchain archives all extract into the shared `toolchain/` tree, and the Full pack
+/// clears that tree before installing. Downloads may run in parallel, but installs must
+/// not: a CUDA runtime extract racing a Full-pack replace is how a half-installed
+/// toolchain is born. Extract waits its turn instead of refusing the second download.
+static TOOLCHAIN_INSTALL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Maximum automatic retries for transient network errors (timeouts, connection resets).
 const MAX_RETRIES: u32 = 3;
 
@@ -497,10 +503,9 @@ impl DownloadManager {
         pack: Option<String>,
         self_arc: Arc<RwLock<Self>>,
     ) -> Result<String, String> {
-        if self.has_active_toolchain_download() {
-            return Err("A toolchain download is already in progress.".into());
-        }
-
+        // Toolchain packs queue like every other download: a CUDA runtime and the
+        // compiler pack are separate archives and may download together. Only the
+        // extract step takes the shared `toolchain/` tree (see TOOLCHAIN_INSTALL_LOCK).
         let pack_key = pack
             .unwrap_or_else(|| "build".to_string())
             .trim()
@@ -606,10 +611,6 @@ impl DownloadManager {
         pack: Option<String>,
         self_arc: Arc<RwLock<Self>>,
     ) -> Result<String, String> {
-        if self.has_active_toolchain_download() {
-            return Err("A toolchain download or extract is already in progress.".into());
-        }
-
         let pack_key = pack
             .unwrap_or_else(|| "build".to_string())
             .trim()
@@ -675,20 +676,6 @@ impl DownloadManager {
         });
 
         Ok(task_id)
-    }
-
-    /// True when any toolchain task is queued, downloading, paused, or extracting.
-    pub fn has_active_toolchain_download(&self) -> bool {
-        self.tasks.values().any(|t| {
-            is_toolchain_task(t)
-                && matches!(
-                    t.status,
-                    DownloadStatus::Queued
-                        | DownloadStatus::Downloading
-                        | DownloadStatus::Paused
-                        | DownloadStatus::Scanning
-                )
-        })
     }
 
     /// True when an app NSIS installer download or install is in progress.
@@ -766,7 +753,7 @@ impl DownloadManager {
         };
         let task = DownloadTask {
             id: task_id.clone(),
-            hf_model_id: format!("Blackwell Ops {channel_label} {}", asset.release_tag),
+            hf_model_id: format!("Blackwell Ops {channel_label} {}", asset.name),
             file_name: asset.name,
             download_url: asset.download_url,
             total_bytes: asset.size,
@@ -834,13 +821,9 @@ impl DownloadManager {
 
         let asset =
             crate::github_releases::resolve_provider_pack_asset(&provider_id, &profile).await?;
-        // The embedded engines.json digest is authoritative when this build knows the pack: it
-        // arrives over a different trust path than the release asset itself.
-        let manifest_sha = crate::engine_packs::engine_pack(&provider_id, &profile)
-            .map(|d| d.sha256.clone())
-            .filter(|s| s.len() == 64);
-        let expected_sha256 =
-            manifest_sha.or_else(|| asset.digest.as_deref().and_then(expected_hex));
+        // The resolver pins the digest from the engines channel manifest (or the build-time
+        // record on its offline fallback). A pack without a digest is not installable.
+        let expected_sha256 = asset.digest.as_deref().and_then(expected_hex);
         if expected_sha256.is_none() {
             return Err(format!(
                 "Provider pack '{}' on release '{}' has no published SHA-256 — refusing to \
@@ -867,13 +850,17 @@ impl DownloadManager {
 
         let task_id = generate_task_id();
         let quant_key = format!("{provider_id}:{profile}");
+        // Engine build from the channel (the resolver's offline fallback supplies the pinned
+        // build too). This becomes downloadedVersionPerEnv and is compared on the next check.
+        let engine_stamp = asset
+            .version
+            .clone()
+            .unwrap_or_else(|| asset.release_tag.clone());
         let task = DownloadTask {
             id: task_id.clone(),
             hf_model_id: format!(
                 "Engine {provider_id} [{profile}] {}",
-                crate::engine_packs::engine_pack(&provider_id, &profile)
-                    .map(|d| d.engine_version.as_str())
-                    .unwrap_or(asset.release_tag.as_str())
+                asset.version.as_deref().unwrap_or(asset.release_tag.as_str())
             ),
             file_name: asset.name,
             download_url: asset.download_url,
@@ -890,7 +877,7 @@ impl DownloadManager {
             hf_author: provider_id,
             quant_type: quant_key,
             expected_sha256,
-            source_tag: asset.release_tag,
+            source_tag: engine_stamp,
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_PROVIDER.to_string(),
@@ -2278,6 +2265,27 @@ async fn finalize_toolchain_extract_worker(
     task_id: &str,
     archive_path: &str,
 ) {
+    // One install at a time into the shared toolchain tree. The second pack's download
+    // has long finished by now; its extract just waits here instead of failing.
+    let _install_guard = match TOOLCHAIN_INSTALL_LOCK.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            {
+                let mut dm = manager.write().await;
+                if let Some(task) = dm.tasks.get_mut(task_id) {
+                    task.status_message = Some("Waiting for another toolchain install…".to_string());
+                }
+            }
+            TOOLCHAIN_INSTALL_LOCK.lock().await
+        }
+    };
+    {
+        let mut dm = manager.write().await;
+        if let Some(task) = dm.tasks.get_mut(task_id) {
+            task.status_message = Some("Extracting toolchain…".to_string());
+        }
+    }
+
     let pack = {
         let dm = manager.read().await;
         dm.tasks
