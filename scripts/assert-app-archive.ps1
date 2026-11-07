@@ -1,7 +1,7 @@
-# Extract blackwell-ops.exe from a CORE_Blackwell-Ops-App-*.7z and assert REL identity.
+# Extract blackwell-ops.exe from an APP_UPDATE_*.7z and assert REL identity.
 #
 # Usage:
-#   .\scripts\assert-app-archive.ps1 -ArchivePath .majestic-out\CORE_Blackwell-Ops-App-v1.0.30.7z -ExpectedVersion 1.0.30
+#   .\scripts\assert-app-archive.ps1 -ArchivePath .majestic-out\APP_UPDATE_Blackwell-Ops-v1.1.13.7z -ExpectedVersion 1.1.13
 
 param(
     [Parameter(Mandatory = $true)]

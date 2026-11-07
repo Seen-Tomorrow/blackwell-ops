@@ -46,11 +46,11 @@ What copies where (and why)
 
 1. DEV startup — full runtime copy (predev)
 
-src-tauri/runtime/*  →  target/debug/runtime/
+foundry/artifacts/<p>/<profile>/Release/*  +  src-tauri/runtime/<p>/config/*  →  target/debug/runtime/
 
 When: every npm run dev (runs predev first)
 Why: the debug exe lives in target/debug/, so it needs a runtime/ folder next to it.
-What: everything — configs and binaries.
+What: binaries from Foundry artifacts, configs from runtime/<p>/config.
 
 2. DEV app start — config-only refresh (new)
 
@@ -60,14 +60,17 @@ When: each debug app launch (sync_dev_runtime_factory_configs in config.rs)
 Why: so you can tweak max_engine_slots or params without re-running npm run dev and without wiping mirrored binaries in target/debug/runtime/.
 What: JSON configs only — binaries untouched.
 
-3. Release prep — mirror foundry binaries (prerelease)
+3. Release prep — stage the NSIS seed bundle (prerelease)
 
-target/debug/foundry/artifacts/<provider>/<env>/Release/*
-  →  src-tauri/runtime/<provider>/<env>/
+target/debug/foundry/artifacts/<provider>/<env>/Release/*  (binaries)
+  +  src-tauri/runtime/<provider>/config/                  (factory templates)
+  →  src-tauri/runtime-bundle/
 
-When: npm run release (runs prerelease → mirror-artifacts.ps1)
-Why: foundry builds land in foundry/artifacts/ (disposable workspace). You copy fresh exes/dlls into src-tauri/runtime/ so the installer ships them.
-What: binaries only — config/ is never touched by this script.
+When: `npm run release` (runs prerelease → `prepare-release-runtime.ps1`).
+
+Why: Tauri resources must exist at build time, and only the `nsisCore` profiles are seeded.
+Foundry artifacts are the binary root — there is no copy into `src-tauri/runtime/`. That tree
+now holds **only factory configs** (`runtime/<provider>/config/`).
 
 4. Release install — bundle to end user
 
@@ -95,8 +98,8 @@ Where to edit so users get your changes
 │ Default params, flags, spawn_profile, max_engine_   │ src-tauri/runtime/<provider>/config/<provider> │ Bundled in runtime/   │
 │ slots, templateVersion                              │ -default-config.json                           │ on install            │
 ├─────────────────────────────────────────────────────┼────────────────────────────────────────────────┼───────────────────────┤
-│ Fresh llama-server.exe after a foundry build        │ Run mirror → updates src-tauri/runtime/<       │ Same — bundled with   │
-│                                                     │ provider>/<env>/                               │ release               │
+│ Fresh llama-server.exe after a foundry build        │ Build in Foundry — artifacts are read          │ Pack (engine) or      │
+│                                                     │ directly; no copy into src-tauri/runtime/      │ NSIS Full release     │
 ├─────────────────────────────────────────────────────┼────────────────────────────────────────────────┼───────────────────────┤
 │ User’s personal toggles / reorders                  │ Don’t edit for shipping — app writes config/   │ Per-machine only      │
 │                                                     │ <id>-user-config.json                          │                       │
@@ -112,11 +115,11 @@ Your workflows
 Change factory config (e.g. max_engine_slots: 128):
 1. Edit src-tauri/runtime/ggml-master/config/ggml-master-default-config.json
 2. Restart the dev app (config sync runs on start), or run npm run dev for a full copy
-3. For release: npm run release after mirror if binaries changed too
+3. For release: npm run release (no binary step needed)
 
 Ship new binaries from foundry:
-1. Build in Foundry → artifacts land in foundry/artifacts/...
-2. npm run release (mirror copies exes into src-tauri/runtime/, then builds installer)
+1. Build in Foundry → artifacts land in foundry/artifacts/<provider>/<profile>/Release/
+2. DISTRIBUTION → Pack+Ship <profile> (engine pack), or FULL RELEASE for the installer
 
 ───
 
@@ -124,9 +127,8 @@ Quick diagram
 
 flowchart LR
   subgraph repo ["Repo (you edit)"]
-    SRC["src-tauri/runtime/"]
+    SRC["src-tauri/runtime/ (configs only)"]
     CFG[".../config/*.json"]
-    BIN[".../vanguard/*.exe"]
   end
 
   subgraph foundry ["Foundry build"]
@@ -143,9 +145,10 @@ flowchart LR
   end
 
   CFG --> SRC
-  ART -->|"mirror-artifacts.ps1"| BIN
-  SRC -->|"predev + config sync"| DBG
-  SRC -->|"tauri build / bundle"| INST
+  ART -->|"predev sync (binaries)"| DBG
+  SRC -->|"predev sync (configs)"| DBG
+  ART -->|"prepare-release-runtime"| INST
+  SRC -->|"prepare-release-runtime (configs)"| INST
   INST -->|"merge on load"| USER
 
 ───

@@ -6,7 +6,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('check', 'pack', 'ship', 'pack-link', 'ship-link', 'bump', 'bump-pi', 'ship-toolchain', 'pack-provider', 'ship-provider')]
+    [ValidateSet('check', 'pack', 'ship', 'pack-link', 'ship-link', 'bump', 'bump-pi', 'ship-toolchain', 'pack-provider', 'ship-provider', 'ship-engines')]
     [string]$Mode,
 
     [ValidateSet('app', 'full')]
@@ -16,10 +16,16 @@ param(
     [string]$ProviderId = '',
     [string]$ProfileId = '',
 
+    # ship: restrict to these channels (comma separated). Empty = everything in the manifest.
+    [string]$Channels = '',
+
     [switch]$DryRun,
 
     # Skip YES prompts (bump / ship) - used by DEV Distribution panel
-    [switch]$Force
+    [switch]$Force,
+
+    # Ship: skip the test gate (a plan runs it once, not per channel)
+    [switch]$SkipTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,6 +38,7 @@ $lock_path = Join-Path $script_dir 'majestic.lock'
 $out_root = Join-Path $root '.majestic-out'
 
 . (Join-Path (Split-Path -Parent $script_dir) 'runtime-distribution.ps1')
+. (Join-Path (Split-Path -Parent $script_dir) 'release-channels.ps1')
 
 function Write-Majestic {
     param(
@@ -156,7 +163,7 @@ function Get-InstallerCandidates {
 
 function Get-AppUpdateArchiveFileName {
     param([string]$Version)
-    "CORE_Blackwell-Ops-App-v$Version.7z"
+    New-ChannelAssetName -Tag 'app' -Version $Version
 }
 
 
@@ -269,23 +276,6 @@ function Get-PackKindLabel {
     if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (App .7z + NSIS with EDGE seed + engine packs)' }
 }
 
-function Get-ReleaseNotesForVariant {
-    param(
-        $Config,
-        [string]$Variant
-    )
-    if ($Variant -eq 'app') {
-        if ($Config.ship.appOnlyReleaseNotes) {
-            return [string]$Config.ship.appOnlyReleaseNotes
-        }
-    } else {
-        if ($Config.ship.fullBundleReleaseNotes) {
-            return [string]$Config.ship.fullBundleReleaseNotes
-        }
-    }
-    return [string]$Config.ship.releaseNotes
-}
-
 function Write-GhReleaseNotesFile {
     param([string]$Notes)
     if (-not (Test-Path -LiteralPath $out_root)) {
@@ -309,13 +299,17 @@ function Invoke-PrepareReleaseBundle {
     }
     Write-Majestic "Preparing runtime-bundle ($Variant)..." -Color Cyan
     & $script_path
-    if ($LASTEXITCODE -ne 0) {
+    # `$?` not `$LASTEXITCODE`: a script ending without `exit` leaves LASTEXITCODE null.
+    if (-not $?) {
         throw "Bundle prep failed: $script_path"
     }
 }
 
 function Invoke-FrontendAndTauriBuild {
-    param([string]$Variant)
+    param(
+        [string]$Variant,
+        [string]$OutRoot = ''
+    )
     Push-Location $root
     try {
         Clear-ReleaseBuildEnvironment
@@ -325,7 +319,7 @@ function Invoke-FrontendAndTauriBuild {
         Assert-CargoLockPinned
 
         if ($Variant -eq 'app') {
-            Write-Majestic "Building frontend + release exe (no NSIS, no engine mirror)..." -Color Cyan
+            Write-Majestic "Building frontend + release exe (no NSIS, no engine packs)..." -Color Cyan
             npm run build
             if ($LASTEXITCODE -ne 0) { throw "npm run build failed with exit code $LASTEXITCODE" }
             # Lean App pack: PE only - NSIS is Full Bundle path.
@@ -333,9 +327,28 @@ function Invoke-FrontendAndTauriBuild {
             npx tauri build --no-bundle
             if ($LASTEXITCODE -ne 0) { throw "tauri build --no-bundle failed with exit code $LASTEXITCODE" }
         } else {
-            Write-Majestic "Running npm run release (mirror -> bundle -> NSIS)..." -Color Cyan
-            npm run release
-            if ($LASTEXITCODE -ne 0) { throw "npm run release failed with exit code $LASTEXITCODE" }
+            # Engine packs must be staged BEFORE the app is compiled: `engines.json` is embedded
+            # in the PE, and the client refuses any pack whose name/digest its build does not
+            # pin. `npm run release` would compile first and pack afterwards, so the engine
+            # packs, the NSIS seed bundle and the app build are sequenced explicitly here.
+            if (-not $OutRoot) { throw "Full build needs -OutRoot (engine packs land there)" }
+            Write-Majestic "Staging NSIS runtime bundle..." -Color Cyan
+            npm run prerelease
+            if ($LASTEXITCODE -ne 0) { throw "npm run prerelease failed with exit code $LASTEXITCODE" }
+            Write-Majestic "Packing engine bundles (digests pinned into engines.json)..." -Color Cyan
+            $engine_pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
+            $engine_log = & $engine_pack_script -OutDir $OutRoot *>&1
+            $engine_ok = $?
+            foreach ($line in @($engine_log)) {
+                if ($null -ne $line -and "$line".Length -gt 0) { Write-Majestic "$line" -Color DarkGray }
+            }
+            if (-not $engine_ok) { throw "pack-provider-runtime.ps1 failed" }
+
+            Write-Majestic "Building frontend + release exe + NSIS (engines.json embedded)..." -Color Cyan
+            npm run build
+            if ($LASTEXITCODE -ne 0) { throw "npm run build failed with exit code $LASTEXITCODE" }
+            npx tauri build
+            if ($LASTEXITCODE -ne 0) { throw "tauri build failed with exit code $LASTEXITCODE" }
         }
 
         $exe = Get-ReleaseExePath
@@ -375,16 +388,16 @@ function Invoke-MajesticLinkPack {
     $packer = Join-Path $root 'scripts/pack-link-update.ps1'
     Write-Majestic "Building OYM Link installer..." -Color Cyan
     & $builder -Profile installer
-    if ($LASTEXITCODE -ne 0) { throw "build-link.ps1 failed (exit $LASTEXITCODE)" }
+    if (-not $?) { throw "build-link.ps1 failed" }
     Write-Majestic "Packing LINK_OYM-Link update asset..." -Color Cyan
     & $packer
-    if ($LASTEXITCODE -ne 0) { throw "pack-link-update.ps1 failed (exit $LASTEXITCODE)" }
+    if (-not $?) { throw "pack-link-update.ps1 failed" }
 }
 
 function Invoke-MajesticLinkShip {
     $shipper = Join-Path $root 'scripts/ship-link.ps1'
     & $shipper
-    if ($LASTEXITCODE -ne 0) { throw "ship-link.ps1 failed (exit $LASTEXITCODE)" }
+    if (-not $?) { throw "ship-link.ps1 failed" }
 }
 
 function Invoke-PackAppUpdateArchive {
@@ -404,14 +417,15 @@ function Invoke-PackAppUpdateArchive {
     # Swallow ALL nested streams. Native 7z + Write-Host can pollute the success stream;
     # assignment then feeds empty lines into Get-Item -LiteralPath and dies.
     $pack_log = & $pack_script -Version $Version -Output $out_path -ExePath $exe *>&1
-    $pack_exit = $LASTEXITCODE
+    # `$?` not `$LASTEXITCODE`: a script that ends without `exit` leaves LASTEXITCODE null.
+    $pack_ok = $?
     foreach ($line in @($pack_log)) {
         if ($null -ne $line -and "$line".Length -gt 0) {
             Write-Host $line
         }
     }
-    if ($pack_exit -ne 0) {
-        throw "pack-app-update.ps1 failed (exit $pack_exit)"
+    if (-not $pack_ok) {
+        throw "pack-app-update.ps1 failed"
     }
     if (-not (Test-Path -LiteralPath $out_path)) {
         throw "App update archive not created: $out_path"
@@ -491,12 +505,12 @@ function Stage-InstallerForVariant {
         throw "Installer not found after build. Expected under src-tauri/target/release/bundle/nsis/"
     }
     $installer = $installers[0]
-    # CORE_ marks the app-owned assets (App .7z + setup) apart from the ENGINE_* packs.
-    $core_name = if ($installer.Name -like 'CORE_*') { $installer.Name } else { "CORE_$($installer.Name)" }
-    $dest_installer = Join-Path $OutRoot $core_name
+    # Channel naming: `FULL_SETUP_Blackwell-Ops-vX.Y.Z.exe` (docs/RELEASE-CHANNELS.md §3).
+    $full_name = New-ChannelAssetName -Tag 'full' -Version $Version
+    $dest_installer = Join-Path $OutRoot $full_name
     Copy-Item -LiteralPath $installer.FullName -Destination $dest_installer -Force
     Assert-InstallerSeed -InstallerPath $dest_installer -BundleRoot (Join-Path $root 'src-tauri\runtime-bundle')
-    Write-Majestic "Full installer staged: $core_name" -Color Green
+    Write-Majestic "Full installer staged: $full_name" -Color Green
     return $dest_installer
 }
 
@@ -549,6 +563,14 @@ function Invoke-MajesticCheck {
         [string]$Variant = 'full'
     )
 
+    # Channel table self-check (no network): a naming/retention typo must fail before a build.
+    try {
+        & (Join-Path $root 'scripts\test-release-channels.ps1') *>&1 | Out-Null
+    } catch {
+        throw "Release channel self-check failed: $($_.Exception.Message)"
+    }
+    Write-Majestic "Release channel self-check: OK" -Color DarkGray
+
     $version = Read-AppVersion
     $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
     $nsis_required = Get-NsisRequiredProfiles -Config $Config
@@ -575,17 +597,6 @@ function Invoke-MajesticCheck {
             }
         }
 
-        $runtime_root = Join-Path $root 'src-tauri\runtime'
-        foreach ($row in $nsis_required) {
-            $runtime_server = Join-Path $runtime_root "$($row.Provider)\$($row.Profile)\llama-server.exe"
-            $label = "NSIS $($row.Provider)/$($row.Profile) runtime mirror"
-            if (Test-Path -LiteralPath $runtime_server) {
-                Write-Majestic "$label : ok" -Color Green
-            } else {
-                Write-Majestic "$label : missing (pack will mirror)" -Color Yellow
-            }
-        }
-
         Write-Majestic "Engine packs (published with the release):" -Color Cyan
         foreach ($row in $pack_profiles) {
             $art = Test-ProfileArtifact -ProviderId $row.Provider -ProfileId $row.Profile
@@ -601,19 +612,9 @@ function Invoke-MajesticCheck {
         Write-Majestic "App-Only: skipping Foundry artifact checks." -Color DarkGray
         $runtime_root = Join-Path $root 'src-tauri\runtime'
         $template_ok = $true
-        # Templates are required for every provider the installer seeds.
+        # Templates are required for every provider the installer seeds. The provider list comes
+        # from the policy, not a hardcoded map in majestic.config.json.
         $core_ids = @($nsis_required | ForEach-Object { $_.Provider } | Select-Object -Unique)
-        foreach ($provider_id in $core_ids) {
-            $template = Join-Path $runtime_root "$provider_id\config\$provider_id-default-config.json"
-            if (Test-Path -LiteralPath $template) {
-                Write-Majestic "Core template $provider_id : ok" -Color Green
-            } else {
-                Write-Majestic "Core template $provider_id : MISSING ($template)" -Color Red
-                $template_ok = $false
-            }
-        }
-        # Only the providers whose templates ship need checking; the provider list comes from
-        # the policy, not from a hardcoded map in majestic.config.json.
         foreach ($provider_id in $core_ids) {
             $template = Join-Path $runtime_root "$provider_id\config\$provider_id-default-config.json"
             if (Test-Path -LiteralPath $template) {
@@ -769,48 +770,18 @@ function Invoke-MajesticCheck {
     return $ready
 }
 
-function Test-InstallerFresh {
-    param(
-        $Config,
-        [string]$Version
-    )
-    if (-not $Config.pack.skipBuildIfInstallerFresh) {
-        return $false
-    }
-    $installers = Get-InstallerCandidates -Version $Version
-    if ($installers.Count -eq 0) {
-        return $false
-    }
-    $age = ((Get-Date) - $installers[0].LastWriteTime).TotalMinutes
-    return $age -le [double]$Config.pack.installerMaxAgeMinutes
-}
-
-function Get-Sha256Hex {
-    param([string]$Path)
-    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
-        return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
-    }
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $stream = [System.IO.File]::OpenRead($Path)
-        try {
-            return ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
-        } finally {
-            $stream.Dispose()
-        }
-    } finally {
-        $sha.Dispose()
-    }
-}
-
 function New-ManifestEntry {
-    param([System.IO.FileInfo]$File)
-    $hash = Get-Sha256Hex -Path $File.FullName
+    param(
+        [Parameter(Mandatory = $true)][string]$Channel,
+        [System.IO.FileInfo]$File
+    )
+    $hash = Get-FileSha256Hex -Path $File.FullName
     [PSCustomObject]@{
-        name   = $File.Name
-        path   = $File.FullName
-        bytes  = $File.Length
-        sha256 = $hash
+        channel = $Channel
+        name    = $File.Name
+        path    = $File.FullName
+        bytes   = $File.Length
+        sha256  = $hash
     }
 }
 
@@ -836,43 +807,22 @@ function Invoke-MajesticPack {
     }
     New-Item -ItemType Directory -Path $out_root -Force | Out-Null
 
-    $skip_build = ($Variant -eq 'full') -and (Test-InstallerFresh -Config $Config -Version $version)
-    if ($skip_build) {
-        Write-Majestic "Installer is fresh - skipping full release build (will still refresh App .7z)." -Color Yellow
-        # Still require a correct REL PE for the App archive - never pack a stale/DEV binary.
-        if (-not $DryRun) {
-            $exe = Get-ReleaseExePath
-            if (-not (Test-Path -LiteralPath $exe)) {
-                Write-Majestic "Release exe missing during skip-build - forcing full rebuild." -Color Yellow
-                $skip_build = $false
-            } else {
-                try {
-                    Assert-ReleaseExe -ExePath $exe -ExpectedVersion $version
-                } catch {
-                    Write-Majestic "Skip-build PE failed identity check - forcing full rebuild. $_" -Color Yellow
-                    $skip_build = $false
-                }
-            }
-        }
-    }
-    if ($skip_build) {
-        # already validated above
-    } elseif ($DryRun) {
+    if ($DryRun) {
         if ($Variant -eq 'app') {
             Write-Majestic "[dry-run] would run: clean + prepare-release-app-only + npm run build + tauri build --no-bundle + PE assert + pack-app-update.ps1" -Color Cyan
         } else {
-            Write-Majestic "[dry-run] would run: clean + npm run release + PE assert + pack-app-update" -Color Cyan
+            Write-Majestic "[dry-run] would run: clean + npm run prerelease + pack engines + npm run build + tauri build (NSIS) + PE assert + App .7z + FULL setup" -Color Cyan
         }
     } else {
         if ($Variant -eq 'full') {
-            Invoke-FrontendAndTauriBuild -Variant $Variant
+            # Engine packs are built inside the full build, before the app compiles, so the PE
+            # embeds the manifest that names them.
+            Invoke-FrontendAndTauriBuild -Variant $Variant -OutRoot $out_root
         } else {
             Invoke-PrepareReleaseBundle -Variant $Variant
             Invoke-FrontendAndTauriBuild -Variant $Variant
         }
-    }
 
-    if (-not $DryRun) {
         if ($Variant -eq 'full') {
             $installers = Get-InstallerCandidates -Version $version
             if ($installers.Count -eq 0) {
@@ -901,15 +851,11 @@ function Invoke-MajesticPack {
     if ($DryRun) {
         Write-Majestic "[dry-run] would stage $(Get-AppUpdateArchiveFileName -Version $version)" -Color Cyan
         if ($Variant -eq 'full') {
-            Write-Majestic "[dry-run] would stage App .7z + NSIS (EDGE seed) + both ENGINE_* packs (built and digest-verified during pack)." -Color Cyan
+            Write-Majestic "[dry-run] would stage App .7z + FULL setup (EDGE seed) + both ENGINE_* packs (built and digest-verified during the build)." -Color Cyan
         }
     } else {
-        # Always stage lean App update for both daily app pack and weekly full pack
-        if ($Variant -eq 'app') {
-            # app pack already prepared templates-only bundle
-        } elseif ($Variant -eq 'full') {
-            # Full release used prepare-release-runtime (engines). Rebuild app-only bundle for App .7z
-            # so the lean archive never embeds engine binaries.
+        # The App .7z is always the templates-only bundle, even inside a full pack.
+        if ($Variant -eq 'full') {
             Invoke-PrepareReleaseBundle -Variant 'app'
         }
 
@@ -925,31 +871,22 @@ function Invoke-MajesticPack {
         if (-not (Test-Path -LiteralPath $app_archive)) {
             throw "App update archive missing after pack: $app_archive"
         }
-        $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $app_archive)
+        $manifest_files += New-ManifestEntry -Channel 'app' -File (Get-Item -LiteralPath $app_archive)
 
         if ($Variant -eq 'full') {
             $link_archive = Invoke-PackLinkUpdate -OutRoot $out_root
             if ($link_archive) {
-                $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $link_archive)
+                $manifest_files += New-ManifestEntry -Channel 'link' -File (Get-Item -LiteralPath $link_archive)
             }
-            # NSIS needs full runtime-bundle (app + ggml-master engines) for the installer build artifacts.
+            # NSIS needs the full runtime-bundle (app + seeded engines) for the installer.
             Invoke-PrepareReleaseBundle -Variant 'full'
             $dest_installer = Stage-InstallerForVariant -Version $version -Variant 'full' -OutRoot $out_root
-            $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $dest_installer)
+            $manifest_files += New-ManifestEntry -Channel 'full' -File (Get-Item -LiteralPath $dest_installer)
 
-            # Engine packs are release assets now (docs/ENGINE-PACKS.md): built from
-            # src-tauri\runtime, named ENGINE_{provider}-{profile}-{build}.7z, and pinned in
-            # runtime-catalog\engines.json. Build + verify here so a digest mismatch fails the
-            # pack, not the download.
-            Write-Majestic "Packing engine bundles..." -Color Cyan
-            $engine_pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
-            $engine_log = & $engine_pack_script -OutDir $out_root *>&1
-            $engine_exit = $LASTEXITCODE
-            foreach ($line in @($engine_log)) {
-                if ($null -ne $line -and "$line".Length -gt 0) { Write-Majestic "$line" -Color DarkGray }
-            }
-            if ($engine_exit -ne 0) { throw "pack-provider-runtime.ps1 failed (exit $engine_exit)" }
-
+            # Engine packs were built before the app compiled; verify the bytes against the
+            # manifest the PE embedded, so a digest drift fails the pack, not the download.
+            # They are NOT part of this manifest: the engines channel publishes them on its own
+            # (docs/RELEASE-CHANNELS.md), so a stuck app ship never blocks an engine.
             $engine_manifest_path = Join-Path $root 'src-tauri\runtime-catalog\engines.json'
             $engine_manifest = Get-Content -LiteralPath $engine_manifest_path -Raw -Encoding UTF8 | ConvertFrom-Json
             if (-not $engine_manifest.enginePacks -or @($engine_manifest.enginePacks).Count -eq 0) {
@@ -960,12 +897,11 @@ function Invoke-MajesticPack {
                 if (-not (Test-Path -LiteralPath $asset_path)) {
                     throw "Engine pack missing after pack: $($p.asset)"
                 }
-                $sha = Get-Sha256Hex -Path $asset_path
+                $sha = Get-FileSha256Hex -Path $asset_path
                 if ($sha -ne $p.sha256.ToLowerInvariant()) {
                     throw ("Engine pack digest mismatch for {0}: manifest {1}, file {2}. Re-commit engines.json." -f $p.asset, $p.sha256, $sha)
                 }
-                $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $asset_path)
-                Write-Majestic ("  {0}  {1:N1} MB  ({2}/{3})" -f $p.asset, ((Get-Item -LiteralPath $asset_path).Length / 1MB), $p.provider, $p.profile) -Color Green
+                Write-Majestic ("  {0}  {1:N1} MB  ({2}/{3}) - ships via engines channel" -f $p.asset, ((Get-Item -LiteralPath $asset_path).Length / 1MB), $p.provider, $p.profile) -Color Green
             }
         }
     }
@@ -1047,7 +983,7 @@ function Invoke-MajesticBump {
         # deleting one stays an explicit human decision.
         #
         # A missing tag must still NOT fail the chain: PowerShell keeps native
-        # LASTEXITCODE, and run-detached-chain treats it as bump fail *after* version
+        # LASTEXITCODE, and run-release-plan.ps1 treats it as bump fail *after* version
         # files were already written (→ skipped pack + ghost bumps).
         $prev_eap = $ErrorActionPreference
         $ErrorActionPreference = 'SilentlyContinue'
@@ -1219,31 +1155,6 @@ $GhOutput
     throw "gh release create failed:`n$GhOutput"
 }
 
-function Throw-ImmutableReleaseBlocked {
-    param(
-        [string]$Tag,
-        [string]$Repo,
-        [int]$AssetCount
-    )
-
-    $reason = if ($AssetCount -eq 0) {
-        'was published with no assets'
-    } else {
-        'is locked and assets cannot be replaced'
-    }
-
-    throw @"
-GitHub release $Tag $reason. Immutable releases stay locked even after you disable release immutability in repo settings.
-
-Fix:
-  1. Delete the broken release:  gh release delete $Tag --repo $Repo --cleanup-tag --yes
-  2. GitHub does not allow reusing a tag from a deleted immutable release - bump patch:  npm run majestic:bump
-  3. majestic:pack, then majestic:ship on the new version
-
-Future ships use 'gh release create <tag> <assets...>' so assets attach before publish.
-"@
-}
-
 function Invoke-ReleaseTestGate {
     # Ship is the one-way door: whatever goes up here reaches every installed app
     # through the in-app updater. PACK is deliberately NOT gated - it is run over and
@@ -1272,6 +1183,238 @@ function Invoke-ReleaseTestGate {
     Write-Majestic "Release gate: both suites green." -Color Green
 }
 
+# ── Channel publishing (docs/RELEASE-CHANNELS.md §5) ─────────────────────
+
+function Get-ChannelReleaseNotes {
+    param($Config, [string]$ChannelTag)
+    switch ($ChannelTag) {
+        'app' { if ($Config.ship.appOnlyReleaseNotes) { return [string]$Config.ship.appOnlyReleaseNotes } }
+        'full' { if ($Config.ship.fullBundleReleaseNotes) { return [string]$Config.ship.fullBundleReleaseNotes } }
+    }
+    return [string]$Config.ship.releaseNotes
+}
+
+# Upload assets -> verify -> manifest last -> prune -> body. Any failure before the manifest
+# leaves the previous channel.json in place, so clients keep working and never see a
+# half-published version.
+function Publish-ChannelRelease {
+    param(
+        $Config,
+        [string]$Tag,
+        [object[]]$Files,
+        [string]$Version,
+        [string]$Commit,
+        [string]$Notes
+    )
+    $channel = Get-ReleaseChannel -Tag $Tag
+    $repo = $Config.repo
+
+    $existing = Get-GhReleaseView -Tag $Tag -Repo $repo
+    $latest = $null
+    $releases = @()
+    $kept = @()
+
+    # Idempotent ship: an asset already on the channel with the same size and (when GitHub
+    # reports it) the same digest is not re-uploaded — a body/manifest refresh stays cheap.
+    $published = @{}
+    if ($null -ne $existing) {
+        foreach ($a in @($existing.assets)) { $published[[string]$a.name] = $a }
+    }
+    if ($null -eq $existing) {
+        Write-Majestic "Creating channel release '$Tag'..." -Color Cyan
+        $latestArgs = if ($channel.latest) { @('--latest') } else { @('--latest=false') }
+        $createArgs = @('release', 'create', $Tag, '--repo', $repo, '--title', [string]$channel.title, '--notes', [string]$channel.blurb) + $latestArgs
+        $createOut = & gh @createArgs 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            Throw-GhReleaseCreateFailed -Tag $Tag -Repo $repo -GhOutput $createOut.Trim()
+        }
+    } elseif ($existing.isImmutable) {
+        throw "Release '$Tag' is immutable. Rolling channels require mutable releases (docs/RELEASE-CHANNELS.md §13)."
+    }
+
+    $toUpload = @()
+    foreach ($f in $Files) {
+        $cur = $published[[string]$f.name]
+        $sameSize = ($null -ne $cur) -and ([long]$cur.size -eq [long]$f.bytes)
+        $digestOk = $true
+        if ($null -ne $cur -and $cur.digest) {
+            $digestOk = (([string]$cur.digest).ToLowerInvariant() -eq ('sha256:' + ([string]$f.sha256).ToLowerInvariant()))
+        }
+        if ($sameSize -and $digestOk) {
+            Write-Majestic "  already published, skipping upload: $($f.name)" -Color DarkGray
+            continue
+        }
+        $toUpload += $f.path
+    }
+    if ($toUpload.Count -gt 0) {
+        Write-Majestic ("Uploading {0} asset(s) to '{1}'..." -f $toUpload.Count, $Tag) -Color Cyan
+        gh release upload $Tag --repo $repo --clobber @toUpload
+        if ($LASTEXITCODE -ne 0) { throw "gh release upload $Tag failed" }
+    } else {
+        Write-Majestic "Assets already published - refreshing channel.json + body only" -Color DarkGray
+    }
+
+    # Manifest is generated from the uploaded set (never from the staging dir alone).
+    if ($Tag -eq 'engines') {
+        $engineDoc = Get-Content -LiteralPath (Join-Path $root 'src-tauri\runtime-catalog\engines.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        # Only what this ship actually uploaded may be listed — a manifest entry whose asset is
+        # missing from the release would 404 every client that pins it.
+        $newEngines = @($engineDoc.enginePacks | Where-Object { $Files.name -contains $_.asset } | ForEach-Object {
+            [PSCustomObject][ordered]@{
+                provider  = [string]$_.provider
+                profile   = [string]$_.profile
+                build     = [string]$_.build
+                version   = [string]$_.llamaVersion
+                asset     = [string]$_.asset
+                sizeBytes = [long]$_.sizeBytes
+                sha256    = [string]$_.sha256
+                cuda      = [string]$_.cuda
+            }
+        })
+        $prev = Read-PublishedChannelManifest -OutDir $out_root -Tag $Tag -Repo $repo
+        $kept = Merge-EngineChannelEntries -Previous $prev -NewEntries $newEngines -Retention $channel.retention
+        if (@($kept).Count -eq 0) {
+            throw "engines channel: no manifest entries for the uploaded assets - refusing to publish an empty engine manifest"
+        }
+        $manifestPath = Write-ChannelManifestFile -OutDir $out_root -Tag $Tag -Engines $kept
+    } else {
+        $latest = [PSCustomObject][ordered]@{
+            version     = $Version
+            commit      = $Commit
+            asset       = [string]$Files[0].name
+            sizeBytes   = [long]$Files[0].bytes
+            sha256      = [string]$Files[0].sha256
+            publishedAt = (Get-Date).ToUniversalTime().ToString('o')
+            notes       = $Notes
+        }
+        $prev = Read-PublishedChannelManifest -OutDir $out_root -Tag $Tag -Repo $repo
+        $releases = Merge-ChannelReleases -Previous $prev -NewLatest $latest -Retention $channel.retention
+        $manifestPath = Write-ChannelManifestFile -OutDir $out_root -Tag $Tag -Product $channel.product -Latest $latest -Releases $releases
+    }
+
+    gh release upload $Tag --repo $repo --clobber $manifestPath
+    if ($LASTEXITCODE -ne 0) { throw "gh release upload $Tag (channel.json) failed" }
+    Write-Majestic "Published $Tag/channel.json" -Color Green
+
+    # Prune: keep exactly what the manifest references, plus the manifest itself.
+    $keep = @((Get-ChannelManifestAssetName))
+    if ($Tag -eq 'engines') {
+        $keep += @($kept | ForEach-Object { $_.asset })
+    } else {
+        $keep += @($releases | ForEach-Object { $_.asset })
+    }
+    $keep = @($keep | Select-Object -Unique)
+    $view = gh release view $Tag --repo $repo --json assets | ConvertFrom-Json
+    foreach ($asset in @($view.assets)) {
+        if ($keep -notcontains $asset.name) {
+            Write-Majestic "  prune $Tag/$($asset.name)" -Color DarkGray
+            gh release delete-asset $Tag $asset.name --repo $repo --yes | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Majestic "  WARN: could not delete $($asset.name)" -Color Yellow }
+        }
+    }
+
+    $body = New-ChannelReleaseBody -Channel $channel -Latest $latest -Releases $releases -Engines $kept
+    $bodyPath = Join-Path $out_root "release-body-$Tag.md"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($bodyPath, $body, $utf8NoBom)
+    gh release edit $Tag --repo $repo --notes-file $bodyPath | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Majestic "  WARN: release body update failed for $Tag" -Color Yellow }
+}
+
+# Publish one or more staged engine packs to the `engines` channel — no app build involved.
+# Engines are independent of app builds; the channel manifest is what clients offer.
+function Invoke-MajesticShipEngines {
+    param(
+        $Config,
+        [string]$ProviderId = '',
+        [string]$ProfileId = ''
+    )
+
+    Assert-ShipUnlocked
+    if (Test-Path -LiteralPath $lock_path) {
+        throw "Ship lock present ($lock_path). Another ship may be in progress - delete lock if stale."
+    }
+
+    $engine_manifest_path = Join-Path $root 'src-tauri\runtime-catalog\engines.json'
+    if (-not (Test-Path -LiteralPath $engine_manifest_path)) {
+        throw "Missing engines.json - run pack-provider-runtime.ps1 first."
+    }
+    $doc = Get-Content -LiteralPath $engine_manifest_path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $rows = @($doc.enginePacks)
+    if ($ProviderId) {
+        $rows = @($rows | Where-Object { $_.provider -eq $ProviderId -and (-not $ProfileId -or $_.profile -eq $ProfileId) })
+        if ($rows.Count -eq 0) {
+            throw "engines.json has no entry for $ProviderId/$ProfileId - pack it first."
+        }
+    }
+
+    $files = @()
+    $skipped = @()
+    foreach ($row in $rows) {
+        $path = Join-Path $out_root $row.asset
+        if (-not (Test-Path -LiteralPath $path)) {
+            $skipped += [string]$row.asset
+            continue
+        }
+        $entry = New-ManifestEntry -Channel 'engines' -File (Get-Item -LiteralPath $path)
+        if ($entry.sha256 -ne $row.sha256.ToLowerInvariant()) {
+            throw ("Engine pack digest mismatch for {0}: manifest {1}, file {2}. Re-commit engines.json." -f $row.asset, $row.sha256, $entry.sha256)
+        }
+        $files += $entry
+    }
+    if ($files.Count -eq 0) {
+        throw "No staged engine packs in .majestic-out/ - run Pack All Engines or Pack <profile> first."
+    }
+    if ($ProviderId -and $skipped.Count -gt 0) {
+        throw "Requested engine pack not staged: $($skipped -join ', ')"
+    }
+    if ($skipped.Count -gt 0) {
+        Write-Majestic "Skipping not-staged engine pack(s): $($skipped -join ', ')" -Color DarkGray
+    }
+
+    Write-Majestic "About to publish $($files.Count) engine pack(s) to '$($Config.repo)' channel 'engines'" -Color Cyan
+    foreach ($f in $files) {
+        Write-Majestic ("  {0}  {1:N1} MB" -f $f.name, ($f.bytes / 1MB)) -Color DarkGray
+    }
+
+    if ($DryRun) {
+        Write-Majestic "[dry-run] would upload $($files.Count) engine pack(s) + channel.json" -Color Yellow
+        return
+    }
+
+    if (-not $Force) {
+        $confirm = Read-Host "Type YES to publish $($files.Count) engine pack(s)"
+        if ($confirm -ne 'YES') {
+            Write-Majestic "Ship cancelled." -Color Yellow
+            return
+        }
+    } else {
+        Write-Majestic "Force: publishing engine packs without prompt" -Color DarkGray
+    }
+
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        throw "GitHub CLI (gh) is required for ship. Install: https://cli.github.com/"
+    }
+
+    New-Item -ItemType File -Path $lock_path -Force | Out-Null
+    try {
+        Push-Location $root
+        try {
+            $commit = (git rev-parse --short HEAD).Trim()
+            $version = Read-AppVersion
+            Publish-ChannelRelease -Config $Config -Tag 'engines' -Files $files -Version $version -Commit $commit -Notes ''
+        } finally {
+            Pop-Location
+        }
+    } finally {
+        if (Test-Path -LiteralPath $lock_path) {
+            Remove-Item -LiteralPath $lock_path -Force
+        }
+    }
+    Write-Majestic "SHIPPED engines channel - https://github.com/$($Config.repo)/releases/tag/engines" -Color Green
+    & (Join-Path $root 'scripts\prune-staging.ps1') -OutRoot $out_root -Root $root
+}
+
 function Invoke-MajesticShip {
     param($Config)
 
@@ -1298,6 +1441,11 @@ function Invoke-MajesticShip {
 
     $assets = @()
     $link_assets = @()
+    # Optional channel filter (plan steps ship one channel at a time, e.g. app now, full later).
+    $channel_filter = @()
+    if ($Channels) {
+        $channel_filter = @($Channels.Split(',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+    }
     foreach ($entry in @($manifest.files)) {
         if (-not (Test-Path -LiteralPath $entry.path)) { continue }
         $leaf = Split-Path -Leaf $entry.path
@@ -1305,45 +1453,47 @@ function Invoke-MajesticShip {
             $link_assets += $entry.path
             continue
         }
-        # The pack manifest is the authority: App .7z, the NSIS setup and every verified
-        # ENGINE_*.7z. Only the app-only variant filters (it must never carry an installer).
-        if ($pack_kind -eq 'app') {
-            $is_app = ($leaf -like '*Blackwell-Ops-App*')
-            if (-not $is_app) {
-                Write-Majestic "Ship app: skipping non-App asset $leaf" -Color DarkGray
-                continue
-            }
+        $channel = if ($entry.PSObject.Properties.Name -contains 'channel') { [string]$entry.channel } else { '' }
+        if (-not $channel) {
+            throw "Manifest entry '$leaf' has no channel - re-run pack (docs/RELEASE-CHANNELS.md)."
         }
-        $assets += $entry.path
+        if ($channel_filter.Count -gt 0 -and $channel_filter -notcontains $channel) {
+            Write-Majestic "Ship: skipping channel '$channel' asset $leaf (filter: $Channels)" -Color DarkGray
+            continue
+        }
+        # App packs publish the app channel only; full packs carry app + full.
+        if ($pack_kind -eq 'app' -and $channel -ne 'app') {
+            Write-Majestic "Ship app: skipping non-App channel '$channel' asset $leaf" -Color DarkGray
+            continue
+        }
+        $assets += $entry
     }
     if ($assets.Count -eq 0) {
-        throw "No staged assets in .majestic-out/ for $tag (packKind=$pack_kind)"
+        throw "No staged assets in .majestic-out/ for $tag (packKind=$pack_kind, channels='$Channels')"
     }
 
-    # Never upload an App .7z whose embedded PE is DEV or wrong version (the historic off-by-one).
-    Write-Majestic "Verifying staged App archive PE identity before upload..." -Color Cyan
-    $app_assets = @($assets | Where-Object {
-        $n = Split-Path -Leaf $_
-        ($n -like '*Blackwell-Ops-App*.7z') -or ($n -like '*Blackwell-Ops-App*.zip')
-    })
-    if ($app_assets.Count -eq 0 -and ($pack_kind -eq 'app' -or $pack_kind -eq 'full')) {
-        throw "Ship ${pack_kind}: no App .7z among staged assets - refuse upload (would publish incomplete release)."
-    }
-    foreach ($app_asset in $app_assets) {
-        Assert-AppArchive -ArchivePath $app_asset -ExpectedVersion $version
-    }
-    if ($app_assets.Count -gt 0) {
+    $require_app = ($channel_filter.Count -eq 0 -or $channel_filter -contains 'app')
+    if ($require_app) {
+        # Never upload an App .7z whose embedded PE is DEV or wrong version (the historic off-by-one).
+        Write-Majestic "Verifying staged App archive PE identity before upload..." -Color Cyan
+        $app_assets = @($assets | Where-Object { $_.channel -eq 'app' })
+        if ($app_assets.Count -eq 0) {
+            throw "Ship ${pack_kind}: no app-channel asset among staged files - refuse upload (would publish incomplete release)."
+        }
+        foreach ($app_asset in $app_assets) {
+            Assert-AppArchive -ArchivePath $app_asset.path -ExpectedVersion $version
+        }
         Write-Majestic ("App archive PE identity OK for v{0} ({1} file(s))" -f $version, $app_assets.Count) -Color Green
     }
 
+    $groups = @($assets | Group-Object channel)
     Write-Majestic "About to ship $tag to $($Config.repo) (packKind=$pack_kind)" -Color Cyan
-    Write-Majestic "Assets:" -Color Cyan
-    foreach ($asset in $assets) {
-        Write-Majestic "  - $asset" -Color DarkGray
+    foreach ($g in $groups) {
+        Write-Majestic ("  channel '{0}': {1}" -f $g.Name, (@($g.Group | ForEach-Object { $_.name }) -join ', ')) -Color DarkGray
     }
 
     if ($DryRun) {
-        Write-Majestic "[dry-run] would create GitHub release $tag and upload $($assets.Count) asset(s)" -Color Yellow
+        Write-Majestic "[dry-run] would publish $($groups.Count) channel(s) for $tag" -Color Yellow
         return
     }
 
@@ -1361,69 +1511,50 @@ function Invoke-MajesticShip {
         throw "GitHub CLI (gh) is required for ship. Install: https://cli.github.com/"
     }
 
-    Invoke-ReleaseTestGate
+    if (-not $SkipTests) {
+        Invoke-ReleaseTestGate
+    } else {
+        Write-Majestic "Release gate: skipped (already ran for this plan)" -Color DarkGray
+    }
 
     New-Item -ItemType File -Path $lock_path -Force | Out-Null
     try {
         Push-Location $root
-
-        $tag_exists = [bool](git tag -l $tag 2>$null)
-        if (-not $tag_exists) {
-            Write-Majestic "Creating local git tag $tag on current commit..." -Color Cyan
-            git tag -a $tag -m "Release $tag"
-        } else {
-            Write-Majestic "Local git tag $tag already exists - reusing." -Color DarkGray
-        }
-
-        if ($Config.ship.pushTag) {
-            Write-Majestic "Pushing tag $tag to origin..." -Color Cyan
-            git push origin $tag
-        } else {
-            Write-Majestic "pushTag=false - skipping git push (gh release still creates GitHub tag)." -Color DarkGray
-        }
-
-        $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
-
-        $pack_kind = if ($manifest.PSObject.Properties.Name -contains 'packKind') {
-            [string]$manifest.packKind
-        } else {
-            'full'
-        }
-        $release_notes = Get-ReleaseNotesForVariant -Config $Config -Variant $pack_kind
-
-        if ($null -eq $release_meta) {
-            Write-Majestic "Creating GitHub release $tag ($pack_kind) with $($assets.Count) asset(s)..." -Color Cyan
-            $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $release_notes -Assets $assets
-            if ($create_result.ExitCode -ne 0) {
-                Throw-GhReleaseCreateFailed -Tag $tag -Repo $Config.repo -GhOutput $create_result.Output
+        try {
+            $tag_exists = [bool](git tag -l $tag 2>$null)
+            if (-not $tag_exists) {
+                Write-Majestic "Creating local git tag $tag on current commit..." -Color Cyan
+                git tag -a $tag -m "Release $tag"
+            } else {
+                Write-Majestic "Local git tag $tag already exists - reusing." -Color DarkGray
             }
-        } elseif ($release_meta.isImmutable) {
-            $asset_count = @($release_meta.assets).Count
-            Throw-ImmutableReleaseBlocked -Tag $tag -Repo $Config.repo -AssetCount $asset_count
-        } else {
-            Write-Majestic "Release $tag exists (mutable) - uploading $($assets.Count) asset(s)..." -Color Cyan
-            gh release upload $tag --repo $Config.repo --clobber @assets
-            if ($LASTEXITCODE -ne 0) {
-                throw "gh release upload failed"
-            }
-            # Refresh body so a later full ship does not leave stale App-only notes (and vice versa)
-            Write-Majestic "Updating release notes for packKind=$pack_kind..." -Color DarkGray
-            $notes_file = Write-GhReleaseNotesFile -Notes $release_notes
-            gh release edit $tag --repo $Config.repo --notes-file $notes_file
-            if ($LASTEXITCODE -ne 0) {
-                Write-Majestic "Warning: assets uploaded but release notes edit failed" -Color Yellow
-            }
-        }
 
-        Write-Majestic "SHIPPED $tag - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
+            if ($Config.ship.pushTag) {
+                Write-Majestic "Pushing tag $tag to origin..." -Color Cyan
+                git push origin $tag
+            } else {
+                Write-Majestic "pushTag=false - skipping git push (channels are labels, the git tag carries provenance)." -Color DarkGray
+            }
 
-        if ($link_assets.Count -gt 0) {
-            Write-Majestic "Shipping LINK asset to its own tag..." -Color Cyan
-            & (Join-Path $root 'scripts/ship-link.ps1') -Asset $link_assets[0]
-            if ($LASTEXITCODE -ne 0) { throw "ship-link.ps1 failed (exit $LASTEXITCODE)" }
+            $commit = (git rev-parse --short HEAD).Trim()
+            foreach ($g in $groups) {
+                $channelTag = [string]$g.Name
+                $notes = Get-ChannelReleaseNotes -Config $Config -ChannelTag $channelTag
+                Publish-ChannelRelease -Config $Config -Tag $channelTag -Files @($g.Group) -Version $version -Commit $commit -Notes $notes
+            }
+
+            if ($link_assets.Count -gt 0) {
+                Write-Majestic "Shipping LINK asset to its own tag..." -Color Cyan
+                & (Join-Path $root 'scripts/ship-link.ps1') -Asset $link_assets[0]
+                if (-not $?) { throw "ship-link.ps1 failed" }
+            }
+
+            Write-Majestic "SHIPPED $tag - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
+        } finally {
+            Pop-Location
         }
+        & (Join-Path $root 'scripts\prune-staging.ps1') -OutRoot $out_root -Root $root
     } finally {
-        Pop-Location
         if (Test-Path -LiteralPath $lock_path) {
             Remove-Item -LiteralPath $lock_path -Force
         }
@@ -1456,7 +1587,7 @@ function Invoke-MajesticShipToolchain {
         if (-not $found) {
             throw ("Missing pack asset '{0}' for '{1}'. Build it with scripts\pack-toolchain-packs.ps1." -f $p.asset, $p.id)
         }
-        $sha = Get-Sha256Hex -Path $found
+        $sha = Get-FileSha256Hex -Path $found
         if ($p.sha256 -and $sha -ne $p.sha256.ToLowerInvariant()) {
             throw ("Pack '{0}' digest mismatch: manifest says {1}, file is {2}. Re-run pack-toolchain-packs.ps1 and commit the manifest." -f $p.id, $p.sha256, $sha)
         }
@@ -1515,6 +1646,7 @@ function Invoke-MajesticShipToolchain {
     }
 
     Write-Majestic "SHIPPED toolchain - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
+    & (Join-Path $root 'scripts\prune-staging.ps1') -OutRoot $out_root -Root $root
 }
 
 
@@ -1538,8 +1670,12 @@ switch ($Mode) {
         & (Join-Path $root 'scripts\pack-provider-runtime.ps1') @pack_args
         if ($LASTEXITCODE -ne 0) { throw "pack-provider-runtime.ps1 failed (exit $LASTEXITCODE)" }
     }
+    'ship-engines' {
+        Invoke-MajesticShipEngines -Config $config -ProviderId $ProviderId -ProfileId $ProfileId
+    }
     'ship-provider' {
-        throw "Engine packs ship with the release now. Use: npm run majestic:pack  then  npm run majestic:ship (app-only: majestic:pack:app + ship)."
+        # Kept as an alias: publishing engine packs no longer needs an app build.
+        Invoke-MajesticShipEngines -Config $config -ProviderId $ProviderId -ProfileId $ProfileId
     }
 }
 # Native tools (git/gh/7z) can leave LASTEXITCODE non-zero after a successful

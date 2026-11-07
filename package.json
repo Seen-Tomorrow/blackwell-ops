@@ -1,7 +1,7 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.1.11",
+  "version": "1.1.15",
   "type": "module",
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",
@@ -22,7 +22,7 @@
     "rebuild:dev": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-dev.ps1",
     "rebuild:dev:selective": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-dev-selective.ps1",
     "preview": "vite preview",
-    "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1 && powershell -ExecutionPolicy Bypass -File scripts/prepare-release-runtime.ps1",
+    "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/prepare-release-runtime.ps1",
     "release": "npm run build && npm run check:lock && tauri build",
     "release:exe": "npm run build:exe",
     "lint:dead": "knip",
@@ -43,6 +43,8 @@
     "majestic:toolchain": "powershell -ExecutionPolicy Bypass -File scripts/build-foundry-toolchain.ps1",
     "majestic:ship-toolchain": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship-toolchain",
     "majestic:pack:engines": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1",
+    "majestic:ship:engines": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship-engines",
+    "majestic:refresh:rel": "powershell -ExecutionPolicy Bypass -File scripts/refresh-local-rel.ps1",
     "promote:provider": "node scripts/promote-user-provider-to-runtime.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

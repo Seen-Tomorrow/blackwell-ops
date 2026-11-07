@@ -45,19 +45,13 @@ foreach ($provider in $providers) {
         continue
     }
 
-    $config_src = Join-Path $provider.FullName 'config'
-    if (-not (Test-Path -LiteralPath $config_src)) {
+    $config = Copy-ProviderFactoryConfig -ProviderId $provider_id -RuntimeRoot $runtime_root -DestRoot $bundle_root
+    if (-not $config) {
         $missing_required += ('{0}/config/ (core provider templates missing)' -f $provider_id)
         continue
     }
-
-    $config_dst = Join-Path $bundle_root "$provider_id\config"
-    New-Item -ItemType Directory -Path $config_dst -Force | Out-Null
-    Copy-Item -Path (Join-Path $config_src '*') -Destination $config_dst -Recurse -Force
     $copied_configs++
-
-    $bundled_default_config = Join-Path $config_dst "$provider_id-default-config.json"
-    if (-not (Test-Path -LiteralPath $bundled_default_config)) {
+    if (-not $config.HasDefault) {
         $missing_required += ('{0}/config/{0}-default-config.json (template JSON missing)' -f $provider_id)
     }
 }
@@ -87,3 +81,5 @@ $bundle_bytes = (Get-ChildItem -LiteralPath $bundle_root -Recurse -File | Measur
 $bundle_mb = [math]::Round($bundle_bytes / 1MB, 2)
 
 Write-Host ('[prepare-release-app-only] Ready: {0} core template(s) + plugin catalog, {1} MB (no engine binaries).' -f $copied_configs, $bundle_mb) -ForegroundColor Cyan
+
+exit 0

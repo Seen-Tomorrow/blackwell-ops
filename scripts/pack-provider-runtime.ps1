@@ -11,57 +11,40 @@
 #   .\scripts\pack-provider-runtime.ps1                      # every enginePacks provider
 #   .\scripts\pack-provider-runtime.ps1 -ProviderId ggml-master -ProfileId stable
 #
-# Source is src-tauri\runtime (the mirrored release tree), never runtime-bundle: the bundle is
-# staged for the installer and holds only the seeded profiles.
+# Source: Foundry artifacts (<app_root>/foundry/artifacts/<p>/<profile>/Release) + factory config
+# (<repo>/src-tauri/runtime/<p>/config). Never runtime-bundle: that holds only the seeded profiles.
 
 param(
     [string]$OutDir = '',
     [string]$ProviderId = '',
-    [string]$ProfileId = '',
-    [string]$SourceRoot = ''
+    [string]$ProfileId = ''
 )
 
 $ErrorActionPreference = 'Stop'
-# SHA-256 without Get-FileHash: some pack steps run in hosts where the Utility module
-# is not autoloaded (Get-FileHash is then 'not recognized'). .NET statics always work;
-# certutil is the fallback for a constrained host.
-function Get-FileSha256Hex([string]$Path) {
-    try {
-        $sha = [System.Security.Cryptography.SHA256]::Create()
-        try {
-            $stream = [System.IO.File]::OpenRead($Path)
-            try { $bytes = $sha.ComputeHash($stream) } finally { $stream.Dispose() }
-        } finally { $sha.Dispose() }
-        return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
-    } catch {
-        $line = (& certutil.exe -hashfile $Path SHA256 | Select-Object -Skip 1 -First 1)
-        return ($line.Trim() -replace ' ', '').ToLowerInvariant()
-    }
-}
-
-
 
 $script_dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $script_dir
 . (Join-Path $script_dir 'runtime-distribution.ps1')
+. (Join-Path $script_dir 'engine-identity.ps1')
 
 $SevenZip = Join-Path $root 'src-tauri\bin\7z.exe'
 if (-not (Test-Path -LiteralPath $SevenZip)) { throw "Bundled 7z.exe not found at $SevenZip" }
 
 if (-not $OutDir) { $OutDir = Join-Path $root '.majestic-out' }
-if (-not $SourceRoot) { $SourceRoot = Join-Path $root 'src-tauri\runtime' }
-if (-not (Test-Path -LiteralPath $SourceRoot)) {
-    throw "Engine source tree not found: $SourceRoot (run scripts\mirror-artifacts.ps1 first)"
-}
+$artifacts_root = Join-Path $root 'src-tauri\target\debug\foundry\artifacts'
+# Factory configs live beside the provider (installed by the installer seed), not in Foundry.
+$config_root = Join-Path $root 'src-tauri\runtime'
 $OutDir = [System.IO.Path]::GetFullPath($OutDir)
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $ManifestPath = Join-Path $root 'src-tauri\runtime-catalog\engines.json'
 $toolchain = Get-Content -LiteralPath (Join-Path $root 'toolchain\manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 
-# `llama-server --version` prints "version: <n> (<sha>)". Run it with the portable CUDA bin on
-# PATH, or the loader fails before the binary prints anything.
-function Get-EngineBuildId {
+# `llama-server --version` prints "version: 0.8.0-dev (build 12017, commit 5047748f)".
+# Returns the machine identity (`b<build>-<sha8>`) plus llama's human-readable version — the
+# only readable part of an engine pack name, and what the release page / ENGINE page show.
+# Run with the portable CUDA bin on PATH or the loader fails before the binary prints anything.
+function Get-EngineIdentity {
     param([string]$Exe, [string]$CudaVersion)
     $dirs = @()
     foreach ($sub in @("cuda\v$CudaVersion\bin\x64", "cuda\v$CudaVersion\bin")) {
@@ -83,17 +66,9 @@ function Get-EngineBuildId {
         $ErrorActionPreference = $prev_eap
         $env:PATH = $old
     }
-    # up-to-date llama.cpp: "version: 0.7.0-dev (build 11869, commit d327bf1f0)"
-    if ($out -match 'build\s+(\d+)[,)]?\s*commit\s+([0-9a-f]{7,40})') {
-        return "b$($Matches[1])-$($Matches[2].Substring(0, 8))"
-    }
-    if ($out -match 'version:\s*(\d+)\s*\(([0-9a-f]{7,40})\)') {
-        return "b$($Matches[1])-$($Matches[2].Substring(0, 8))"
-    }
-    if ($out -match 'version:\s*([^\s()]+)') {
-        return ('b' + ($Matches[1] -replace '[^0-9A-Za-z.\-]', '_'))
-    }
-    throw ("Could not read an engine build id from {0}. Output: {1}" -f $Exe, $out.Trim())
+
+    # Parsing lives in engine-identity.ps1 so it can be tested without an engine.
+    return ConvertFrom-EngineVersionOutput -Output $out -Exe $Exe
 }
 
 function Get-ProfileCuda([string]$Profile) {
@@ -121,14 +96,16 @@ function Pack-OneProfile {
     if (Test-RuntimeProfileRetired -ProfileId $Prof) { return $null }
     if (-not (Test-RuntimeBundleProfile -ProviderId $Prov -ProfileId $Prof)) { return $null }
 
-    $src = Join-Path $SourceRoot "$Prov\$Prof"
+    $src = Join-Path $artifacts_root "$Prov\$Prof\Release"
     if (-not (Test-Path -LiteralPath (Join-Path $src 'llama-server.exe'))) {
-        Write-Host "[engine-pack] skip $Prov/$Prof - no llama-server.exe in $src" -ForegroundColor Yellow
+        Write-Host "[engine-pack] skip $Prov/$Prof - no llama-server.exe in $src (build it in Foundry)" -ForegroundColor Yellow
         return $null
     }
 
     $cuda = Get-ProfileCuda -Profile $Prof
-    $build_id = Get-EngineBuildId -Exe (Join-Path $src 'llama-server.exe') -CudaVersion $cuda
+    $identity = Get-EngineIdentity -Exe (Join-Path $src 'llama-server.exe') -CudaVersion $cuda
+    $build_id = [string]$identity.Build
+    $llama_version = [string]$identity.Version
 
     $stage = Join-Path $work_root "$Prov-$Prof"
     $dst = Join-Path $stage "runtime\$Prov\$Prof"
@@ -147,14 +124,19 @@ function Pack-OneProfile {
         throw ("MSVC CRT staging wrote {0} file(s) for {1}/{2}; expected 3. Fix the toolchain path before packing." -f $crt_written, $Prov, $Prof)
     }
 
-    $config_src = Join-Path $SourceRoot "$Prov\config"
+    $config_src = Join-Path $config_root "$Prov\config"
     if (Test-Path -LiteralPath $config_src) {
         $config_dst = Join-Path $stage "runtime\$Prov\config"
         New-Item -ItemType Directory -Path $config_dst -Force | Out-Null
         Copy-Item -Path (Join-Path $config_src '*') -Destination $config_dst -Recurse -Force
     }
 
-    $asset = "ENGINE_$Prov-$Prof-$build_id.7z"
+    # Human-readable version first, machine identity last: `ENGINE_<prov>-<profile>-[<ver>-]<build>.7z`.
+    $asset = if ($llama_version) {
+        "ENGINE_$Prov-$Prof-$llama_version-$build_id.7z"
+    } else {
+        "ENGINE_$Prov-$Prof-$build_id.7z"
+    }
     $zip_path = Join-Path $OutDir $asset
     if (Test-Path -LiteralPath $zip_path) { Remove-Item -LiteralPath $zip_path -Force }
 
@@ -177,17 +159,19 @@ function Pack-OneProfile {
     }
 
     $entries["$Prov/$Prof"] = [pscustomobject][ordered]@{
-        provider      = $Prov
-        profile       = $Prof
-        label         = $label
-        asset         = $asset
-        sha256        = Get-FileSha256Hex -Path $zip_path
-        sizeBytes     = [long]$file.Length
-        cuda          = $cuda
-        engineVersion = $build_id
-        recommended   = [bool]$recommended
+        provider     = $Prov
+        profile      = $Prof
+        label        = $label
+        asset        = $asset
+        sha256       = Get-FileSha256Hex -Path $zip_path
+        sizeBytes    = [long]$file.Length
+        cuda         = $cuda
+        build        = $build_id
+        llamaVersion = $llama_version
+        recommended  = [bool]$recommended
     }
-    Write-Host ("[engine-pack] {0}  {1:N1} MB  cuda {2}  build {3}" -f $asset, ($file.Length / 1MB), $cuda, $build_id) -ForegroundColor Green
+    $human = if ($llama_version) { "$llama_version $build_id" } else { $build_id }
+    Write-Host ("[engine-pack] {0}  {1:N1} MB  cuda {2}  {3}" -f $asset, ($file.Length / 1MB), $cuda, $human) -ForegroundColor Green
     return $zip_path
 }
 
@@ -205,7 +189,7 @@ if ($ProviderId -and $ProfileId) {
 }
 
 if ($packed.Count -eq 0) {
-    throw "No engine packs produced - check enginePacks in distribution-policy.json and $SourceRoot"
+    throw "No engine packs produced - check enginePacks in distribution-policy.json and Foundry artifacts under $artifacts_root"
 }
 
 $ordered = @($entries.Values | Sort-Object { $_.provider }, { $_.profile })
@@ -214,7 +198,12 @@ $out_doc = [pscustomobject][ordered]@{
     enginePacks   = $ordered
 }
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText($ManifestPath, (($out_doc | ConvertTo-Json -Depth 8) + "`n"), $utf8NoBom)
+# Committed artifact: normalise to LF (ConvertTo-Json emits CRLF on Windows hosts, which
+# makes every later diff warn and re-normalise).
+$manifest_json = (($out_doc | ConvertTo-Json -Depth 8) -replace "`r`n", "`n")
+[System.IO.File]::WriteAllText($ManifestPath, ($manifest_json + "`n"), $utf8NoBom)
 
 Write-Host ("[engine-pack] wrote {0} pack(s): {1}" -f $packed.Count, (($packed | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')) -ForegroundColor Cyan
 Write-Host ("[engine-pack] manifest: {0}" -f $ManifestPath) -ForegroundColor Cyan
+
+exit 0

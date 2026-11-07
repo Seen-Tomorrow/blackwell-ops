@@ -33,6 +33,7 @@ $ErrorActionPreference = 'Stop'
 
 $script_dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $script_dir
+. (Join-Path $script_dir 'runtime-distribution.ps1')
 
 if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $root 'src-tauri\target\debug\toolchain' }
 if (-not $OutDir) { $OutDir = Join-Path $root '.majestic-out' }
@@ -69,23 +70,6 @@ function Resolve-CudaDllDir {
         if ($all) { return $dir }
     }
     return $null
-}
-
-# SHA-256 without Get-FileHash: some pack steps run in hosts where the Utility module
-# is not autoloaded (Get-FileHash is then 'not recognized'). .NET statics always work;
-# certutil is the fallback for a constrained host.
-function Get-FileSha256Hex([string]$Path) {
-    try {
-        $sha = [System.Security.Cryptography.SHA256]::Create()
-        try {
-            $stream = [System.IO.File]::OpenRead($Path)
-            try { $bytes = $sha.ComputeHash($stream) } finally { $stream.Dispose() }
-        } finally { $sha.Dispose() }
-        return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
-    } catch {
-        $line = (& certutil.exe -hashfile $Path SHA256 | Select-Object -Skip 1 -First 1)
-        return ($line.Trim() -replace ' ', '').ToLowerInvariant()
-    }
 }
 
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json

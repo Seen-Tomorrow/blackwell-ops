@@ -58,8 +58,9 @@ jobs:
       - name: Fabricate gitignored bundle resources
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force src-tauri/runtime-bundle, src-tauri/pi-ext/pi-subagents | Out-Null
+          New-Item -ItemType Directory -Force src-tauri/runtime-bundle/runtime-catalog, src-tauri/pi-ext/pi-subagents | Out-Null
           Set-Content src-tauri/runtime-bundle/.ci-placeholder "placeholder"
+          Set-Content src-tauri/runtime-bundle/runtime-catalog/.ci-placeholder "placeholder"
           Set-Content src-tauri/pi-ext/pi-subagents/package.json '{"name":"pi-subagents","version":"0.0.0-ci"}'
 
       # Pinned, and pinned to the same version as rust-toolchain.toml. The compiler

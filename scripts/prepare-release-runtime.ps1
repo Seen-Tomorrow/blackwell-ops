@@ -1,7 +1,7 @@
 # Build src-tauri/runtime-bundle/ for NSIS - configs + minimal engine binaries only.
 # Usage: .\scripts\prepare-release-runtime.ps1
 #
-# Keeps src-tauri/runtime/ untouched (DEV sync via predev filters active profiles).
+# Keeps src-tauri/runtime/ configs untouched; engine binaries come from Foundry artifacts.
 # Release bundles runtime-bundle/ -> Tauri resource "runtime/" beside the installed exe.
 #
 # Profile policy (see runtime-distribution.ps1):
@@ -31,6 +31,7 @@ if (-not (Test-Path -LiteralPath $piext_pkg)) {
 }
 
 $runtime_root = Join-Path $root 'src-tauri\runtime'
+$artifacts_root = Join-Path $root 'src-tauri\target\debug\foundry\artifacts'
 $bundle_root = Join-Path $root 'src-tauri\runtime-bundle'
 
 if (-not (Test-Path -LiteralPath $runtime_root)) {
@@ -59,38 +60,34 @@ foreach ($provider in $providers) {
 
     $allowed_profiles = Get-RuntimeNsisProfiles -ProviderId $provider_id
 
-    $config_src = Join-Path $provider.FullName 'config'
-    if (Test-Path -LiteralPath $config_src) {
-        $config_dst = Join-Path $bundle_root "$provider_id\config"
-        New-Item -ItemType Directory -Path $config_dst -Force | Out-Null
-        # Path (not LiteralPath) so wildcards expand - LiteralPath treats '*' as a literal name.
-        Copy-Item -Path (Join-Path $config_src '*') -Destination $config_dst -Recurse -Force
+    $config = Copy-ProviderFactoryConfig -ProviderId $provider_id -RuntimeRoot $runtime_root -DestRoot $bundle_root
+    if ($config) {
         $copied_configs++
-
-        $bundled_default_config = Join-Path $config_dst "$provider_id-default-config.json"
-        if ($allowed_profiles.Count -gt 0 -and -not (Test-Path -LiteralPath $bundled_default_config)) {
+        if ($allowed_profiles.Count -gt 0 -and -not $config.HasDefault) {
             $missing_required += ('{0}/config/{0}-default-config.json (factory provider config not bundled)' -f $provider_id)
         }
     } elseif ($allowed_profiles.Count -gt 0) {
         $missing_required += ('{0}/config/ (factory provider config dir missing)' -f $provider_id)
     }
 
-    $profile_dirs = $allowed_profiles | ForEach-Object {
-        Get-Item -LiteralPath (Join-Path $provider.FullName $_) -ErrorAction SilentlyContinue
-    } | Where-Object { $_ -ne $null }
-
-    foreach ($env_dir in $profile_dirs) {
-        $profile_id = $env_dir.Name
-
+    foreach ($profile_id in $allowed_profiles) {
         if (-not (Test-RuntimeNsisProfile -ProviderId $provider_id -ProfileId $profile_id)) {
             continue
         }
 
-        $dist_files = Get-RuntimeDistributionFiles -Directory $env_dir.FullName
-        $has_server = Test-Path -LiteralPath (Join-Path $env_dir.FullName 'llama-server.exe')
+        $env_dir = Join-Path $artifacts_root "$provider_id\$profile_id\Release"
+        if (-not (Test-Path -LiteralPath $env_dir)) {
+            if ($allowed_profiles.Count -gt 0) {
+                $missing_required += ('{0}/{1} (no Foundry artifact - build it first)' -f $provider_id, $profile_id)
+            }
+            continue
+        }
+
+        $dist_files = Get-RuntimeDistributionFiles -Directory $env_dir
+        $has_server = Test-Path -LiteralPath (Join-Path $env_dir 'llama-server.exe')
 
         if ($allowed_profiles.Count -gt 0 -and -not $has_server) {
-            $missing_required += ('{0}/{1} (llama-server.exe missing - build + mirror first)' -f $provider_id, $profile_id)
+            $missing_required += ('{0}/{1} (llama-server.exe missing - build it in Foundry first)' -f $provider_id, $profile_id)
             continue
         }
 
@@ -107,7 +104,7 @@ foreach ($provider in $providers) {
             $copied_files++
         }
 
-        $all_files = Get-ChildItem -LiteralPath $env_dir.FullName -File
+        $all_files = Get-ChildItem -LiteralPath $env_dir -File
         $skipped_files += ($all_files.Count - $dist_files.Count)
         $copied_profiles++
 
@@ -124,11 +121,11 @@ if ($missing_required.Count -gt 0) {
 }
 
 if ($copied_profiles -eq 0) {
-    Write-Host '[prepare-release-runtime] No engine profiles prepared. Run mirror-artifacts.ps1 after a foundry build.' -ForegroundColor Yellow
+    Write-Host '[prepare-release-runtime] No engine profiles prepared. Build the profiles in Foundry first.' -ForegroundColor Yellow
     exit 1
 }
 
-$catalog_dst = Join-Path $bundle_root 'catalog'
+$catalog_dst = Join-Path $bundle_root 'runtime-catalog'
 # PowerShell .ps1 success does not clear $LASTEXITCODE from earlier native tools.
 # Prefer $? / exception (ErrorAction Stop) over exit-code after &.
 & (Join-Path $script_dir 'generate-plugin-catalog.ps1') -OutDir $catalog_dst
@@ -147,3 +144,5 @@ Write-Host ('[prepare-release-runtime] Ready: {0} profile(s), {1} config tree(s)
 if ($skipped_files -gt 0) {
     Write-Host ('[prepare-release-runtime] Omitted {0} non-distribution binary file(s) from DEV runtime.' -f $skipped_files) -ForegroundColor DarkGray
 }
+
+exit 0

@@ -11,7 +11,7 @@
 #
 # Usage:
 #   .\scripts\pack-app-update.ps1
-#   .\scripts\pack-app-update.ps1 -Version 1.0.12 -Output .majestic-out\CORE_Blackwell-Ops-App-v1.0.12.7z
+#   .\scripts\pack-app-update.ps1 -Version 1.1.13 -Output .majestic-out\APP_UPDATE_Blackwell-Ops-v1.1.13.7z
 #   .\scripts\pack-app-update.ps1 -ExePath src-tauri\target\release\blackwell-ops.exe
 #   .\scripts\pack-app-update.ps1 -ForcePiExt    # ship pi-ext even if the hash matches
 
@@ -28,6 +28,7 @@ $ErrorActionPreference = 'Stop'
 $script_dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $script_dir
 . (Join-Path $script_dir 'runtime-distribution.ps1')
+. (Join-Path $script_dir 'release-channels.ps1')
 
 $SevenZip = Join-Path $root 'src-tauri\bin\7z.exe'
 $SevenZipDll = Join-Path $root 'src-tauri\bin\7z.dll'
@@ -69,7 +70,7 @@ if (-not (Test-Path -LiteralPath $BundleRoot)) {
 if (-not $Output) {
     $out_dir = Join-Path $root '.majestic-out'
     New-Item -ItemType Directory -Path $out_dir -Force | Out-Null
-    $Output = Join-Path $out_dir "CORE_Blackwell-Ops-App-v$Version.7z"
+    $Output = Join-Path $out_dir (New-ChannelAssetName -Tag 'app' -Version $Version)
 }
 # Absolute path required: we chdir into work/ for 7z packing
 if (-not [System.IO.Path]::IsPathRooted($Output)) {
@@ -98,11 +99,8 @@ foreach ($provider in $providers) {
     Copy-Item -Path (Join-Path $config_src '*') -Destination $config_dst -Recurse -Force
     $template_count++
 }
-# Prefer runtime-catalog/ layout; accept legacy bundle/catalog/
+# Catalog lives at runtime-catalog/ in both the installer seed and the App .7z.
 $catalog_src = Join-Path $BundleRoot 'runtime-catalog'
-if (-not (Test-Path -LiteralPath $catalog_src)) {
-    $catalog_src = Join-Path $BundleRoot 'catalog'
-}
 if (Test-Path -LiteralPath $catalog_src) {
     $catalog_dst = Join-Path $app_stage 'runtime-catalog'
     New-Item -ItemType Directory -Path $catalog_dst -Force | Out-Null
@@ -231,3 +229,5 @@ Write-Host ("[pack-app-update] OK: {0} ({1} MB) - {2} provider template tree(s) 
 
 # Cleanup staging (keep archive)
 Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+
+exit 0

@@ -142,7 +142,7 @@ def prune_walk_dirs(current: Path, dirs: list[str]) -> None:
         if name in ALWAYS_SKIP_DIR_NAMES:
             continue
 
-        # Dev runtime mirror at repo root (duplicate of src-tauri/runtime).
+        # Build output (target/) — not source.
         if len(rel_parts) == 0 and name == "target":
             continue
 

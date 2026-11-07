@@ -225,15 +225,17 @@ is downloaded on demand. A signed remote manifest can lift that later; do not fe
   "enginePacks": [
     {
       "provider": "ggml-master", "profile": "edge", "label": "EDGE",
-      "asset": "ENGINE_ggml-master-edge-b4231-a1b2c3d.7z",
+      "asset": "ENGINE_ggml-master-edge-0.8.0-dev-b4231-a1b2c3d.7z",
       "sha256": "9f2c...", "sizeBytes": 160878961,
-      "cuda": "13.4", "engineVersion": "b4231-a1b2c3d", "recommended": true
+      "cuda": "13.4", "build": "b4231-a1b2c3d", "llamaVersion": "0.8.0-dev",
+      "recommended": true
     },
     {
       "provider": "ggml-master", "profile": "stable", "label": "STABLE",
-      "asset": "ENGINE_ggml-master-stable-b4231-a1b2c3d.7z",
+      "asset": "ENGINE_ggml-master-stable-0.8.0-dev-b4231-a1b2c3d.7z",
       "sha256": "...", "sizeBytes": 157...,
-      "cuda": "12.8", "engineVersion": "b4231-a1b2c3d", "recommended": false
+      "cuda": "12.8", "build": "b4231-a1b2c3d", "llamaVersion": "0.8.0-dev",
+      "recommended": false
     }
   ]
 }
@@ -418,21 +420,20 @@ forks) and lives in DOWNLOADS → SOFTWARE.
 +        "compression": "lzma",
          "template": "./nsis/installer.nsi",
 ```
-and one resource line, so installer and App `.7z` finally agree on the catalog path (today the
-installer writes legacy `runtime/catalog/`, the updater writes `runtime-catalog/`, and
-`plugin_catalog.rs` falls back between them):
+and one resource line, so installer and App `.7z` agree on the catalog path (`runtime-catalog/`
+everywhere; the legacy `runtime/catalog/` fallback is gone):
 
 ```diff
      "resources": {
        "runtime-bundle/": "runtime/",
-+      "runtime-catalog/": "runtime-catalog/",
++      "runtime-bundle/runtime-catalog/": "runtime-catalog/",
        "bin/": "bin/",
 ```
 
 ### 8.2 `scripts/distribution-policy.json` — v2
 
-`nsisCore` currently drives three unrelated things (NSIS staging, mirroring, template selection).
-Reducing it to `edge` would silently stop mirroring STABLE. Split the concerns:
+`nsisCore` currently drives three unrelated things (NSIS staging, pack policy, template selection).
+Reducing it to `edge` would silently stop packing STABLE. Split the concerns:
 
 ```diff
 -{ "policyVersion": 1, "nsisCore": { "ggml-master": ["edge","stable"] }, "plugins": {}, ... }
@@ -448,7 +449,7 @@ Reducing it to `edge` would silently stop mirroring STABLE. Split the concerns:
 
 `scripts/runtime-distribution.ps1`:
 - `$script:InstallerProviders` from `.installer`; `Get-RuntimeNsisProfiles` reads it (staging only).
-- `$script:RuntimeBundleProfiles` = `.enginePacks` ∪ `.plugins` — **mirroring and packing use this**,
+- `$script:RuntimeBundleProfiles` = `.enginePacks` ∪ `.plugins` — **DEV sync and packing use this**,
   so STABLE keeps being built.
 - `Test-RuntimeNsisProvider` is renamed `Test-RuntimeEngineProvider` (`.enginePacks` ∪ `.plugins`) —
   that is what `prepare-release-app-only.ps1` uses to pick providers whose templates ship.

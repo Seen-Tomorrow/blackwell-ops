@@ -1,11 +1,13 @@
-# Sync src-tauri/runtime -> src-tauri/target/debug/runtime for DEV (npm run predev).
+# Sync Foundry artifacts + factory configs -> src-tauri/target/debug/runtime for DEV (npm run predev).
+# Engine binaries: src-tauri/target/debug/foundry/artifacts/<p>/<profile>/Release
+# Factory configs: src-tauri/runtime/<p>/config
 # Usage:
 #   .\scripts\sync-dev-runtime.ps1
 #   .\scripts\sync-dev-runtime.ps1 -Force   # ignore fingerprint, full mirror
 #
-# Copies factory configs for every provider folder, then mirrors only active
-# profiles (edge + stable). Retired vanguard/fresh are omitted and pruned
-# from the debug runtime tree.
+# Copies factory configs for every provider folder, plus the Foundry Release tree for
+# active profiles (edge + stable). Retired vanguard/fresh are omitted and pruned from
+# the debug runtime tree.
 #
 # Fast path: SHA-256 of (relative path | size | LastWriteTimeUtc) for every file
 # that would be synced. Unchanged source → skip all copies (saves SSD on 100+/day
@@ -25,9 +27,11 @@ $root = Split-Path -Parent $script_dir
 . (Join-Path $script_dir 'runtime-distribution.ps1')
 
 $runtime_root = Join-Path $root 'src-tauri\runtime'
+# Engine binaries come straight from Foundry's published artifacts (no runtime mirror).
+$artifacts_root = Join-Path $root 'src-tauri\target\debug\foundry\artifacts'
 $dest_root = Join-Path $root 'src-tauri\target\debug\runtime'
 # Bump when sync rules change (which profiles/providers) so caches invalidate.
-$sync_schema = '3'
+$sync_schema = '4'
 $fingerprint_path = Join-Path $dest_root '.blackwell-dev-runtime-sync'
 
 if (-not (Test-Path -LiteralPath $runtime_root)) {
@@ -39,10 +43,6 @@ function Get-CatalogSourceRoot {
     $catalog = Join-Path (Split-Path -Parent $runtime_root) 'runtime-catalog'
     if (Test-Path -LiteralPath (Join-Path $catalog 'plugins.json')) {
         return $catalog
-    }
-    $legacy = Join-Path $runtime_root 'catalog'
-    if (Test-Path -LiteralPath $legacy) {
-        return $legacy
     }
     return $null
 }
@@ -63,7 +63,7 @@ function Get-SyncSourceRoots {
             if (Test-RuntimeProfileRetired -ProfileId $profile_id) {
                 continue
             }
-            $profile_src = Join-Path $provider.FullName $profile_id
+            $profile_src = Join-Path $artifacts_root "$provider_id\$profile_id\Release"
             if (Test-Path -LiteralPath $profile_src) {
                 $dirs.Add($profile_src)
             }
@@ -253,9 +253,9 @@ foreach ($provider in Get-ChildItem -LiteralPath $runtime_root -Directory) {
             continue
         }
 
-        $profile_src = Join-Path $provider.FullName $profile_id
+        $profile_src = Join-Path $artifacts_root "$provider_id\$profile_id\Release"
         if (-not (Test-Path -LiteralPath $profile_src)) {
-            Write-Host ("[sync-dev-runtime] {0}/{1} missing in source - skipped." -f $provider_id, $profile_id) -ForegroundColor DarkGray
+            Write-Host ("[sync-dev-runtime] {0}/{1} has no Foundry artifact - build it in Foundry first." -f $provider_id, $profile_id) -ForegroundColor DarkGray
             continue
         }
 
@@ -302,7 +302,7 @@ if ($catalog_src) {
 Set-Content -LiteralPath $fingerprint_path -Value $fingerprint -NoNewline -Encoding ascii
 
 if ($copied_profiles -eq 0 -and $copied_configs -eq 0) {
-    Write-Host '[sync-dev-runtime] Nothing copied - check src-tauri/runtime/.' -ForegroundColor Yellow
+    Write-Host '[sync-dev-runtime] Nothing copied - check Foundry artifacts and runtime/<provider>/config.' -ForegroundColor Yellow
     exit 0
 }
 

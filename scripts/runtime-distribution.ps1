@@ -3,6 +3,22 @@
 
 $script:RuntimeDistributionPolicyPath = Join-Path $PSScriptRoot 'distribution-policy.json'
 
+# SHA-256 without Get-FileHash: some pack steps run in hosts where the Utility module is not
+# autoloaded. .NET statics always work; certutil is the fallback for a constrained host.
+function Get-FileSha256Hex([string]$Path) {
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $stream = [System.IO.File]::OpenRead($Path)
+            try { $bytes = $sha.ComputeHash($stream) } finally { $stream.Dispose() }
+        } finally { $sha.Dispose() }
+        return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+    } catch {
+        $line = (& certutil.exe -hashfile $Path SHA256 | Select-Object -Skip 1 -First 1)
+        return ($line.Trim() -replace ' ', '').ToLowerInvariant()
+    }
+}
+
 function Import-RuntimeDistributionPolicy {
     if (-not (Test-Path -LiteralPath $script:RuntimeDistributionPolicyPath)) {
         throw "Missing distribution policy: $($script:RuntimeDistributionPolicyPath)"
@@ -56,6 +72,28 @@ Import-RuntimeDistributionPolicy
 
 # Retired CUDA profiles - never sync to debug runtime or NSIS bundle.
 $script:RetiredRuntimeProfiles = @('vanguard', 'fresh')
+
+# Copy one provider's factory config tree into a release bundle. Both prepare-release scripts
+# used to duplicate this block (copy + default-config check); keep it in one place.
+function Copy-ProviderFactoryConfig {
+    param(
+        [string]$ProviderId,
+        [string]$RuntimeRoot,
+        [string]$DestRoot
+    )
+    $src = Join-Path $RuntimeRoot "$ProviderId\config"
+    if (-not (Test-Path -LiteralPath $src)) {
+        return $null
+    }
+    $dst = Join-Path $DestRoot "$ProviderId\config"
+    New-Item -ItemType Directory -Path $dst -Force | Out-Null
+    # Path (not LiteralPath) so wildcards expand - LiteralPath treats '*' as a literal name.
+    Copy-Item -Path (Join-Path $src '*') -Destination $dst -Recurse -Force
+    return [pscustomobject]@{
+        Dest       = $dst
+        HasDefault = Test-Path -LiteralPath (Join-Path $dst "$ProviderId-default-config.json")
+    }
+}
 
 function Test-RuntimeNsisProvider {
     param(

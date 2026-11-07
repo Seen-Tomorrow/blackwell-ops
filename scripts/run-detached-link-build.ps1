@@ -4,7 +4,7 @@
   Detached runner for OYM Link builds.
 
 .DESCRIPTION
-  Mirrors scripts/majestic/run-detached-chain.ps1: the visible PowerShell is
+  Mirrors scripts/majestic/run-release-plan.ps1: the visible PowerShell is
   the job, writes a status file the app polls, and mirrors all build output to
   a log. The app can restart without killing the build.
 #>
