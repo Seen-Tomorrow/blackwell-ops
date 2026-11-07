@@ -163,13 +163,54 @@
   min-width: 0;
 }
 
+/* Forge plate — the build target is the page header, so it reads as a band
+   instead of another form row: dark plate, fine engineering grid, heat bloom
+   from the bottom-left, amber rule along the seam. */
 .fnd-form__target {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 1rem;
-  padding-bottom: 0.7rem;
+  margin: -1rem -1.1rem 0.1rem;
+  padding: 0.95rem 1.1rem 0.8rem;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+  border-radius: 2px 2px 0 0;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-text) 7%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-warn) 18%, transparent);
+  background:
+    /* heat rising off the seam */
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--theme-warn) 8%, transparent) 0%,
+      transparent 52%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--theme-text) 4%, transparent) 0 1px,
+      transparent 1px 20px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--theme-text) 4%, transparent) 0 1px,
+      transparent 1px 20px
+    ),
+    color-mix(in srgb, var(--theme-text) 2%, var(--theme-panel-accent));
+}
+
+.fnd-form__target::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--theme-warn) 70%, transparent) 0%,
+    transparent 45%
+  );
 }
 
 .fnd-form__field {
