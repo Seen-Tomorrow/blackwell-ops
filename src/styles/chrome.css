@@ -1542,21 +1542,6 @@ button.app-status-state:hover .app-status-state__dot {
   color: var(--theme-accent-bright);
 }
 
-.glow-border {
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent);
-  box-shadow: 0 0 8px var(--theme-accent-soft), inset 0 0 8px var(--theme-accent-soft);
-}
-
-.glow-border-warning {
-  border: 1px solid rgba(255, 184, 0, 0.3);
-  box-shadow: 0 0 8px rgba(255, 184, 0, 0.1), inset 0 0 8px rgba(255, 184, 0, 0.05);
-}
-
-.glow-border-error {
-  border: 1px solid rgba(255, 51, 51, 0.3);
-  box-shadow: 0 0 8px rgba(255, 51, 51, 0.1), inset 0 0 8px rgba(255, 51, 51, 0.05);
-}
-
 .status-online {
   background-color: var(--theme-nv-green);
   box-shadow: 0 0 6px var(--theme-nv-green);

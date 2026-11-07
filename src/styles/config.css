@@ -1112,46 +1112,6 @@
   background: var(--theme-accent-soft);
 }
 
-/* Engine card exceptions — preserve non-green colors in eink context.
-   Log-channel exceptions (SlotLogPanel): re-key these selectors if the
-   .slot-log-* classes change — the .eink-panel accent wildcard otherwise
-   forces every line to accent-bright. */
-
-/* Red: STOP button */
-.eink-panel .slot-log-stop {
-  color: rgba(248, 113, 113, 0.7);
-}
-
-/* Yellow/amber: system events, phase bar, TTFT, prefill bench */
-.eink-panel .slot-log-sys {
-  color: rgba(250, 204, 21, 0.7);
-}
-.eink-panel .slot-log-line--pp {
-  color: rgba(245, 167, 39, 0.8);
-}
-.eink-panel .slot-log-phase--pp {
-  color: rgb(245, 167, 39);
-}
-
-/* White: bench ITL/tokens values */
-.eink-panel .slot-log-stat-value {
-  color: var(--fixed-white-a8);
-}
-
-/* Stealth muted: placeholders, secondary labels */
-.eink-panel .slot-log-line,
-.eink-panel .slot-log-stat-label,
-.eink-panel .slot-log-phase {
-  color: rgb(100, 100, 116);
-}
-.eink-panel .slot-log-empty {
-  color: rgba(100, 100, 116, 0.5);
-}
-.eink-panel .slot-log-caption,
-.eink-panel .slot-log-bench-summary {
-  color: rgba(100, 100, 116, 0.6);
-}
-
 /* ── Custom Flags block (launch dock + compact scroll slot) ─── */
 [data-config-panel] .config-launch-dock .custom-flags-block,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block {

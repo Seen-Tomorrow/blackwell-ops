@@ -392,7 +392,7 @@ function App() {
   }, []);
 
   // Both handlers write straight to the store — no setState here, so a log burst
-  // never re-renders the shell. LogsPanel / SlotLogPanel subscribe per slot.
+  // never re-renders the shell. LogsPanel (and the stack row's log tail) subscribe per slot.
   useTauriListen<LogBatch>("engine-log-batch", (payload) => {
     if (payload?.slot !== undefined && payload.entries?.length > 0) {
       appendLogBatch(payload.slot, payload.entries);

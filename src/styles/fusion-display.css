@@ -6003,37 +6003,4 @@ html[data-industrial-bezel="brush"] {
 .fusion-overlay-sync { color: color-mix(in srgb, var(--theme-accent) 70%, transparent); }
 .fusion-overlay-boot { color: var(--theme-accent); }
 
-/* Slot log panel (SlotLogPanel) — chrome: rules, labels, stop, lines */
-.slot-log-header-rule { border-color: color-mix(in srgb, var(--theme-border) 30%, transparent); }
-
-.slot-log-model { color: color-mix(in srgb, var(--theme-accent) 60%, transparent); }
-
-.slot-log-stop {
-  color: color-mix(in srgb, var(--theme-danger) 70%, transparent);
-  border-color: transparent;
-}
-.slot-log-stop:hover:not(:disabled) {
-  color: var(--theme-danger);
-  border-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
-}
-
-.slot-log-stat-label { color: var(--theme-text-muted); }
-.slot-log-stat-value { color: color-mix(in srgb, var(--theme-text) 80%, transparent); }
-.slot-log-stat-value--accent { color: var(--theme-accent); }
-
-/* Phase color family — TPS value, phase bar text, log phase lines */
-.slot-log-phase { color: var(--theme-text-muted); }
-.slot-log-phase--pp { color: var(--theme-warn); }
-.slot-log-phase--tg { color: var(--theme-accent); }
-
-.slot-log-caption { color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent); }
-.slot-log-bench-summary { color: color-mix(in srgb, var(--theme-accent) 75%, transparent); }
-.slot-log-caret { color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent); }
-
-.slot-log-empty { color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent); }
-.slot-log-sys { color: color-mix(in srgb, var(--theme-warn) 70%, transparent); }
-
-.slot-log-line { color: var(--theme-text-muted); }
-.slot-log-line--tg { color: color-mix(in srgb, var(--theme-accent) 80%, transparent); }
-.slot-log-line--pp { color: color-mix(in srgb, var(--theme-warn) 80%, transparent); }
 
