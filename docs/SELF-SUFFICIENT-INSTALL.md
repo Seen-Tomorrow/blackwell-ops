@@ -23,6 +23,9 @@ question that was already asked once and got the wrong answer.
 
 **The exe is the seed. Everything else is downloaded, verified, and self-healed into `{app_root}`.**
 
+Uninstall is the inverse: program + re-downloadable caches go, settings/agent home/model files
+stay — see `docs/UNINSTALL.md` for the exact kept/removed list.
+
 `app_root_dir()` = `current_exe().parent()` (`src-tauri/src/config/paths.rs`). Config, cache,
 `runtime/`, `toolchain/`, `foundry/`, `pi-home/`, `pi-ext/`, `external-tools/` all hang off it.
 There are **no** hardcoded `C:\` / `D:\` paths in live code — every literal in the tree is inside
@@ -35,7 +38,7 @@ a coincidence.
 
 | Artifact | Size | Contains | Source |
 |---|---|---|---|
-| **App `.7z`** (`CORE_Blackwell-Ops-App-*.7z`) | **~5.0 MB**, 6 files / 14 entries | `blackwell-ops.exe`, `runtime/*/config` factory templates, `runtime-catalog/`, `bin/7z.exe`+`7z.dll`, `foundry/patches/*.patch`, **`pi-ext/` when its hash changed** | `scripts/pack-app-update.ps1` |
+| **App `.7z`** (`APP_UPDATE_Blackwell-Ops-*.7z`) | **~5.0 MB**, 6 files / 14 entries | `blackwell-ops.exe`, `runtime/*/config` factory templates, `runtime-catalog/`, `bin/7z.exe`+`7z.dll`, `foundry/patches/*.patch`, **`pi-ext/` when its hash changed** | `scripts/pack-app-update.ps1` |
 | **NSIS Full setup** | not built this session | above + `runtime/` engine binaries (+ CRT, see below) | `prepare-release-runtime.ps1` → `tauri.conf.json` resources |
 | ↳ `runtime-bundle/` staged | **273.6 MB** | engine binaries + configs + plugin catalog | `prepare-release-runtime.ps1` — **staged size, not installer size** |
 | **Toolchain** (`toolchain.7z`) | **~1.15 GB** → **4.3 GB** unpacked | `vs/` 1.7 G, `cuda/` 2.3 G, `Windows Kits/` 381 M, `cmake/` 57 M | `majestic -Mode ship-toolchain` |

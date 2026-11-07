@@ -1,6 +1,6 @@
 LangString addOrReinstall ${LANG_ENGLISH} "Update in place (recommended)$\nKeeps foundry builds, config, and engines"
 LangString alreadyInstalled ${LANG_ENGLISH} "Already Installed"
-LangString alreadyInstalledLong ${LANG_ENGLISH} "${PRODUCTNAME} ${VERSION} is already installed.$\n$\nUpdate in place refreshes the app and keeps your foundry builds, config, and engines. For a side-by-side install, click Next and choose a new empty folder.$\n$\nUninstall removes the app and bundled runtime only. Foundry and config folders may remain - remove them manually if needed."
+LangString alreadyInstalledLong ${LANG_ENGLISH} "${PRODUCTNAME} ${VERSION} is already installed.$\n$\nUpdate in place refreshes the app and keeps your foundry builds, config, and engines. For a side-by-side install, click Next and choose a new empty folder.$\n$\nUninstall removes the app, downloaded toolchains and local builds; your settings, agent sessions and models are kept."
 LangString appRunning ${LANG_ENGLISH} "{{product_name}} is running! Please close it first then try again."
 LangString appRunningOkKill ${LANG_ENGLISH} "{{product_name}} is running!$\nClick OK to kill it"
 LangString chooseMaintenanceOption ${LANG_ENGLISH} "Choose how to continue."
@@ -24,4 +24,4 @@ LangString webview2DownloadSuccess ${LANG_ENGLISH} "WebView2 bootstrapper downlo
 LangString webview2Downloading ${LANG_ENGLISH} "Downloading WebView2 bootstrapper..."
 LangString webview2InstallError ${LANG_ENGLISH} "Error: Installing WebView2 failed with exit code $1"
 LangString webview2InstallSuccess ${LANG_ENGLISH} "WebView2 installed successfully"
-LangString deleteAppData ${LANG_ENGLISH} "Also delete application data (AppData - not foundry builds in the install folder)"
+LangString deleteAppData ${LANG_ENGLISH} "Also delete my settings, agent sessions and UI preferences"

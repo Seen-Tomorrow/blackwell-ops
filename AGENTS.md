@@ -65,6 +65,12 @@ to launch without its CUDA runtime DLLs (cublas\*/cublaslt\*/cudart\*), and the 
 `toolchain CUDA bin(s) + scrubbed(inherited PATH)` — `scrub_foreign_cuda_from_path` deliberately drops a
 user's own CUDA toolkit so the bundled one always wins. Do not treat the pack as optional.
 
+**Uninstall keeps the vitals** — `docs/UNINSTALL.md` is the contract. The NSIS uninstaller deletes
+program + re-downloadable caches and keeps `config\*.json`, `config\cache\`, `config\automation\`,
+`config\external-tools\pi-home\` and the user's model files. Never add a model path to the
+uninstaller's `RMDir` list: models may sit inside `$INSTDIR` or on another drive, and that path is
+user media, not app data.
+
 ---
 
 ## Line endings — LF everywhere
@@ -330,7 +336,7 @@ host commit too, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**.
 
 **Windows `is_process_alive`** — `PROCESS_QUERY_INFORMATION` only. `PROCESS_VM_READ` is denied on child processes → false “dead” reads. `OpenProcess` failure is **NULL (0)**, not `INVALID_HANDLE_VALUE` — must treat both as failure or dead PIDs look “alive” via `GetExitCodeProcess(null)`. On open failure: `ERROR_INVALID_PARAMETER` = PID gone (dead); `ERROR_ACCESS_DENIED` = treat as alive (protected process).
 
-**Windows detached console spawn** — Never use `CREATE_BREAKAWAY_FROM_JOB`. Cargo/Tauri/dev hosts put the process in a job that denies breakaway → immediate `Access is denied (os error 5)`. Detached visible windows: `Start-Process` (or `cmd start "" …`) via a `CREATE_NO_WINDOW` helper — see `engine::spawn_nobsproof_cmd_window` and `distribution::spawn_detached_chain`. `CREATE_NEW_CONSOLE` alone is last resort; breakaway is never OK. Pack/ship do not need gsudo/admin.
+**Windows detached console spawn** — Never use `CREATE_BREAKAWAY_FROM_JOB`. Cargo/Tauri/dev hosts put the process in a job that denies breakaway → immediate `Access is denied (os error 5)`. Detached visible windows: `Start-Process` (or `cmd start "" …`) via a `CREATE_NO_WINDOW` helper — see `engine::spawn_nobsproof_cmd_window` and `distribution::spawn_detached_plan`. `CREATE_NEW_CONSOLE` alone is last resort; breakaway is never OK. Pack/ship do not need gsudo/admin.
 
 **Windows paths with spaces** — Users may install anywhere (incl. `"C:\AI-MASTER\Blackwell OPS portable"`). NSIS default folder is `Blackwell-Ops` (no space) for hygiene only — **do not** require space-free paths. Symptom of broken quoting: `'C:\…\Blackwell' is not recognized as an internal or external command` at Foundry cmake configure.
 
@@ -338,7 +344,7 @@ host commit too, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**.
 - **Command lines embedded in `.cmd`** — Prefer `Command::new(exe).args([...])` (CreateProcess argv — spaces OK). When a full line must run inside a batch (Foundry cmake, NoBSproof, session `LAUNCH_CMD`), quote every token: `engine_utils::format_cmd_line` / `format_cmd_arg` / `format_debug_executable`. Never `binary.display()` + `args.join(" ")` without quoting. Inside batches: `call "vsdevcmd"`, `set "PATH=…"`, cmake `-B "…" -S "…"` already.
 - **Safe patterns already** — Engine/FIT/GGUF spawn via argv; explorer `/select,` + path as separate args; 7z `-o{dest}` as one argv; GPU smi/inspector via `quote_exe` in priv batch; PS `Start-Process -ArgumentList @(...)` with single-quoted paths.
 
-**Release asset naming** — `CORE_*` = App `.7z`, Full NSIS Setup, optional `CORE_ggml-master-{profile}.7z`. `PLUGIN_*` = optional engine packs. **Pack Full** stages CORE only (App + Setup with Master) — never bulk PLUGIN packs. Plugins via explicit Pack+Ship per provider. Ship full filters to CORE assets. Client accepts legacy unprefixed names.
+**Release channels (frozen)** — `docs/RELEASE-CHANNELS.md` is the authority: rolling channel tags (`full`, `app`, `engines`, `toolchain`, `link`, `link-setup`), class-prefixed asset names (`FULL_SETUP_`, `APP_UPDATE_`, `ENGINE_`, toolchain names unchanged), and a `channel.json` manifest per channel as the **only** client interface — the client never parses filenames or scans release lists. No per-version releases, no `CORE_`/`PLUGIN_` prefixes, no `setup`/`app` name heuristics. Machine table: `src-tauri/release-channels.json` (client embeds it, packer reads it; self-check runs in `majestic -Mode check`). **Engines are independent of app builds**: `engines/channel.json` is authoritative for what is offered and verified, and `majestic:pack:engines` → `majestic:ship:engines` (or Pack+Ship `<profile>`) publishes one pack without touching the app; the embedded `engines.json` is only the build-time record and offline/repair fallback. Engine packs carry llama's readable version plus the machine build id (`ENGINE_…-0.8.0-dev-b12017-5047748f.7z`), and the manifest keeps both (`version`, `build`). Rollback = repoint `channel.json` and upload only that file. GitHub immutable releases must stay OFF.
 
 **App Pack/Ship identity** — DISTRIBUTION Pack+Ship must never publish a DEV PE under a REL tag. Pack scrubbs `TAURI_CONFIG`, forces `cargo clean -p blackwell-ops --release`, builds with default `tauri.conf.json` only (never merge `tauri.conf.dev.json`), then asserts PE ProductName=`Blackwell Ops`, FileVersion=conf version, no `.app.dev`/`:1420`. Ship re-asserts App `.7z` contents before `gh release`. Header semver uses runtime `package_info` (`get_app_package_version`), not Vite `__TAURI_VERSION__` alone.
 
@@ -349,6 +355,12 @@ host commit too, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**.
 ## Foundry paths
 
 **Foundry `work/` CMake cache** — Retained between builds for all users when the configure fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`). Fingerprint miss, configure failure (cold path), or CLEAR CACHE wipes the tree. `foundry/artifacts/.../Release/` is the only durable **runtime** binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
+
+**No binary mirror** — `src-tauri/runtime/<provider>/config/` holds factory templates only; engine
+binaries are never copied into `src-tauri/runtime/`. DEV sync, `pack-provider-runtime.ps1` and
+`prepare-release-runtime.ps1` read `foundry/artifacts/<provider>/<profile>/Release/` directly
+(artifacts are durable; a rebuild replaces only the profile it built). Do not reintroduce a
+copy step — it is what made the panel show an old build while Foundry had a new one.
 
 **Foundry batch spawn** — Configure/build write `_build_cfg_*.bat` / `_build_run_*.bat` under `work/` then run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail). Do not spawn those batches with plain `cmd /c path` — install dirs with spaces fail before cmake starts (see **Windows paths with spaces** above).
 
@@ -527,7 +539,7 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 ## Tests
 
 **`npm run check` is the one command** — `css:audit` → `css:minify` → `tsc --noEmit` →
-vitest (108) → `cargo test` (319, 1 ignored), about 15 s warm. Run it instead of the parts
+vitest → `cargo test`, about 15 s warm. Run it instead of the parts
 separately. `css:minify` replays the lightningcss pass `vite build` uses, so the `*/`-inside-a
 comment trap fails here instead of in a release build. `lint:dead` (knip) and
 `lint:dead:rust` (cargo machete) are deliberately NOT in it: they report real but accepted

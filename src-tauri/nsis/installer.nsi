@@ -825,6 +825,31 @@ Section Uninstall
   {{/each}}
 
 
+  ; Uninstall policy (docs/UNINSTALL.md).
+  ; Vitals kept by default: config\*.json, config\cache\, config\external-tools\pi-home\,
+  ; config\automation\ and model files. Everything below is installer-owned or re-downloadable.
+  ; Updates run this uninstaller with /UPDATE and must never touch user data.
+  ${If} $UpdateMode <> 1
+  RMDir /r "$INSTDIR\runtime"
+  RMDir /r "$INSTDIR\bin"
+  RMDir /r "$INSTDIR\pi-ext"
+  RMDir /r "$INSTDIR\foundry\patches"
+  RMDir /r "$INSTDIR\tmp"
+  RMDir /r "$INSTDIR\.toolchain-download"
+  RMDir /r "$INSTDIR\toolchain"
+  RMDir /r "$INSTDIR\foundry\engines"
+  RMDir /r "$INSTDIR\foundry\artifacts"
+  RMDir /r "$INSTDIR\runtime-catalog"
+  RMDir /r "$INSTDIR\external-tools\pi"
+  RMDir /r "$INSTDIR\config\logs"
+  RMDir /r "$INSTDIR\config\nsys"
+  RMDir /r "$INSTDIR\config\bench"
+  RMDir /r "$INSTDIR\config\engine-locks"
+  RMDir /r "$INSTDIR\config\remote"
+  RMDir "$INSTDIR\foundry"
+  RMDir "$INSTDIR\external-tools"
+  ${EndIf}
+
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
 
@@ -879,8 +904,8 @@ Section Uninstall
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
   ${EndIf}
 
-  ; Delete app data if the checkbox is selected
-  ; and if not updating
+  ; Delete settings + app data if the checkbox is selected (and if not updating).
+  ; Vitals are only removed here; model files are never touched.
   ${If} $DeleteAppDataCheckboxState = 1
   ${AndIf} $UpdateMode <> 1
     ; Clear the install location $INSTDIR from registry
@@ -893,8 +918,9 @@ Section Uninstall
     DeleteRegKey /ifempty HKCU "${MANUKEY}"
 
     SetShellVarContext current
-    RmDir /r "$APPDATA\${BUNDLEID}"
-    RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
+    RMDir /r "$INSTDIR\config"
+    RMDir /r "$APPDATA\${BUNDLEID}"
+    RMDir /r "$LOCALAPPDATA\${BUNDLEID}"
   ${EndIf}
 
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
