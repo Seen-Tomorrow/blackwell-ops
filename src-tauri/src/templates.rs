@@ -902,6 +902,14 @@ impl ProviderTemplate {
             ]);
         }
 
+        // Desktop default: llama-server performs an empty warmup pass on load unless
+        // told otherwise (`--warmup, --no-warmup`, default enabled). We skip it — the
+        // first real request pays the same cost, and boot stays predictable. An
+        // explicit user/custom flag wins over this default.
+        if !args.iter().any(|a| a == "--warmup" || a == "--no-warmup") {
+            args.push("--no-warmup".into());
+        }
+
         finalize_launch_cli_args(&mut args);
 
         #[cfg(debug_assertions)]
@@ -1335,6 +1343,46 @@ mod build_cmd_tests {
         let joined = args.join(" ");
         assert!(joined.contains("--ctx-size"));
         assert!(!joined.contains("--batch-size"));
+    }
+
+    /// llama-server warms up on load unless told not to. Every launch gets
+    /// `--no-warmup` by default; an explicit warmup flag from the user wins.
+    #[test]
+    fn warmup_is_disabled_by_default_without_duplicating_flags() {
+        let mut ctx = arg_param("ctx", "--ctx-size", "32768");
+        ctx.order = 0;
+
+        let config = EngineConfig {
+            alias: "test".to_string(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: HashMap::new(),
+        };
+        let joined = sample_template().build_command(&config, "", &[ctx.clone()]).join(" ");
+        assert!(joined.contains("--no-warmup"), "{joined}");
+        assert_eq!(
+            joined.matches("--no-warmup").count(),
+            1,
+            "warmup flag must appear exactly once: {joined}"
+        );
+
+        // Explicit user flags are authoritative — no second, conflicting flag.
+        let mut extra = HashMap::new();
+        extra.insert("ctx".to_string(), serde_json::json!("32768"));
+        extra.insert("__test_args_add".to_string(), serde_json::json!(["--warmup"]));
+        let config = EngineConfig {
+            alias: "test".to_string(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+        let joined = sample_template().build_command(&config, "", &[ctx]).join(" ");
+        assert!(joined.contains("--warmup"), "{joined}");
+        assert!(!joined.contains("--no-warmup"), "{joined}");
     }
 
     /// A saved placement has to reach the CLI. `tensor_split` is a `text` row the panel cannot
