@@ -162,6 +162,53 @@
     inset 0 1px 0 var(--fixed-white-a12);
 }
 
+/* RUNTIME MODE options — CUDA chip, mode name, and the toolkit version it runs. */
+.runtime-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-align: left;
+}
+
+.runtime-mode__mark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
+  transition: color 0.18s ease, filter 0.18s ease;
+}
+
+.runtime-mode__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  line-height: 1.1;
+}
+
+.runtime-mode__name {
+  font-size: var(--type-tiny);
+  letter-spacing: 0.16em;
+}
+
+.runtime-mode__cuda {
+  color: color-mix(in srgb, var(--theme-text-muted) 78%, transparent);
+  font-size: var(--type-micro);
+  letter-spacing: 0.1em;
+}
+
+.segment-switch__option:hover .runtime-mode__mark {
+  color: var(--theme-text);
+}
+
+.segment-switch__option--active .runtime-mode__mark {
+  color: var(--theme-accent-bright);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--theme-accent-glow) 70%, transparent));
+}
+
+.segment-switch__option--active .runtime-mode__cuda {
+  color: color-mix(in srgb, var(--theme-accent-bright) 80%, transparent);
+}
+
 
 /* ── GPU assign inject panel (above bezel) — full-width chrome row ─── */
 .gpu-assign-panel {

@@ -5,6 +5,7 @@ import {
   type Env,
 } from "../lib/foundry_constants";
 import ProviderProfileSegment from "./ProviderProfileSegment";
+import CudaMark from "./CudaMark";
 
 /**
  * Provider + binary-profile selector bar above the config toolbar. Pure
@@ -46,7 +47,15 @@ export default function EngineProviderProfileBar(props: EngineProviderProfileBar
       title: `${meta.label} — CUDA ${meta.cuda}\n${meta.vs}${
         building ? "\n(build in progress)" : hasBuild ? "" : "\n(not yet built or mirrored)"
       }`,
-      label: meta.label,
+      label: (
+        <span className="runtime-mode">
+          <CudaMark className="runtime-mode__mark" />
+          <span className="runtime-mode__text">
+            <span className="runtime-mode__name">{meta.label}</span>
+            <span className="runtime-mode__cuda">CUDA {meta.cuda}</span>
+          </span>
+        </span>
+      ),
     };
   });
 
