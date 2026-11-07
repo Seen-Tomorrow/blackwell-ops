@@ -162,51 +162,58 @@
     inset 0 1px 0 var(--fixed-white-a12);
 }
 
-/* RUNTIME MODE options — CUDA chip, mode name, and the toolkit version it runs. */
+/* RUNTIME MODE options — one line: mode + the toolkit version it runs. */
 .runtime-mode {
   display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
+  align-items: baseline;
+  gap: 0.5rem;
   text-align: left;
-}
-
-.runtime-mode__mark {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
-  transition: color 0.18s ease, filter 0.18s ease;
-}
-
-.runtime-mode__text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.08rem;
-  line-height: 1.1;
 }
 
 .runtime-mode__name {
   font-size: var(--type-tiny);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
 }
 
 .runtime-mode__cuda {
-  color: color-mix(in srgb, var(--theme-text-muted) 78%, transparent);
   font-size: var(--type-micro);
-  letter-spacing: 0.1em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
-.segment-switch__option:hover .runtime-mode__mark {
-  color: var(--theme-text);
+/* Wider than a bare two-label switch: the version is part of the option now. */
+.runtime-mode-switch .segment-switch__option {
+  padding-inline: 1.5rem;
 }
 
-.segment-switch__option--active .runtime-mode__mark {
-  color: var(--theme-accent-bright);
-  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--theme-accent-glow) 70%, transparent));
+/* Circuit-board texture for the RUNTIME MODE half only. Low-contrast traces
+   fade out under the label so the text never sits on a line. */
+.config-provider-profile-bar__half--profile {
+  position: relative;
+  isolation: isolate;
 }
 
-.segment-switch__option--active .runtime-mode__cuda {
-  color: color-mix(in srgb, var(--theme-accent-bright) 80%, transparent);
+.runtime-mode-traces {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  color: var(--theme-accent);
+  opacity: 0.3;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 30%, #000 100%);
+}
+
+/* The draw is stretched to the half's width; keep hairlines 1px either way. */
+.runtime-mode-traces path,
+.runtime-mode-traces circle {
+  vector-effect: non-scaling-stroke;
+}
+
+.config-provider-profile-bar__half--profile > .config-provider-profile-bar__label,
+.config-provider-profile-bar__half--profile > .config-provider-profile-bar__control {
+  position: relative;
+  z-index: 1;
 }
 
 
