@@ -94,7 +94,6 @@ interface ModelCardProps {
   hfUpdateKind?: "header" | "full" | "current" | null;
   hfUpdateBusy?: boolean;
   onApplyHfUpdate?: () => void;
-  fitScanBadge?: string | null;
   fitScanAvailable?: boolean;
   needsFitScan?: boolean;
   fitScanning?: boolean;
@@ -107,6 +106,12 @@ interface ModelCardProps {
   checkVerdict?: CatalogUpdateEntry | null;
   /** Click-to-dismiss the verdict-only bubble (UP TO DATE / NOT PAIRED). */
   onBubbleDismiss?: () => void;
+  /** Per-card Hub check — replaces the old catalog-wide CHECK UPDATE chip. */
+  onCheckUpdate?: () => void;
+  /** This card's check is running (spinner). */
+  checkBusy?: boolean;
+  /** Another card's check is running — keep the action disabled, no spinner. */
+  checkDisabled?: boolean;
 }
 
 export default function ModelCard({
@@ -118,7 +123,6 @@ export default function ModelCard({
   hfUpdateKind = null,
   hfUpdateBusy = false,
   onApplyHfUpdate,
-  fitScanBadge = null,
   fitScanAvailable = false,
   needsFitScan = false,
   fitScanning = false,
@@ -129,6 +133,9 @@ export default function ModelCard({
   seatRole = null,
   checkVerdict = null,
   onBubbleDismiss,
+  onCheckUpdate,
+  checkBusy = false,
+  checkDisabled = false,
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
@@ -158,20 +165,10 @@ export default function ModelCard({
     archBadge = resolved.archBadge;
   }
 
-  const hasMultimodal = model.vision;
-
   const isNvfp = quantBadge && (quantBadge.toLowerCase().includes('nvfp4') || quantBadge.toLowerCase().includes('mxfp4'));
   const quantBadgeClass = isNvfp
     ? 'model-card-quant-badge model-card-quant-badge--nvfp mcard-quant--nvfp border'
     : 'model-card-quant-badge model-card-quant-badge--cyan mcard-quant--cyan border';
-
-  const metaTip = [
-    model.metadata?.architecture ? `arch ${model.metadata.architecture}` : null,
-    model.metadata?.n_ctx_train ? `KV ${model.metadata.n_ctx_train.toLocaleString()}` : null,
-    fitScanBadge || null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
   const dateLabel = model.metadata?.file_created
     ? new Date(model.metadata.file_created * 1000).toLocaleDateString("en-US", {
@@ -203,7 +200,7 @@ export default function ModelCard({
   return (
     <div
       onClick={() => onSelect(model)}
-      className={`relative cursor-pointer rounded-sm px-2.5 py-2 model-catalog-card ${
+      className={`relative cursor-pointer rounded-sm px-2.5 py-1.5 model-catalog-card ${
         isDraftOnly ? "model-catalog-card--draft " : ""
       }${
         isSelected
@@ -249,29 +246,28 @@ export default function ModelCard({
       {isDraftOnly && (
         <div className="model-card-draft-hatch" aria-hidden="true" />
       )}
-      {/* Reserved one-line row. It is always there (so nothing moves when it appears) and
-          only shows the library path while the card is hovered. */}
-      <div className="model-card-path-row">
-        {model.sourcePathLabel && (
-          <span
-            className="model-card-path-hover type-micro font-mono"
-            title={`Double-click to open in Explorer:\n${model.path}`}
-            onDoubleClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void revealPathInExplorer(model.path);
-            }}
-          >
-            {model.sourcePathLabel}
-          </span>
-        )}
-      </div>
-
-      {/* Name leads, star alone on the right. Author sits beneath it. */}
-      <div className="flex items-start justify-between gap-1.5 mb-0.5">
-        <span className="type-md font-mono block truncate model-card-name min-w-0" title={model.name}>
+      {/* Name row: the name leads; seat + star ride on the right. The old hover
+          path row is gone — the path lives in the title, double-click opens it. */}
+      <div
+        className="model-card-head"
+        title={`${model.sourcePathLabel ? `${model.sourcePathLabel} — ` : ""}${model.path}\nDouble-click to open in Explorer`}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void revealPathInExplorer(model.path);
+        }}
+      >
+        <span className="type-md font-mono block truncate model-card-name min-w-0">
           {model.name}
         </span>
+        {seatRole && (
+          <span
+            className={`model-card-seat model-card-seat--${seatRole} type-micro font-mono px-1 py-0.5 rounded-sm`}
+            title={`Sticky seat: ${CATALOG_SEAT_LABEL[seatRole]}`}
+          >
+            {CATALOG_SEAT_LABEL[seatRole]}
+          </span>
+        )}
         {onTogglePin && (
           <button
             type="button"
@@ -291,17 +287,43 @@ export default function ModelCard({
         )}
       </div>
 
-      {/* Author line; seat + HF-update chips live here so the name row keeps only the star. */}
-      <div className="flex items-center justify-between gap-1.5 mb-1 min-w-0">
-        <span className="type-tiny font-mono mcard-author truncate min-w-0">{model.author}</span>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {seatRole && (
-            <span
-              className={`model-card-seat model-card-seat--${seatRole} type-micro font-mono px-1 py-0.5 rounded-sm`}
-              title={`Sticky seat: ${CATALOG_SEAT_LABEL[seatRole]}`}
+      {/* One meta line: author · params · arch · draft. Quant stays in the foot. */}
+      <div className="model-card-sub">
+        {model.author && <span className="mcard-author truncate">{model.author}</span>}
+        {paramsNum && <span className="mcard-params shrink-0">{paramsNum}</span>}
+        {archBadge && (
+          <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">
+            {archBadge}
+          </span>
+        )}
+        {draftBadge && !isDraftOnly && (
+          <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">
+            {draftBadge}
+          </span>
+        )}
+      </div>
+
+      {/* Foot: size · date, then per-model actions + quant on the right. */}
+      <div className="model-card-footer mcard-footer">
+        <div className="model-card-meta">
+          <span className="model-card-size font-mono mcard-meta-mut">{model.size_str}</span>
+          <span className="model-card-date font-mono mcard-date">{dateLabel}</span>
+        </div>
+        <div className="model-card-badges">
+          {onCheckUpdate && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCheckUpdate();
+              }}
+              disabled={checkBusy || checkDisabled}
+              className="mcard-check"
+              title="Check this model against Hugging Face"
+              aria-label={`Check ${model.name} for updates`}
             >
-              {CATALOG_SEAT_LABEL[seatRole]}
-            </span>
+              {checkBusy ? "…" : "\u21bb"}
+            </button>
           )}
           {hfUpdateKind === "header" && (
             <button
@@ -331,82 +353,32 @@ export default function ModelCard({
               {hfUpdateBusy ? "QUEUING…" : "FULL"}
             </button>
           )}
-        </div>
-      </div>
-
-      {(paramsNum || hasMultimodal || hasBakedMtp(model) || draftBadge) && (
-        <div className="flex items-center gap-1 mt-0.5 min-w-0">
-          {paramsNum && (
-            <span className="type-tiny font-mono mcard-params shrink-0">{paramsNum}</span>
+          {fitScanAvailable && needsFitScan && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onFitScanModel?.(model);
+              }}
+              disabled={fitScanning}
+              className={`model-card-fit-scan type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
+                fitScanning ? "mcard-fit-scan--scanning border" : "mcard-fit-scan border"
+              }`}
+              title="Run full VRAM fit probe (same 28 points as library FIT scan)"
+            >
+              {fitScanning
+                ? fitScanActiveLabel
+                  ? `⠋ FIT ${fitScanActiveLabel}`
+                  : "⠋ FIT…"
+                : "FIT SCAN"}
+            </button>
           )}
-          {archBadge && (
-            <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">{archBadge}</span>
-          )}
-          {draftBadge && !isDraftOnly && (
-            <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">
+          {draftBadge && isDraftOnly && (
+            <span className="model-card-draft-badge type-micro font-mono px-1 py-0.5 rounded-sm">
               {draftBadge}
             </span>
           )}
-        </div>
-      )}
-
-      {/* Footer — size/date (left) | stacked badges (right). Arch/KV/FIT in hover tip. */}
-      {hasMetadata ? (
-        <div className="model-card-footer mcard-footer mt-1 pt-1 border-t">
-          <div
-            className={`model-card-meta${metaTip ? " model-card-meta--tip" : ""}`}
-            {...(metaTip ? { "data-tip": metaTip } : {})}
-          >
-            <span className="model-card-size font-mono mcard-meta-mut">{model.size_str}</span>
-            <span className="model-card-date font-mono mcard-date">{dateLabel}</span>
-          </div>
-          <div className="model-card-badges">
-            {fitScanAvailable && needsFitScan && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFitScanModel?.(model);
-                }}
-                disabled={fitScanning}
-                className={`model-card-fit-scan type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
-                  fitScanning
-                    ? "mcard-fit-scan--scanning border"
-                    : "mcard-fit-scan border"
-                }`}
-                title="Run full VRAM fit probe (same 28 points as library FIT scan)"
-              >
-                {fitScanning
-                  ? fitScanActiveLabel
-                    ? `⠋ FIT ${fitScanActiveLabel}`
-                    : "⠋ FIT…"
-                  : "FIT SCAN"}
-              </button>
-            )}
-            {draftBadge && isDraftOnly && (
-              <span className="model-card-draft-badge type-micro font-mono px-1 py-0.5 rounded-sm">
-                {draftBadge}
-              </span>
-            )}
-            {quantBadge && (
-              <span className={`type-tiny font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
-                {quantBadge}
-              </span>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="model-card-footer mcard-footer mt-1 pt-1 border-t">
-          <div className="model-card-meta">
-            <span className="model-card-size font-mono mcard-meta-mut">{model.size_str}</span>
-            <span className="model-card-date font-mono mcard-date">{dateLabel}</span>
-          </div>
-          <div className="model-card-badges">
-            {draftBadge && (
-              <span className="model-card-draft-badge type-micro font-mono px-1 py-0.5 rounded-sm">
-                {draftBadge}
-              </span>
-            )}
+          {!hasMetadata && (
             <button
               type="button"
               onClick={(e) => {
@@ -415,16 +387,19 @@ export default function ModelCard({
               }}
               disabled={isScanning || scanningPath !== null}
               className={`type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
-                isScanning
-                  ? "mcard-scan--scanning border"
-                  : "mcard-scan border"
+                isScanning ? "mcard-scan--scanning border" : "mcard-scan border"
               }`}
             >
               {isScanning ? "⠋ SCANNING..." : "⚠ SCAN"}
             </button>
-          </div>
+          )}
+          {quantBadge && (
+            <span className={`type-tiny font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
+              {quantBadge}
+            </span>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -50,11 +50,7 @@ const sortLabels: Record<string, string> = {
   size_str: "SIZE",
   date: "DATE",
 };
-/** Active chip names the order on screen, so "SIZE ▲" never has to be decoded. */
-const sortOrderLabels: Partial<Record<string, Record<"asc" | "desc", string>>> = {
-  size_str: { asc: "SMALLEST", desc: "BIGGEST" },
-  date: { asc: "OLDEST", desc: "NEWEST" },
-};
+
 
 const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["regular", "draft", "all"];
 
@@ -157,7 +153,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     catalogModels: catalogModelsRaw, runningModelPaths,
     handleScanModel, handleScanAll, handleCancelScan,
     handleDeleteModel, handleRenameModel,
-    fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
+    fitScanAvailable, isFitScanning, getFitScanActiveLabel, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount,
     catalogPins, catalogRecents, catalogSeats, activeSeatSet,
     handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
@@ -610,74 +606,47 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     </button>
   );
 
-  // ── Filter/sort bar — sits above the card list (between favorites and list). ──
+  // ── Sort + tools bar — one compact row above the list. Per-model checks live
+  // on the cards; only library-wide actions stay here. ──
   const renderToolsBar = () => (
     <div className="catalog-list-panel__chrome-tools">
       <div className="catalog-chrome-row catalog-chrome-row--filters">
-        <div className="catalog-sort-actions">
+        <div className="catalog-sort-compact">
+          <span className="catalog-sort-compact__label">SORT</span>
+          <select
+            className="catalog-sort-select"
+            value={sortField}
+            onChange={(e) => handleSort(e.target.value as SortField)}
+            aria-label="Sort models"
+          >
+            {CATALOG_SORT_FIELDS.map((field) => (
+              <option key={field} value={field}>
+                {sortLabels[field] ?? field}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="catalog-sort-dir"
+            onClick={() => handleSort(sortField)}
+            title="Flip sort direction"
+            aria-label="Flip sort direction"
+          >
+            {sortDirection === "asc" ? "\u2191" : "\u2193"}
+          </button>
           {fitScanningCount > 0 && (
             <span className="catalog-scan-status type-tiny font-mono cat-mut whitespace-nowrap">
               FIT {fitScanningCount}
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              const path = catalogSelectedModel?.path ?? panelActiveModel?.path;
-              if (path) onCheckModelUpdate?.(path);
-            }}
-            disabled={catalogUpdatesBusy || !(catalogSelectedModel || panelActiveModel)}
-            className="catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors disabled:opacity-40"
-            title="Check this model against Hugging Face (one repo tree + one hash compare)"
-          >
-            {catalogUpdatesBusy ? "CHECKING…" : "CHECK UPDATE"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setUpdatesOnly((v) => !v)}
-            className={`catalog-cycle-btn value-chip type-micro font-mono px-1.5 py-0 uppercase rounded-sm transition-colors catalog-tools-hidden ${
-              updatesOnly ? "value-chip-active" : ""
-            }`}
-            title="Show only models with a Hub update"
-          >
-            UPDATES{updateByPath.size > 0 ? ` ${updateByPath.size}` : ""}
-          </button>
         </div>
         <div className="catalog-tools-right">
           {renderScanMetaControl()}
           {renderEditControl()}
         </div>
       </div>
-      <div className="catalog-chrome-row catalog-chrome-row--sort">
-        <div className="catalog-sort-group">
-          {CATALOG_SORT_FIELDS.map((field) => {
-            const active = sortField === field;
-            // Big/small and new/old say the direction themselves; only fields
-            // without an order word keep the arrow.
-            const orderWord = active ? sortOrderLabels[field]?.[sortDirection] : undefined;
-            return (
-              <button
-                key={field}
-                onClick={() => handleSort(field)}
-                aria-pressed={active}
-                className={`catalog-sort-btn type-tiny font-mono px-1.5 py-0.5 uppercase tracking-wider transition-colors rounded-sm ${
-                  active ? "cat-sort-btn--active" : "cat-sort-btn"
-                }`}
-              >
-                <span>{orderWord ?? sortLabels[field] ?? field.replace("_", " ")}</span>
-                {!orderWord && (
-                  <span className="catalog-sort-arrow" aria-hidden="true">
-                    {active ? (sortDirection === "asc" ? "▲" : "▼") : ""}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
-
 
 
   return (
@@ -983,7 +952,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-2">
+              <div className="catalog-list-rows">
                 {catalogModels.map((model) => {
                   const isSelected = catalogSelectedModel?.path === model.path;
                   return (
@@ -1012,7 +981,21 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                           else void applyHeaderUpdate(row);
                         }}
                         onBubbleDismiss={() => onDismissCheckVerdict?.(model.path)}
-                        fitScanBadge={getFitScanBadge(model)}
+                        onCheckUpdate={
+                          onCheckModelUpdate
+                            ? () => onCheckModelUpdate(model.path)
+                            : undefined
+                        }
+                        checkBusy={
+                          catalogUpdatesBusy
+                          && (catalogSelectedModel?.path === model.path
+                            || panelActiveModel?.path === model.path)
+                        }
+                        checkDisabled={
+                          catalogUpdatesBusy
+                          && catalogSelectedModel?.path !== model.path
+                          && panelActiveModel?.path !== model.path
+                        }
                         fitScanAvailable={fitScanAvailable}
                         needsFitScan={modelNeedsFitScan(model)}
                         fitScanning={isFitScanning(model.path)}
