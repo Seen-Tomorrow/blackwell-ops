@@ -31,6 +31,9 @@ import {
   useLogStoreRevision,
 } from "../lib/logSlotStore";
 
+import TabPageHeader from "./TabPageHeader";
+import type { LogSlotMeta } from "./EngineLogsSwitcher";
+
 const LogLineText = lazy(() => import("./LogLineText"));
 const EngineLogsSwitcher = lazy(() => import("./EngineLogsSwitcher"));
 
@@ -46,12 +49,25 @@ const RENDER_WINDOW = 500;
  * Mirrors the App state it replaces: session-only, not persisted across restarts.
  * LogsPanel unmounts when the LOGS tab closes, so no hook could hold this.
  */
-let lastActiveLogSlot: number | "all" = "all";
+let lastActiveLogSlot: number | "all" | null = null;
+
+/** First slot that has logs (or an active engine), else ALL. */
+function firstLogSlot(stack: StackEntry[]): number | "all" {
+  const ids = [
+    ...getLogSlotKeys(),
+    ...getActiveStackSlots(stack).map((s) => s.idx),
+  ];
+  return ids.length > 0 ? Math.min(...ids) : "all";
+}
 
 export default function LogsPanel({ stack }: { stack: StackEntry[] }) {
   const revision = useLogStoreRevision();
 
-  const [activeLogSlot, setActiveLogSlot] = useState<number | "all">(lastActiveLogSlot);
+  // Default to the first engine, not ALL: a 64-engine fleet must not render every
+  // buffer on open. An explicit ALL choice is remembered across tab switches.
+  const [activeLogSlot, setActiveLogSlot] = useState<number | "all">(
+    () => lastActiveLogSlot ?? firstLogSlot(stack),
+  );
   const [logSearchBySlot, setLogSearchBySlot] = useState<Record<number, string>>(() => loadLogSearchBySlot());
   const [logsAnsiEnabled, setLogsAnsiEnabled] = useState(() => loadLogsAnsiEnabled());
 
@@ -123,6 +139,36 @@ export default function LogsPanel({ stack }: { stack: StackEntry[] }) {
 
   const slotSummaries = useMemo(() => getSlotLogSummaries(), [revision]);
 
+  /** Rail rows — every slot with a buffer or an active engine on it. */
+  const logSlots = useMemo<LogSlotMeta[]>(() => {
+    const ids = new Set<number>();
+    for (const slot of slotSummaries.keys()) ids.add(slot);
+    for (const entry of getActiveStackSlots(stack)) ids.add(entry.idx);
+    return Array.from(ids)
+      .sort((a, b) => a - b)
+      .map((slot) => {
+        const summary = slotSummaries.get(slot);
+        const stackEntry = stack.find((s) => s.idx === slot);
+        const status = stackEntry?.status;
+        return {
+          slot,
+          label: stackEntry?.alias || summary?.firstAlias || `SLOT ${slot + 1}`,
+          lineCount: summary?.lineCount ?? 0,
+          status,
+          isRunning: status === "RUNNING" || status === "LOADING",
+          hasSearch: Boolean(logSearchBySlot[slot]?.trim()),
+        };
+      });
+  }, [slotSummaries, stack, logSearchBySlot]);
+
+  const activeEngineCount = getActiveStackSlots(stack).length;
+  const activeSlotMeta =
+    activeLogSlot === "all" ? null : logSlots.find((s) => s.slot === activeLogSlot) ?? null;
+  const activeSlotLabel =
+    activeLogSlot === "all"
+      ? "ALL LOGS"
+      : activeSlotMeta?.label ?? `SLOT ${activeLogSlot + 1}`;
+
   const dropSlotSearchEntries = useCallback((slots: number[]) => {
     const persisted = loadLogSearchBySlot();
     let touched = false;
@@ -161,7 +207,7 @@ export default function LogsPanel({ stack }: { stack: StackEntry[] }) {
       // index would otherwise reopen this panel with a search still applied to it.
       dropSlotSearchEntries(gone);
       setActiveLogSlot((prev) =>
-        typeof prev === "number" && gone.includes(prev) ? "all" : prev,
+        typeof prev === "number" && gone.includes(prev) ? (keys[0] ?? "all") : prev,
       );
     }
     if (fresh !== undefined) setActiveLogSlot(fresh);
@@ -198,6 +244,10 @@ export default function LogsPanel({ stack }: { stack: StackEntry[] }) {
     return logSearchBySlot[logSearchKey]?.trim() ?? "";
   }, [activeLogSlot, logSearchKey, logSearchBySlot]);
 
+  const searchAll = activeLogSlot === "all";
+  const searchValue = logSearchBySlot[logSearchKey] ?? "";
+  const searchAvailable = searchAll || Boolean(activeSlotMeta);
+
   // Auto-scroll to the bottom on new lines, unless the user scrolled up.
   const prevLineCountRef = useRef(0);
   useEffect(() => {
@@ -225,77 +275,131 @@ export default function LogsPanel({ stack }: { stack: StackEntry[] }) {
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden" data-engine-logs>
-      <Suspense fallback={<TabFallback />}>
-        <EngineLogsSwitcher
-          activeLogSlot={activeLogSlot}
-          onActiveLogSlotChange={setActiveLogSlot}
-          slotSummaries={slotSummaries}
-          stack={stack}
-          logSearchBySlot={logSearchBySlot}
-          onSlotLogSearchChange={setSlotLogSearch}
-          onClearSlotLogSearch={clearSlotLogSearch}
-          onLogSearchStep={stepLogSearchHit}
-          onClearSlotLogs={handleClearSlotLogs}
-          onClearAllLogs={handleClearAllLogs}
-          ansiEnabled={logsAnsiEnabled}
-          onAnsiEnabledChange={(enabled) => {
-            setLogsAnsiEnabled(enabled);
-            saveLogsAnsiEnabled(enabled);
-          }}
-        />
-      </Suspense>
-      <div
-        ref={logsScrollRef}
-        className="engine-logs-scroll theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0 mx-4 mb-4"
-        onScroll={handleLogsScroll}
-      >
-        {!hasAnySlot && getActiveStackSlots(stack).length === 0 ? (
-          <p className="shell-log-empty type-body font-mono italic">NO LOGS YET — LAUNCH AN ENGINE TO SEE OUTPUT</p>
-        ) : totalLogLines === 0 ? (
-          <p className="shell-log-empty type-body font-mono italic">LOG BUFFER CLEARED — WAITING FOR OUTPUT</p>
-        ) : slotKeys.length === 0 ? (
-          <p className="shell-log-empty type-body font-mono italic">NO LOGS FOR SELECTED SLOT</p>
-        ) : (
-          slotKeys.map((slot) => {
-            const entries = flatLogs.get(slot) ?? [];
-            const stackEntry = stack.find((s) => s.idx === slot);
-            const alias = stackEntry?.alias || entries[0]?.alias || `SLOT ${slot}`;
-            const lineQuery =
-              activeLogSlot === "all"
-                ? logSearchBySlot[-1] ?? ""
-                : logSearchBySlot[activeLogSlot as number] ?? "";
-            return (
-              <div key={`slot-${slot}`} className="space-y-0.5">
-                {activeLogSlot === "all" && (
-                  <div className="mb-2 mt-2 first:mt-0">
-                    <div className="shell-log-header type-body font-mono border-b pb-1">
-                      {alias} <span className="shell-log-count">({entries.length} lines)</span>
-                    </div>
-                  </div>
-                )}
-                {entries.map((entry) => (
-                  <p
-                    // Keyed on the store's monotonic seq, not the index: once a slot
-                    // passes the render window the slice slides from the front, so
-                    // index keys stop identifying lines and every line in the window
-                    // re-ran ANSI conversion on every batch.
-                    key={`${slot}:${entry.seq}`}
-                    className="shell-log-line type-body font-mono leading-relaxed break-all"
-                  >
-                    {activeLogSlot === "all" && <span className="shell-log-alias">[{entry.alias}] </span>}
-                    <Suspense fallback={<span>{entry.text}</span>}>
-                      <LogLineText
-                        text={entry.text}
-                        highlightQuery={lineQuery}
-                        ansiEnabled={logsAnsiEnabled}
-                      />
-                    </Suspense>
-                  </p>
-                ))}
+      <TabPageHeader
+        title="ENGINE LOGS"
+        meta={
+          <span className="engine-logs-switcher__count">
+            {logSlots.length} log slot{logSlots.length === 1 ? "" : "s"}
+            {activeEngineCount > 0 ? ` · ${activeEngineCount} active` : ""}
+          </span>
+        }
+      />
+
+      <div className="engine-logs-body flex flex-1 min-h-0 overflow-hidden">
+        <Suspense fallback={<TabFallback />}>
+          <EngineLogsSwitcher
+            slots={logSlots}
+            activeLogSlot={activeLogSlot}
+            onActiveLogSlotChange={setActiveLogSlot}
+            onClearSlotLogs={handleClearSlotLogs}
+            onClearAllLogs={handleClearAllLogs}
+            ansiEnabled={logsAnsiEnabled}
+            onAnsiEnabledChange={(enabled) => {
+              setLogsAnsiEnabled(enabled);
+              saveLogsAnsiEnabled(enabled);
+            }}
+          />
+        </Suspense>
+
+        <div className="engine-logs-pane">
+          <div className="engine-logs-pane__head">
+            <span className="engine-logs-pane__title">{activeSlotLabel}</span>
+            <span className="engine-logs-pane__meta">
+              {activeLogSlot === "all"
+                ? `${logSlots.length} slots · ${totalLogLines} lines`
+                : `${activeSlotMeta?.lineCount ?? 0} lines${
+                    activeSlotMeta?.status ? ` · ${activeSlotMeta.status}` : ""
+                  }`}
+            </span>
+            {searchAvailable ? (
+              <div className="engine-logs-pane__search">
+                <span className="engine-logs-switcher__search-label">
+                  {searchAll ? "SEARCH ALL LOGS" : "SEARCH IN LOG"}
+                </span>
+                <input
+                  type="text"
+                  value={searchValue}
+                  onChange={(e) => setSlotLogSearch(logSearchKey, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && searchValue.trim()) {
+                      e.preventDefault();
+                      stepLogSearchHit();
+                    }
+                  }}
+                  placeholder="error, timeout | cuda"
+                  className="engine-logs-switcher__search theme-input"
+                  title="Enter — jump to next match"
+                />
+                <span className="engine-logs-switcher__search-hint type-micro font-mono eng-logs-hint uppercase tracking-wider">
+                  Enter = next
+                </span>
+                <button
+                  type="button"
+                  title="Reset search highlight"
+                  onClick={() => clearSlotLogSearch(logSearchKey)}
+                  disabled={!searchValue.trim()}
+                  className="engine-logs-switcher__reset-search"
+                >
+                  RESET SEARCH
+                </button>
               </div>
-            );
-          })
-        )}
+            ) : null}
+          </div>
+
+          <div
+            ref={logsScrollRef}
+            className="engine-logs-scroll theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0 m-3"
+            onScroll={handleLogsScroll}
+          >
+            {!hasAnySlot && getActiveStackSlots(stack).length === 0 ? (
+              <p className="shell-log-empty type-body font-mono italic">NO LOGS YET — LAUNCH AN ENGINE TO SEE OUTPUT</p>
+            ) : totalLogLines === 0 ? (
+              <p className="shell-log-empty type-body font-mono italic">LOG BUFFER CLEARED — WAITING FOR OUTPUT</p>
+            ) : slotKeys.length === 0 ? (
+              <p className="shell-log-empty type-body font-mono italic">NO LOGS FOR SELECTED SLOT</p>
+            ) : (
+              slotKeys.map((slot) => {
+                const entries = flatLogs.get(slot) ?? [];
+                const stackEntry = stack.find((s) => s.idx === slot);
+                const alias = stackEntry?.alias || entries[0]?.alias || `SLOT ${slot}`;
+                const lineQuery =
+                  activeLogSlot === "all"
+                    ? logSearchBySlot[-1] ?? ""
+                    : logSearchBySlot[activeLogSlot as number] ?? "";
+                return (
+                  <div key={`slot-${slot}`} className="space-y-0.5">
+                    {activeLogSlot === "all" && (
+                      <div className="mb-2 mt-2 first:mt-0">
+                        <div className="shell-log-header type-body font-mono border-b pb-1">
+                          {alias} <span className="shell-log-count">({entries.length} lines)</span>
+                        </div>
+                      </div>
+                    )}
+                    {entries.map((entry) => (
+                      <p
+                        // Keyed on the store's monotonic seq, not the index: once a slot
+                        // passes the render window the slice slides from the front, so
+                        // index keys stop identifying lines and every line in the window
+                        // re-ran ANSI conversion on every batch.
+                        key={`${slot}:${entry.seq}`}
+                        className="shell-log-line type-body font-mono leading-relaxed break-all"
+                      >
+                        {activeLogSlot === "all" && <span className="shell-log-alias">[{entry.alias}] </span>}
+                        <Suspense fallback={<span>{entry.text}</span>}>
+                          <LogLineText
+                            text={entry.text}
+                            highlightQuery={lineQuery}
+                            ansiEnabled={logsAnsiEnabled}
+                          />
+                        </Suspense>
+                      </p>
+                    ))}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

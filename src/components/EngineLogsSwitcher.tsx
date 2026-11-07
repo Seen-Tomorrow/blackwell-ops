@@ -1,27 +1,8 @@
 import { useMemo, useState } from "react";
-import type { StackEntry } from "../lib/types";
-import type { SlotLogSummary } from "../lib/logSlotStore";
-import { getActiveStackSlots, isActiveEngineSlot } from "../lib/engineStack";
-import TabPageHeader from "./TabPageHeader";
 
-type ActiveLogSlot = number | "all";
+export type ActiveLogSlot = number | "all";
 
-interface EngineLogsSwitcherProps {
-  activeLogSlot: ActiveLogSlot;
-  onActiveLogSlotChange: (slot: ActiveLogSlot) => void;
-  slotSummaries: Map<number, SlotLogSummary>;
-  stack: StackEntry[];
-  logSearchBySlot: Record<number, string>;
-  onSlotLogSearchChange: (slot: number, query: string) => void;
-  onClearSlotLogSearch: (slot: number) => void;
-  onLogSearchStep?: () => void;
-  onClearSlotLogs: (slot: number) => void;
-  onClearAllLogs: () => void;
-  ansiEnabled: boolean;
-  onAnsiEnabledChange: (enabled: boolean) => void;
-}
-
-interface SlotMeta {
+export interface LogSlotMeta {
   slot: number;
   label: string;
   lineCount: number;
@@ -30,46 +11,34 @@ interface SlotMeta {
   hasSearch: boolean;
 }
 
+interface EngineLogsSwitcherProps {
+  /** Slot metadata, ordered by slot index. */
+  slots: LogSlotMeta[];
+  activeLogSlot: ActiveLogSlot;
+  onActiveLogSlotChange: (slot: ActiveLogSlot) => void;
+  onClearSlotLogs: (slot: number) => void;
+  onClearAllLogs: () => void;
+  ansiEnabled: boolean;
+  onAnsiEnabledChange: (enabled: boolean) => void;
+}
+
+/**
+ * LOGS rail — one row per engine log slot.
+ *
+ * A wrapping chip grid stops working past a handful of slots (64 engines filled
+ * several rows and buried the log itself). A vertical, filterable list scales:
+ * fixed-width names, line counts, live dots, and CLR on the hovered row.
+ */
 export default function EngineLogsSwitcher({
+  slots,
   activeLogSlot,
   onActiveLogSlotChange,
-  slotSummaries,
-  stack,
-  logSearchBySlot,
-  onSlotLogSearchChange,
-  onClearSlotLogSearch,
-  onLogSearchStep,
   onClearSlotLogs,
   onClearAllLogs,
   ansiEnabled,
   onAnsiEnabledChange,
 }: EngineLogsSwitcherProps) {
   const [slotFilter, setSlotFilter] = useState("");
-
-  const slots = useMemo<SlotMeta[]>(() => {
-    const slotIds = new Set<number>();
-    for (const slot of slotSummaries.keys()) slotIds.add(slot);
-    for (const entry of stack) {
-      if (isActiveEngineSlot(entry)) slotIds.add(entry.idx);
-    }
-
-    return Array.from(slotIds)
-      .sort((a, b) => a - b)
-      .map((slot) => {
-        const summary = slotSummaries.get(slot);
-        const stackEntry = stack.find((s) => s.idx === slot);
-        const status = stackEntry?.status;
-        return {
-          slot,
-          label: stackEntry?.alias || summary?.firstAlias || `SLOT ${slot + 1}`,
-          lineCount: summary?.lineCount ?? 0,
-          status,
-          isRunning: status === "RUNNING" || status === "LOADING",
-          hasSearch: Boolean(logSearchBySlot[slot]?.trim()),
-        };
-      });
-  }, [slotSummaries, stack, logSearchBySlot]);
-
   const filterNorm = slotFilter.trim().toLowerCase();
 
   const filteredSlots = useMemo(() => {
@@ -80,30 +49,81 @@ export default function EngineLogsSwitcher({
     });
   }, [slots, filterNorm]);
 
-  const activeEngineCount = getActiveStackSlots(stack).length;
-  const activeSlotMeta = typeof activeLogSlot === "number"
-    ? slots.find((s) => s.slot === activeLogSlot)
-    : null;
-
-  // The ALL view searches across every slot, so it keeps its query under a synthetic key.
-  const searchAll = activeLogSlot === "all";
-  const searchKey = searchAll ? -1 : (activeLogSlot as number);
-  const searchValue = logSearchBySlot[searchKey] ?? "";
-  const searchAvailable = searchAll || (typeof activeLogSlot === "number" && Boolean(activeSlotMeta));
-
   return (
-    <div className="engine-logs-switcher flex-shrink-0">
-      <TabPageHeader
-        title="ENGINE LOGS"
-        meta={(
-          <span className="engine-logs-switcher__count">
-            {slots.length} log slot{slots.length === 1 ? "" : "s"}
-            {activeEngineCount > 0 ? ` · ${activeEngineCount} active` : ""}
-          </span>
-        )}
-      />
+    <aside className="engine-logs-rail" aria-label="Engine log slots">
+      <div className="engine-logs-rail__head">
+        <span className="engine-logs-rail__title">LOG SLOTS</span>
+        <span className="engine-logs-rail__count">{slots.length}</span>
+      </div>
 
-      <div className="engine-logs-switcher__controls-row">
+      <div className="engine-logs-rail__filter-wrap">
+        <input
+          type="text"
+          value={slotFilter}
+          onChange={(e) => setSlotFilter(e.target.value)}
+          placeholder="Filter slots…"
+          className="engine-logs-rail__filter theme-input"
+          aria-label="Filter log slots"
+        />
+      </div>
+
+      {/* ALL stays pinned above the scroll; it is the "everything" escape hatch. */}
+      <button
+        type="button"
+        onClick={() => onActiveLogSlotChange("all")}
+        className={`engine-logs-rail__row engine-logs-rail__row--all${
+          activeLogSlot === "all" ? " is-active" : ""
+        }`}
+        title="All slots interleaved"
+      >
+        <span className="engine-logs-rail__dot" aria-hidden />
+        <span className="engine-logs-rail__pick">
+          <span className="engine-logs-rail__name">ALL LOGS</span>
+          <span className="engine-logs-rail__lines">{slots.length}</span>
+        </span>
+      </button>
+
+      <div className="engine-logs-rail__list eink-scrollbar">
+        {filteredSlots.map((meta) => (
+          <div
+            key={meta.slot}
+            className={`engine-logs-rail__row${activeLogSlot === meta.slot ? " is-active" : ""}`}
+          >
+            <button
+              type="button"
+              className="engine-logs-rail__pick"
+              onClick={() => onActiveLogSlotChange(meta.slot)}
+              title={`${meta.label} — ${meta.lineCount} lines${meta.status ? ` · ${meta.status}` : ""}`}
+            >
+              <span
+                className={`engine-logs-rail__dot${meta.isRunning ? " is-live" : ""}`}
+                aria-hidden
+              />
+              <span className="engine-logs-rail__name">{meta.label}</span>
+              {meta.hasSearch ? (
+                <span className="engine-logs-rail__search" title="Search filter active" aria-hidden>
+                  ⌕
+                </span>
+              ) : null}
+              <span className="engine-logs-rail__lines">{meta.lineCount}</span>
+            </button>
+            <button
+              type="button"
+              className="engine-logs-rail__clear"
+              title={`Clear log buffer for ${meta.label}`}
+              onClick={() => onClearSlotLogs(meta.slot)}
+            >
+              CLR
+            </button>
+          </div>
+        ))}
+
+        {filterNorm && filteredSlots.length === 0 ? (
+          <span className="engine-logs-rail__empty">No slots match filter</span>
+        ) : null}
+      </div>
+
+      <div className="engine-logs-rail__foot">
         <button
           type="button"
           onClick={() => onAnsiEnabledChange(!ansiEnabled)}
@@ -112,101 +132,15 @@ export default function EngineLogsSwitcher({
         >
           ANSI {ansiEnabled ? "ON" : "OFF"}
         </button>
-        <input
-          type="text"
-          value={slotFilter}
-          onChange={(e) => setSlotFilter(e.target.value)}
-          placeholder="Filter slots…"
-          className="engine-logs-switcher__filter theme-input"
-        />
         <button
           type="button"
           onClick={onClearAllLogs}
-          disabled={slotSummaries.size === 0 && activeEngineCount === 0}
+          disabled={slots.length === 0}
           className="engine-logs-switcher__clear-all"
         >
           CLEAR ALL
         </button>
       </div>
-
-      <div className="engine-logs-switcher__slots eink-scrollbar">
-        <button
-          type="button"
-          onClick={() => onActiveLogSlotChange("all")}
-          className={`engine-logs-slot-chip${activeLogSlot === "all" ? " engine-logs-slot-chip--active" : ""}`}
-        >
-          <span className="engine-logs-slot-chip__label">ALL</span>
-          <span className="engine-logs-slot-chip__meta">{slots.length}</span>
-        </button>
-
-        {filteredSlots.map((meta) => (
-          <div
-            key={meta.slot}
-            className={`engine-logs-slot-chip-group${activeLogSlot === meta.slot ? " engine-logs-slot-chip-group--active" : ""}${meta.isRunning ? " engine-logs-slot-chip-group--live" : ""}`}
-          >
-            <button
-              type="button"
-              className="engine-logs-slot-chip__clear"
-              title={`Clear log buffer for ${meta.label}`}
-              onClick={() => onClearSlotLogs(meta.slot)}
-            >
-              CLR
-            </button>
-            <button
-              type="button"
-              title={`${meta.label} — ${meta.lineCount} lines`}
-              onClick={() => onActiveLogSlotChange(meta.slot)}
-              className="engine-logs-slot-chip"
-            >
-              <span className="engine-logs-slot-chip__label">{meta.label}</span>
-              <span className="engine-logs-slot-chip__meta">{meta.lineCount}</span>
-              {meta.hasSearch ? (
-                <span className="engine-logs-slot-chip__search" title="Search filter active" aria-hidden="true">
-                  ⌕
-                </span>
-              ) : null}
-            </button>
-          </div>
-        ))}
-
-        {filterNorm && filteredSlots.length === 0 ? (
-          <span className="engine-logs-switcher__empty-filter">No slots match filter</span>
-        ) : null}
-      </div>
-
-      {searchAvailable ? (
-        <div className="engine-logs-switcher__toolbar">
-          <span className="engine-logs-switcher__search-label">
-            {searchAll ? "SEARCH ALL LOGS" : "SEARCH IN LOG"}
-          </span>
-          <input
-            type="text"
-            value={searchValue}
-            onChange={(e) => onSlotLogSearchChange(searchKey, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && searchValue.trim()) {
-                e.preventDefault();
-                onLogSearchStep?.();
-              }
-            }}
-            placeholder="error, timeout | cuda"
-            className="engine-logs-switcher__search theme-input"
-            title="Enter — jump to next match"
-          />
-          <span className="engine-logs-switcher__search-hint type-micro font-mono eng-logs-hint uppercase tracking-wider">
-            Enter = next
-          </span>
-          <button
-            type="button"
-            title="Reset search highlight"
-            onClick={() => onClearSlotLogSearch(searchKey)}
-            disabled={!searchValue.trim()}
-            className="engine-logs-switcher__reset-search"
-          >
-            RESET SEARCH
-          </button>
-        </div>
-      ) : null}
-    </div>
+    </aside>
   );
 }

@@ -4,3 +4,247 @@
   padding-bottom: calc(var(--boc-docked-reserve) + 0.5rem);
   scroll-padding-bottom: calc(var(--boc-docked-reserve) + 0.5rem);
 }
+
+/* ── LOGS: slot rail + log pane ──────────────────────────────────────────
+   A wrapping chip grid buries the log once a fleet has dozens of engines.
+   The rail is vertical, filterable, and fixed-width; the pane owns the rest. */
+
+.engine-logs-rail {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 238px;
+  min-height: 0;
+  border-right: 1px solid color-mix(in srgb, var(--theme-border-subtle) 85%, transparent);
+  background: color-mix(in srgb, var(--theme-panel-accent) 62%, var(--theme-panel) 38%);
+}
+
+.engine-logs-rail__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem 0.2rem;
+}
+
+.engine-logs-rail__title,
+.engine-logs-rail__count {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+}
+
+.engine-logs-rail__count {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.engine-logs-rail__filter-wrap {
+  padding: 0 0.5rem 0.4rem;
+}
+
+.engine-logs-rail__filter {
+  width: 100%;
+  padding: 0.2rem 0.45rem;
+  border-radius: 2px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+}
+
+.engine-logs-rail__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 0.35rem 0.45rem;
+}
+
+.engine-logs-rail__row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.engine-logs-rail__row:hover {
+  background: color-mix(in srgb, var(--theme-text) 5%, transparent);
+}
+
+.engine-logs-rail__row.is-active {
+  background: color-mix(in srgb, var(--theme-accent) 11%, transparent);
+  border-left-color: var(--theme-accent);
+}
+
+.engine-logs-rail__row--all {
+  align-self: stretch;
+  margin: 0 0.35rem 0.35rem;
+  padding: 0.3rem 0.25rem 0.3rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 80%, transparent);
+  border-radius: 2px;
+  gap: 0.4rem;
+  text-align: left;
+}
+
+.engine-logs-rail__row--all.is-active {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.engine-logs-rail__pick {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.28rem 0.2rem 0.28rem 0.45rem;
+  text-align: left;
+}
+
+.engine-logs-rail__row--all .engine-logs-rail__pick {
+  padding: 0;
+}
+
+.engine-logs-rail__dot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+}
+
+.engine-logs-rail__dot.is-live {
+  background: var(--theme-accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent) 65%, transparent);
+}
+
+.engine-logs-rail__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--theme-text);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.02em;
+}
+
+.engine-logs-rail__row.is-active .engine-logs-rail__name {
+  color: var(--theme-accent-bright, var(--theme-text));
+}
+
+.engine-logs-rail__lines {
+  flex-shrink: 0;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.engine-logs-rail__search {
+  flex-shrink: 0;
+  color: var(--theme-info);
+  font-size: var(--type-micro);
+}
+
+.engine-logs-rail__clear {
+  flex-shrink: 0;
+  margin-right: 0.2rem;
+  padding: 0.1rem 0.3rem;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.engine-logs-rail__row:hover .engine-logs-rail__clear,
+.engine-logs-rail__row.is-active .engine-logs-rail__clear {
+  opacity: 0.75;
+}
+
+.engine-logs-rail__clear:hover {
+  color: var(--fixed-red-400);
+}
+
+.engine-logs-rail__empty {
+  display: block;
+  padding: 0.5rem 0.4rem;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+}
+
+.engine-logs-rail__foot {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem 0.55rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border-subtle) 80%, transparent);
+}
+
+.engine-logs-rail__foot .engine-logs-switcher__ansi-toggle,
+.engine-logs-rail__foot .engine-logs-switcher__clear-all {
+  flex: 1 1 0;
+  text-align: center;
+}
+
+.engine-logs-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.engine-logs-pane__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  flex-shrink: 0;
+  padding: 0.35rem 0.8rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle) 85%, transparent);
+}
+
+.engine-logs-pane__title {
+  color: var(--theme-text);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.engine-logs-pane__meta {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  white-space: nowrap;
+}
+
+.engine-logs-pane__search {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.engine-logs-pane__search .engine-logs-switcher__search {
+  width: min(22rem, 40vw);
+}
+
+@media (max-width: 1100px) {
+  .engine-logs-rail {
+    width: 190px;
+  }
+
+  .engine-logs-pane__search .engine-logs-switcher__search {
+    width: 12rem;
+  }
+}
