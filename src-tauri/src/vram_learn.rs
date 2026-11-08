@@ -2242,6 +2242,64 @@ fn interpolate_spec_delta(
     Some(at(&points[points.len() - 1]))
 }
 
+/// One learned row, flattened for the NVRAM snapshot (`nvram_snapshot`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearnedRowView {
+    pub key: String,
+    pub ctx: Option<usize>,
+    pub kv: Option<String>,
+    pub split: Option<String>,
+    pub ubatch: Option<String>,
+    pub parallel: u32,
+    pub vram_mib: f64,
+    pub host_mib: Option<f64>,
+    pub measured_at: String,
+    pub gpu_breakdown_mib: Option<Vec<f64>>,
+    pub components: Option<Vec<GpuComponentMib>>,
+}
+
+fn learn_key_token(key: &str, prefix: &str) -> Option<String> {
+    key.split('|').find_map(|token| token.strip_prefix(prefix)).map(str::to_string)
+}
+
+/// Rows for the given models, flattened for a snapshot. An empty list means every row.
+pub fn snapshot_rows(model_paths: &[String]) -> Vec<LearnedRowView> {
+    let _guard = match STORE_MUTEX.lock() {
+        Ok(guard) => guard,
+        Err(_) => return Vec::new(),
+    };
+    let store = load_store();
+    let wanted: Vec<String> = model_paths
+        .iter()
+        .map(|path| normalize_model_path_for_key(path))
+        .collect();
+    let mut rows: Vec<LearnedRowView> = store
+        .entries
+        .iter()
+        .filter(|(key, _)| {
+            wanted.is_empty()
+                || wanted
+                    .iter()
+                    .any(|path| key.starts_with(&format!("{path}|")))
+        })
+        .map(|(key, entry)| LearnedRowView {
+            ctx: ctx_from_learn_key(key),
+            kv: learn_key_token(key, "kv="),
+            split: learn_key_token(key, "split="),
+            ubatch: learn_key_token(key, "ubatch="),
+            parallel: learn_key_parallel(key),
+            vram_mib: entry.paint_vram_mib(),
+            host_mib: entry.paint_host_mib(),
+            measured_at: entry.measured_at.clone(),
+            gpu_breakdown_mib: entry.paint_gpu_breakdown_mib().map(|values| values.to_vec()),
+            components: entry.gpu_components_mib.clone(),
+            key: key.clone(),
+        })
+        .collect();
+    rows.sort_by(|a, b| (a.ctx, a.kv.clone()).cmp(&(b.ctx, b.kv.clone())));
+    rows
+}
+
 /// Launch measurements for this model + kv/spec/draft + split, every ctx (device ignored).
 #[tauri::command]
 pub fn get_learned_vram_curve(

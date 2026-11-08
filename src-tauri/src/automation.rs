@@ -163,6 +163,11 @@ async fn run_job(app: &AppHandle, job: &Job) -> Result<Value, String> {
                 Err(format!("engine did not reach RUNNING within {:?}: {result}", timeout))
             }
         }
+        "snapshot" => {
+            // DEV loop: capture, change a knob, capture, then diff on the CLI.
+            let path = crate::nvram_snapshot::capture(app, None).await?;
+            Ok(json!({ "path": path.display().to_string() }))
+        }
         "stop" => {
             let slot = job
                 .slot

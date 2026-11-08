@@ -127,6 +127,10 @@ knobs. Three defaults that silently changed the footprint (all fixed in the scri
 - `scripts/engine-test.py` + `src-tauri/src/automation.rs` — DEV-only folder queue
   (`config/automation/queue|results`) that runs the app's own `launch_engine`: launch/hold/stop,
   status, and `cold` forecasts. No UI, no screenshots, no second launch path. ~5 s per launch.
+- `blackwell-ops.exe --nvram-diff <before.json> <after.json> [--json]` — compares two NVRAM snapshots.
+  `scripts/engine-test.py snapshot` writes one (NVML per device, engine stack + launch inventory,
+  learned rows with components, calibration, the glass state). Unknown stays `null`, never 0,
+  and no delta is claimed across an unknown side.
 - `scripts/engine-matrix.py` — runs a launch matrix (parallel / ctx / ubatch / kv) through the app's own launch path and tabulates the engine's per-device buffers; writes `tmp/engine-matrix.json`.
 - `scripts/forecast-compare.py` — prints fit / plan / measured per configuration from
   `forecast-log.jsonl`, recovering a `measured` row's config from its `learn_key`.

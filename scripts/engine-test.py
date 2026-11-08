@@ -138,7 +138,7 @@ def print_result(payload: dict) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["launch", "cold", "status", "stop"])
+    ap.add_argument("action", choices=["launch", "cold", "status", "stop", "snapshot"])
     ap.add_argument("--app-root", default=DEFAULT_APP_ROOT)
     ap.add_argument("--hold", type=int, default=0, help="ms to hold after RUNNING, then stop (0 = leave running)")
     ap.add_argument("--timeout", type=float, default=240.0, help="seconds to wait for the result")
@@ -204,6 +204,10 @@ def main() -> int:
             "ubatch": args.ubatch,
             "exclude_model": args.exclude_model,
         }
+    elif args.action == "snapshot":
+        # Writes one NVRAM snapshot (NVML + engines + learned + glass) via the app; compare two
+        # with: blackwell-ops.exe --nvram-diff a.json b.json
+        pass
     elif args.action == "stop":
         if args.slot is None:
             print("stop needs --slot", file=sys.stderr)

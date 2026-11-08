@@ -126,6 +126,26 @@ therefore treat "ctx above `n_ctx_train`" as fully allocated, not as capped.
 4. **Always pass `--parallel`** on a launch, even 1. Without it llama silently switches to 4 slots
    with a unified 4× cache.
 
+## Snapshot + diff — the loop, in the app
+
+No Python for the comparison: the app writes the snapshot, the same executable diffs it.
+
+```powershell
+python scripts/engine-test.py snapshot        # → {app_root}/config/cache/nvram/snap-<ts>.json
+.\src-tauri\target\debug\blackwell-ops.exe --nvram-diff <before.json> <after.json> [--json]
+```
+
+One snapshot holds what the app can actually see: **NVML per device**, the **engine stack** (status,
+knobs, and the launch's own per-device buffer inventory), the **learned rows** for those models with
+their per-device components, the **per-device calibration**, and the **glass's published state**
+verbatim. The diff prints only what moved, with each side's value; it matches engines by slot and
+learned rows by identity (`ctx + kv + split + ubatch + par`), never by key — a knob change is exactly
+when keys differ.
+
+The rule carries over: **unknown is `null`, never `0`**. A diff with an unknown side reports the
+values and no delta. Capture is also the IPC command `capture_nvram_snapshot` and the automation
+action `snapshot`; snapshots land under `{app_root}/config/cache/nvram/`.
+
 ## Open questions
 
 - Why the graph at 1 slot / 1M request is 3.4× the 256K graph (it looks sized by the requested ctx,

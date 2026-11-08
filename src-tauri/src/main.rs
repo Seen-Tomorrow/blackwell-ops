@@ -32,6 +32,7 @@ mod vram_learn;
 mod forecast_log;
 mod automation;
 mod vram_profile;
+mod nvram_snapshot;
 mod launch_memory_parse;
 mod bench_prompts;
 mod bench_archive;
@@ -168,6 +169,11 @@ fn append_panic_record(path: &std::path::Path, msg: &str) -> std::io::Result<()>
 
 #[tokio::main]
 async fn main() {
+    // CLI branch before anything Tauri-shaped: `--nvram-diff a.json b.json` compares two NVRAM
+    // snapshots and exits (no window, no app state). See `nvram_snapshot`.
+    if let Some(code) = nvram_snapshot::run_cli() {
+        std::process::exit(code);
+    }
     // First: no modal crash dialogs for us or any helper binary we spawn.
     crash_log::silence_crash_dialogs();
     crash_log::install_native_exception_logger();
@@ -558,6 +564,7 @@ async fn main() {
             vram_profile::get_cold_forecast,
             vram_profile::get_fit_projection,
             automation::record_ui_state,
+            nvram_snapshot::capture_nvram_snapshot,
             config::commands::set_provider_param_value,
             forecast_log::record_plan_forecast,
             forecast_log::record_fit_forecast,
