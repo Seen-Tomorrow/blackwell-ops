@@ -36,7 +36,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::fit_scanner::{parse_all_memory_breakdown_tables, parse_gpu_components, GpuComponentMib};
+use crate::fit_scanner::{parse_all_memory_breakdown_tables, GpuComponentMib};
 
 pub const PARSER_GGML_GENERIC_V1: &str = "ggml_generic_v1";
 pub const PROFILE_QWEN36_27B_MTP: &str = "QWEN3.6-27B MTP";
@@ -409,6 +409,31 @@ fn components_from_buffers(buffers: &[BufferLine], gpu_count: usize) -> Option<V
     )
 }
 
+/// Host-side component split, built from the same buffer inventory as the GPUs.
+///
+/// `CUDA_Host` lines are the pinned host buffers the engine allocates for the graph and the
+/// output; `CPU` lines are the host model copy and are not part of the engine's host budget.
+fn host_components_from_buffers(buffers: &[BufferLine]) -> Option<GpuComponentMib> {
+    let mut model = 0.0;
+    let mut ctx = 0.0;
+    let mut compute = 0.0;
+    for b in buffers {
+        if !b.device.contains("Host") {
+            continue;
+        }
+        match b.category.as_str() {
+            "model" => model += b.mib,
+            "kv" => ctx += b.mib,
+            "rs" | "compute" | "vision" | "vision_compute" | "output" => compute += b.mib,
+            _ => {}
+        }
+    }
+    (model + ctx + compute > 0.0).then_some(GpuComponentMib {
+        model_mib: model,
+        ctx_mib: ctx,
+        compute_mib: compute,
+    })
+}
 /// Parse stderr accumulated through load; prefer region before `model loaded`.
 /// Read llama.cpp's own fit verdict from the load log.
 ///
@@ -655,19 +680,12 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
     let gpu_count = gpu_breakdown_mib.len();
     let gpu_components_mib = components_from_buffers(&buffers, gpu_count);
 
-    let mut host_components_mib = None;
-    let tables = parse_all_memory_breakdown_tables(parse_region);
-    if let Some(table) = tables.last() {
-        if let Some(components) = parse_gpu_components(parse_region) {
-            if !components.is_empty() {
-                // Prefer breakdown table components when a post-FIT complete table exists.
-                let _ = components;
-            }
-        }
-        if table.host_mib.is_some() {
-            host_components_mib = parse_host_components_from_table(parse_region);
-        }
-    }
+    // Host components come from the same `buffers[]` inventory as the GPUs. The memory-breakdown
+    // table is printed *before* the last-launch marker, so it is not inside `parse_region` at all
+    // — which is why the Host row never reached a launch row and the ubatch scaling stayed
+    // one-sided. The table scan stays as a fallback for logs that do include it.
+    let host_components_mib = host_components_from_buffers(&buffers)
+        .or_else(|| parse_host_components_from_table(parse_region));
 
     let host_mib = host_cpu + host_pinned;
     let mtp_context_mib_final = if past_spec_init && (mtp_extra_gpu + mtp_extra_host) > 0.0 {
@@ -705,9 +723,12 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
 }
 
 fn parse_host_components_from_table(output: &str) -> Option<GpuComponentMib> {
-    let tables = parse_all_memory_breakdown_tables(output);
-    let table = tables.last()?;
-    let host_self = table.host_mib?;
+    // Do not gate this on the table parser having found the Host row: the row scan below is the
+    // authoritative read, and the table parser has been returning None for `| - Host |` lines
+    // (the host compute term then went missing from every launch row).
+    if parse_all_memory_breakdown_tables(output).is_empty() {
+        return None;
+    }
     // Host row format: `269 = 137 + 0 + 131` embedded in line — scan last host row.
     for line in output.lines().rev() {
         let lower = line.to_lowercase();
@@ -721,7 +742,6 @@ fn parse_host_components_from_table(output: &str) -> Option<GpuComponentMib> {
                 let model_mib = extract_number(parts[0].split('=').next_back()?)?;
                 let ctx_mib = extract_number(parts[1])?;
                 let compute_mib = extract_number(parts[2])?;
-                let _ = host_self;
                 return Some(GpuComponentMib {
                     model_mib,
                     ctx_mib,
@@ -737,6 +757,24 @@ fn parse_host_components_from_table(output: &str) -> Option<GpuComponentMib> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Host row of the memory-breakdown table is the only place the host compute term is
+    /// printed. It has gone missing before (the row scan was gated on a table parse that
+    /// returned None), which left every launch row without host components and made the ubatch
+    /// scaling one-sided.
+    #[test]
+    fn host_components_come_from_the_breakdown_host_row() {
+        let output = "\
+0.00.322.155 I common_memory_breakdown_print: | memory breakdown [MiB] | total free self model context compute unaccounted |
+0.00.322.160 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000) | 97859 = 95331 + (85420 =  9685 +   66134 +    9600) +      -82891 |
+0.00.322.170 I common_memory_breakdown_print: |   - Host               |                  1230 =   397 +       0 +     832                |
+0.01.979.408 I sched_reserve:  CUDA_Host compute buffer size =   832.19 MiB
+";
+        let host = parse_host_components_from_table(output).expect("host row");
+        assert_eq!(host.model_mib, 397.0);
+        assert_eq!(host.ctx_mib, 0.0);
+        assert_eq!(host.compute_mib, 832.0);
+    }
 
     const QWEN_LOAD_TAIL: &str = r#"0.00.000.000 I load_hparams: general.architecture = "qwen35"
 0.01.878.440 I load_tensors:          CPU model buffer size =   682.03 MiB
