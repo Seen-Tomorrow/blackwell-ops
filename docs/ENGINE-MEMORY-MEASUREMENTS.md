@@ -176,6 +176,34 @@ Files keep the last 60 under `{app_root}/config/cache/nvram/`; three per launch 
 history. The badge's `NVRAM LOG` overlay shows the newest three, oldest → newest, with per-column
 deltas.
 
+## WDDM reservation, and why TCC is not the answer
+
+Measured on this box (2 × RTX PRO 6000, driver 616.92, idle, no engine):
+
+```
+nvidia-smi --query-gpu=index,driver_model.current,memory.total,memory.reserved,memory.used
+0  WDDM  97887 MiB   Reserved 1314 MiB   Used 0 MiB
+1  WDDM  97887 MiB   Reserved 1314 MiB   Used 0 MiB
+```
+
+- **The 1.3 GiB is a driver reservation, not a process.** `free = total − reserved`, and no
+  application can allocate it. It does not move with load and there is no Windows switch for it.
+- **NVML v1 `used` is `total − free`, so it includes the reservation.** `nvmlDeviceGetMemoryInfo_v2`
+  separates `used` / `reserved`; we read v1, and the snapshot field named `used_mib` is really
+  "occupied". That does **not** need fixing: the fit gate spends `free`, and the bar paints
+  `used + need` against `total`, which is the same inequality
+  (`used + need <= total` ⟺ `need <= free`). The calibration pair cancels it too, because the
+  residual is a `pre_launch` → `ready` delta on the same card.
+- **TCC reclaims the reservation and is not free.** The app can switch modes from the HW monitor
+  overclock module without a restart, and TCC drops occupancy to ~1 GiB — but TCC also caps the
+  memory clock (~28,000 MT/s vs ~33,000 MT/s in WDDM, i.e. > 2 TB/s lost on this pair). For
+  inference throughput that is the worse trade, so WDDM stays the default.
+- **GeForce has no TCC at all.** On a 16 GiB consumer card the same fixed pool plus display
+  overhead leaves ~14 GiB usable and there is nothing a user can do on Windows. The product can
+  only say so: the reservation is the driver's, not ours.
+- **Per-process VRAM is `N/A` on WDDM** (`gpu_process_mem`), which is why the residual has to be
+  measured as a device delta around the launch rather than read from the process counter.
+
 ## Open questions
 
 - Why the graph at 1 slot / 1M request is 3.4× the 256K graph (it looks sized by the requested ctx,
