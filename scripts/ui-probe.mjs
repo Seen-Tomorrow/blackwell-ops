@@ -21,6 +21,7 @@
  * the durable artifact; this tool only presses the button and can look at the DOM.
  *
  * Flags: --reload (Page.reload first, after enabling Runtime), --console (print console lines),
+ *         --shot <path> (write a PNG of the page after the expression runs),
  *         --port <n> (default 9222, or CDP_PORT).
  */
 
@@ -33,13 +34,14 @@ const { values, positionals } = parseArgs({
     reload: { type: "boolean", default: false },
     console: { type: "boolean", default: false },
     wait: { type: "string" },
+    shot: { type: "string" },
   },
 });
 
 const port = values.port ?? process.env.CDP_PORT ?? "9222";
 const expression = positionals[0];
 if (!expression) {
-  console.error("usage: node scripts/ui-probe.mjs [--reload] [--console] \"<expression>\"");
+  console.error("usage: node scripts/ui-probe.mjs [--reload] [--console] [--shot <png>] \"<expression>\"");
   process.exit(2);
 }
 
@@ -86,6 +88,7 @@ await new Promise((resolve, reject) => {
 
 try {
   if (values.console) await call("Runtime.enable");
+  if (values.shot) await call("Page.enable");
   if (values.reload) await call("Page.reload", { ignoreCache: false });
   const result = await call("Runtime.evaluate", {
     expression,
@@ -101,6 +104,12 @@ try {
   }
   const waitMs = Number(values.wait ?? 0);
   if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+  if (values.shot) {
+    const shot = await call("Page.captureScreenshot", { format: "png" });
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(values.shot, Buffer.from(shot.data, "base64"));
+    console.error(`wrote ${values.shot}`);
+  }
 } finally {
   ws.close();
 }
