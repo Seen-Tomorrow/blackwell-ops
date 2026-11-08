@@ -717,6 +717,11 @@ pub async fn launch_engine(
         })
     }
 
+    // Baseline before anything is allocated: the pair with the `ready` capture is what makes
+    // "what did this launch cost" a same-moment subtraction. Fire-and-forget — the stack lock is
+    // taken by the capture itself and this path is about to take it too.
+    crate::nvram_snapshot::capture_at("pre_launch", 0);
+
     // Spawn engine with auto-retry (once) on immediate crash
     let stack_for_ready = app.stack.clone();
     let slot_for_ready = slot_idx;
@@ -916,6 +921,9 @@ pub async fn stop_engine_slot(slot_idx: usize, app: tauri::State<'_, AppContext>
     };
 
     EngineStack::stop_slot(slot_idx, &app.stack).await?;
+    // Reclamation check: the pair with `ready` shows whether the card came back after teardown.
+    // The delay lets the driver release before NVML is asked.
+    crate::nvram_snapshot::capture_at("stopped", 900);
     Ok(format!("Engine {} (slot {}) stopped", alias, slot_idx))
 }
 

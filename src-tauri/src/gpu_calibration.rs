@@ -213,11 +213,14 @@ pub fn capture(
         // browser or a desktop compositor holding memory on the same card cancels out.
         let after_mib = gpu.memory_used_mib as f64;
         let before_mib = baseline.as_ref().and_then(|b| b.get(&gpu.index)).map(|v| *v as f64);
-        let used_mib = match before_mib {
-            Some(before) if after_mib >= before => after_mib - before,
-            // No baseline (or the card lost memory since): fall back to the absolute reading.
-            _ => after_mib,
+        // No usable baseline means the delta is unknown: skip. Falling back to the absolute
+        // reading stored the desktop and the browser as if the engine had allocated them (a
+        // 1.2B launch once recorded 1,866 MiB of "residual" that way), and the median then
+        // reserved that much on every plan.
+        let Some(before) = before_mib.filter(|before| after_mib >= *before) else {
+            continue;
         };
+        let used_mib = after_mib - before;
         // A launch cannot hold less than its own buffers; if NVML says so, the sample is
         // taken while the allocation is still settling and must not be stored.
         if used_mib < buffers_mib {
@@ -245,6 +248,46 @@ pub fn capture(
         return Ok(());
     }
     save_store(&store)
+}
+
+/// Record one residual from a measured pair (`pre_launch` → `ready` snapshots).
+///
+/// The value is `used(ready) - used(pre) - buffers(ready)` per device: the delta is what our
+/// engine added, so a browser or the desktop compositor cancels out, and the buffers are the
+/// engine's own inventory from the same moment. This is the same arithmetic as `capture`, but
+/// with the baseline read from a file instead of an in-memory map — so a missed baseline can
+/// never fall back to the absolute device reading (which is how a sample ends up at 11 MiB).
+pub fn record_pair_residual(args: PairResidual) -> Result<(), String> {
+    if args.buffers_mib <= 0.0 || args.used_mib < args.buffers_mib {
+        return Ok(());
+    }
+    let mut store = load_store();
+    let device = store.devices.entry(args.device_index).or_default();
+    device.samples.push(CalibrationSample {
+        residual_mib: args.used_mib - args.buffers_mib,
+        processes: Vec::new(),
+        buffers_mib: args.buffers_mib,
+        used_mib: args.used_mib,
+        capacity_mib: args.capacity_mib,
+        model: args.model_path,
+        driver_model: args.driver_model,
+        taken_at: args.taken_at,
+    });
+    if device.samples.len() > SAMPLES_PER_DEVICE {
+        let drop = device.samples.len() - SAMPLES_PER_DEVICE;
+        device.samples.drain(0..drop);
+    }
+    save_store(&store)
+}
+
+pub struct PairResidual {
+    pub device_index: u32,
+    pub buffers_mib: f64,
+    pub used_mib: f64,
+    pub capacity_mib: f64,
+    pub model_path: String,
+    pub driver_model: String,
+    pub taken_at: String,
 }
 
 #[tauri::command]

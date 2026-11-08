@@ -97,8 +97,117 @@ pub struct NvramSnapshot {
     pub ui: Option<Value>,
 }
 
+/// App handle for lifecycle captures that run without one (stack, log hub, stop path).
+///
+/// The same pattern as `output_console`: registered once during setup, never cleared.
+static NVRAM_APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+pub fn register_app_handle(handle: AppHandle) {
+    let _ = NVRAM_APP.set(handle);
+}
+
+/// Files kept in `config/cache/nvram/`. Three per launch cycle, so this is ~20 launches of history.
+const KEEP_SNAPSHOTS: usize = 60;
+
+fn prune_snapshots() {
+    let mut files = snapshot_files();
+    if files.len() <= KEEP_SNAPSHOTS {
+        return;
+    }
+    let drop = files.len() - KEEP_SNAPSHOTS;
+    for file in files.drain(..drop) {
+        if let Err(err) = std::fs::remove_file(&file) {
+            log::debug!("[nvram] prune {}: {err}", file.display());
+        }
+    }
+}
+
+/// Fire-and-forget capture at a lifecycle boundary.
+///
+/// Scheduling, not awaiting, is the point: every hook site is on a path that holds or is about to
+/// take the stack lock, and a capture takes that lock itself. The delay lets the transition land
+/// first (a stop releases VRAM a beat after the child exits; a load allocates before it is ready).
+pub fn capture_at(phase: &'static str, delay_ms: u64) {
+    let Some(app) = NVRAM_APP.get().cloned() else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        if delay_ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        }
+        match capture(&app, None, phase).await {
+            Ok(path) => log::debug!("[nvram] {phase} → {}", path.display()),
+            Err(err) => log::warn!("[nvram] {phase} capture failed: {err}"),
+        }
+    });
+}
+
 pub fn snapshot_dir() -> PathBuf {
     crate::config::app_root_dir().join("config").join("cache").join("nvram")
+}
+
+/// The newest snapshot with `phase` captured strictly before `before`.
+fn latest_before_phase(phase: &str, before: &str) -> Option<NvramSnapshot> {
+    for file in snapshot_files().into_iter().rev() {
+        let Ok(snapshot) = read_snapshot(&file) else { continue };
+        if snapshot.phase != phase || snapshot.captured_at >= before.to_string() {
+            continue;
+        }
+        return Some(snapshot);
+    }
+    None
+}
+
+/// Feed the per-device residual calibration from the `pre_launch` → `ready` pair.
+///
+/// `residual = used(ready) - used(pre) - buffers(ready)` per device. The delta is what our engine
+/// added (so the desktop and a browser cancel out), and the buffers are the engine's own inventory
+/// from the same moment. Unknowns skip the device — they are never assumed to be zero.
+fn record_calibration_pair(ready: &NvramSnapshot) {
+    let Some(pre) = latest_before_phase("pre_launch", &ready.captured_at) else {
+        return;
+    };
+    for engine in &ready.engines {
+        let Some(breakdown) = engine.gpu_breakdown_mib.as_ref() else {
+            continue;
+        };
+        for (index, buffers_mib) in breakdown.iter().enumerate() {
+            let Some(gpu) = ready.gpus.iter().find(|gpu| gpu.index as usize == index) else {
+                continue;
+            };
+            let Some(pre_gpu) = pre.gpus.iter().find(|gpu| gpu.index as usize == index) else {
+                continue;
+            };
+            if gpu.used_mib < pre_gpu.used_mib {
+                continue;
+            }
+            let used_mib = (gpu.used_mib - pre_gpu.used_mib) as f64;
+            if *buffers_mib <= 0.0 || used_mib < *buffers_mib {
+                continue;
+            }
+            let recorded = crate::gpu_calibration::record_pair_residual(
+                crate::gpu_calibration::PairResidual {
+                    device_index: index as u32,
+                    buffers_mib: *buffers_mib,
+                    used_mib,
+                    capacity_mib: gpu.total_mib as f64,
+                    model_path: engine.model_path.clone(),
+                    driver_model: gpu.driver_model.clone(),
+                    taken_at: ready.captured_at.clone(),
+                },
+            );
+            match recorded {
+                Ok(()) => log::info!(
+                    "[nvram] calibration gpu{}: {:.0} MiB used - {:.0} MiB buffers = {:.0} MiB residual",
+                    index,
+                    used_mib,
+                    buffers_mib,
+                    used_mib - buffers_mib
+                ),
+                Err(err) => log::warn!("[nvram] calibration gpu{index}: {err}"),
+            }
+        }
+    }
 }
 
 /// Model paths a snapshot is about: what the stack has loaded, plus whatever the glass shows.
@@ -235,6 +344,10 @@ pub async fn capture(app: &AppHandle, path: Option<PathBuf>, phase: &str) -> Res
         std::fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
     }
     crate::fs_util::write_json_atomic(&out_path, &snapshot)?;
+    prune_snapshots();
+    if phase == "ready" {
+        record_calibration_pair(&snapshot);
+    }
     log::info!(
         "[nvram] snapshot → {} ({} gpu(s), {} engine(s), {} learned row(s))",
         out_path.display(),

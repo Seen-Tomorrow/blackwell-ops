@@ -927,6 +927,10 @@ impl LogHub {
             &learn_snapshot.spec_key,
         ) {
             Ok(()) => {
+                // The engine is up and its own buffer inventory is parsed: this is the `ready`
+                // snapshot. Paired with `pre_launch` it answers what the launch actually cost,
+                // per device, without a later second guess.
+                crate::nvram_snapshot::capture_at("ready", 400);
                 log::info!(
                     "[vram_learn] launch snapshot slot={} provider={} → {:.1} MiB GPU + {:.1} MiB host ({})",
                     slot_idx,

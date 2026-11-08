@@ -387,6 +387,7 @@ async fn main() {
             }
 
             crate::output_console::register_blackwell_output_console_app_handle(app.handle().clone());
+            crate::nvram_snapshot::register_app_handle(app.handle().clone());
             // Console is registered — surface job status (init ran earlier, before AppContext).
             crate::engine_job::emit_engine_job_status_to_console();
 

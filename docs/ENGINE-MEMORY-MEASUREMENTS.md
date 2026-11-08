@@ -146,6 +146,36 @@ The rule carries over: **unknown is `null`, never `0`**. A diff with an unknown 
 values and no delta. Capture is also the IPC command `capture_nvram_snapshot` and the automation
 action `snapshot`; snapshots land under `{app_root}/config/cache/nvram/`.
 
+## Lifecycle captures (automatic)
+
+Three snapshots now bracket every launch, so the overlay shows a launch as a flow instead of a
+pair of hand-taken points:
+
+| phase | when | what it answers |
+|---|---|---|
+| `pre_launch` | before the child is spawned | baseline: free/used per card before anything is allocated |
+| `ready` | when the engine is up **and** its buffer inventory is parsed | what this config cost, per device |
+| `stopped` | ~0.9 s after teardown | reclamation: did the VRAM come back |
+
+Measured on this box (Nexus-TinyFunction 1.2B Q6_K, ctx 4096, q8_0, one card):
+
+```
+pre_launch   gpu0 1,314 / gpu1 1,314   (desktop + webview only)
+ready        gpu0 2,461 / gpu1 2,423   → +1,147 / +1,109 MiB
+             engine inventory           594.95 / 558.82 MiB
+             residual                   ≈552 / ≈550 MiB per card
+stopped      gpu0 1,314 / gpu1 1,314   (back to baseline, exactly)
+```
+
+The residual is the CUDA context plus allocator slack — **~550 MiB per card on this driver**, not
+the ~1.5 GB a plan once reserved from stale samples and not the 12 MiB a baseline-less sample
+claimed. It is now recorded from the pair (`pre_launch` → `ready`) as a calibration sample, so the
+median the planner spends comes from a same-moment subtraction.
+
+Files keep the last 60 under `{app_root}/config/cache/nvram/`; three per launch is ~20 launches of
+history. The badge's `NVRAM LOG` overlay shows the newest three, oldest → newest, with per-column
+deltas.
+
 ## Open questions
 
 - Why the graph at 1 slot / 1M request is 3.4× the 256K graph (it looks sized by the requested ctx,
