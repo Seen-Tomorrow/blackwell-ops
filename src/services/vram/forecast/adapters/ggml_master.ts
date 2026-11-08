@@ -593,11 +593,18 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     bufferBaselineGb: curveHit?.hostGb,
     realSpill: spill,
   });
-  if (spill && !overSystemMemory) {
-    insets.ramInset =
-      hostSplit.weightGb > 0.05
-        ? `OFFLOADING ${hostSplit.weightGb.toFixed(1)}GB TO RAM`
-        : "OFFLOADING TO RAM";
+  // No host figure and the paint expects offload: the host side is unknown, not zero.
+  const ramHostUnknown =
+    !overSystemMemory && hostMeasuredGb == null && (launchPaint === "offload" || spill || insets.needsReprobe);
+  if (!overSystemMemory) {
+    if (ramHostUnknown) {
+      insets.ramInset = "UNKNOWN SO FAR - RE-PROBE FIRST";
+    } else if (spill) {
+      insets.ramInset =
+        hostSplit.weightGb > 0.05
+          ? `OFFLOADING ${hostSplit.weightGb.toFixed(1)}GB TO RAM`
+          : "OFFLOADING TO RAM";
+    }
   }
   // Total host need is unchanged: buffer + weights + the lookup table.
   const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb + hostSplit.engramGb;
@@ -612,7 +619,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       label: fitLabel,
       launchPaint,
       vramNeedTone,
-      ramNeedTone: hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
+      ramNeedTone: ramHostUnknown ? "warn" : hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
       needsLowVramReprobe: insets.needsReprobe,
       uiTemplate: {
         heroText,

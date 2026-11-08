@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { NvramDiffPayload, NvramDiffRow } from "../lib/types";
 
 /** How many diff rows fit in the recap before it summarises the rest. */
-const MAX_ROWS = 9;
+const MAX_ROWS = 12;
 
 function fmtNumber(value: number | null): string {
   if (value === null) return "unknown";
@@ -26,8 +26,7 @@ function rowDelta(row: NvramDiffRow): string {
 }
 
 function rowLabel(row: NvramDiffRow): string {
-  const scope = row.scope.length > 22 ? `${row.scope.slice(0, 21)}…` : row.scope;
-  return `${scope} ${row.field}`.toUpperCase();
+  return `${row.scope} ${row.field}`.toUpperCase();
 }
 
 function clock(iso: string): string {
@@ -120,7 +119,9 @@ export default function NvramSnapshotChip() {
               </div>
               {shown.map((row, i) => (
                 <div className="vram-fc-recap__row vram-fc-snap__row" key={`${row.scope}-${row.field}-${i}`}>
-                  <span className="vram-fc-recap__k">{rowLabel(row)}</span>
+                  <span className="vram-fc-recap__k vram-fc-snap__k" title={rowLabel(row)}>
+                    {rowLabel(row)}
+                  </span>
                   <span className="vram-fc-recap__v vram-fc-recap__v--mono vram-fc-snap__values">
                     <span className="vram-fc-snap__before">{rowBefore(row)}</span>
                     <span className="vram-fc-snap__arrow" aria-hidden>

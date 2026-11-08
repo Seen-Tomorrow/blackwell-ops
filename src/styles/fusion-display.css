@@ -923,6 +923,8 @@
   gap: calc(3px * var(--vram-fc-scale));
   flex-shrink: 0;
   min-width: 0;
+  /* The SNAP recap anchors to the header so its width clamps to the glass, not to the chip. */
+  position: relative;
 }
 
 .vram-forecast-header {
@@ -992,7 +994,6 @@
 /* NVRAM SNAP — capture a snapshot, hover for the diff against the previous one. Same recap
    chrome as MEMORY FORECAST SOURCE, anchored to the right edge of the header. */
 .vram-fc-snap {
-  position: relative;
   flex: 0 0 auto;
   align-self: center;
   margin-left: calc(8px * var(--vram-fc-scale, 1.12));
@@ -1003,14 +1004,24 @@
   cursor: progress;
 }
 
+/* Anchored to the header (position: relative above), so a long diff stays inside the glass. */
 .vram-fc-snap__recap {
   left: auto;
   right: 0;
-  max-width: min(400px, 90vw);
+  width: min(560px, 96%);
+  min-width: 0;
+  max-width: none;
 }
 
 .vram-fc-snap__row {
-  grid-template-columns: 9.5rem 1fr;
+  grid-template-columns: 12.5rem minmax(0, 1fr);
+}
+
+/* One row per change: the key never wraps, it ellipsises and carries the full text in `title`. */
+.vram-fc-snap__k {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .vram-fc-snap__values {
