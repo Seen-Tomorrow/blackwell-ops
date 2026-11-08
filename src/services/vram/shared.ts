@@ -103,6 +103,8 @@ export interface LearnedCurvePoint {
   kvMib?: number;
   /** Host-resident lookup table measured at this launch — never spill by design. */
   engramMib?: number;
+  /** Host model weights actually left in RAM — the only host figure that means spill. */
+  hostModelMib?: number;
 }
 
 /**
@@ -135,6 +137,10 @@ export function sanitizeLearnedCurve(
       engramMib:
         p.engramMib != null && Number.isFinite(p.engramMib) && p.engramMib > 0
           ? p.engramMib
+          : undefined,
+      hostModelMib:
+        p.hostModelMib != null && Number.isFinite(p.hostModelMib)
+          ? Math.max(0, p.hostModelMib)
           : undefined,
     }))
     .sort((a, b) => a.ctx - b.ctx);

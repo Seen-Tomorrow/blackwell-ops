@@ -865,10 +865,13 @@ export function useScenarioEvaluator({
             hostMib: p.host_mib,
             kvMib: p.kv_mib,
             engramMib: p.engram_mib,
+            hostModelMib: p.host_model_mib,
           })),
         ).filter((p) =>
+          // Host *model* weights decide spill; host compute is a legitimate buffer and used to
+          // drop every big-ubatch point from the curve while its exact row still answered.
           !learnedLaunchSpilled(
-            undefined,
+            p.hostModelMib,
             p.hostMib,
             p.engramMib ?? ggufEngramMib(model),
           ),

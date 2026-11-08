@@ -2028,6 +2028,14 @@ pub struct LearnedVramCurvePoint {
     /// the header read can be missing while the launch snapshot already measured it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engram_mib: Option<f64>,
+    /// Host **model** component (weights actually left on the host), MiB.
+    ///
+    /// The spill filter exists to drop launches that dumped weights into RAM. It used the whole
+    /// host figure as the proxy, which is wrong as soon as the host compute buffer is real: a
+    /// 8192 ubatch puts ~5.7 GB of graph buffers in host RAM on a fully-GPU model, and every such
+    /// point was silently removed from the curve while its exact row still answered lookups.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_model_mib: Option<f64>,
 }
 
 /// Measured KV bytes for one launch: per-GPU `ctx` columns, summed.
@@ -2485,6 +2493,10 @@ pub fn get_learned_vram_curve(
             host_mib,
             kv_mib: measured_kv_mib(entry),
             engram_mib: measured_engram_mib(entry),
+            host_model_mib: scaled
+                .host_components_mib
+                .as_ref()
+                .map(|component| component.model_mib),
         };
         match best.get(&ctx) {
             Some((at, _)) if entry.measured_at < *at => {}
