@@ -219,6 +219,19 @@
   color: color-mix(in srgb, var(--theme-accent) 90%, transparent);
 }
 
+/* The fixed app footer sits OUTSIDE the zoomed .app-main-frame, so with the
+   console closed nothing reserves its height and the action bar's last row
+   disappeared under it. Reserve the footer here (layout px = screen px ÷ zoom);
+   the docked console already reserves the whole footprint on .app-main-frame. */
+[data-config-page] .dist-panel {
+  padding-bottom: calc(var(--app-footer-h) / var(--ui-text-scale, 1));
+  box-sizing: border-box;
+}
+
+.app-shell--console-docked [data-config-page] .dist-panel {
+  padding-bottom: 0;
+}
+
 .dist-actionbar {
   border-top: 1px solid color-mix(in srgb, var(--theme-text) 8%, transparent);
   background: color-mix(in srgb, var(--theme-text) 3%, var(--theme-panel-accent));

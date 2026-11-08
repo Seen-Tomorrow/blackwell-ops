@@ -463,7 +463,7 @@ export default function DistributionDevPanel() {
   const selectedEngineIds = engineRows.filter((a) => selected.has(a.id)).map((a) => a.id);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="dist-panel flex h-full min-h-0 flex-col overflow-hidden">
       <header className="fnd-dev-header px-4 py-2.5 space-y-1.5 shrink-0">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-baseline gap-3 flex-wrap">

@@ -219,6 +219,22 @@ fn sha256_file_cached(path: &std::path::Path) -> Option<String> {
     Some(sha)
 }
 
+/// Working-tree app version (package.json).
+///
+/// `package_info().version` is the RUNNING binary's version and goes stale the
+/// moment the in-app Bump writes new manifests: a fresh bump still planned
+/// against the old number, so an un-bumped pack/ship claimed the channel was
+/// up to date and a bumped one would double-bump. Pack/ship plans (and the
+/// dashboard header) must read the worktree instead.
+fn repo_app_version() -> Option<String> {
+    let raw = std::fs::read_to_string(repo_root().join("package.json")).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    v.get("version")?
+        .as_str()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn bump_patch_version(v: &str) -> String {
     let mut parts: Vec<u64> = v.split('.').filter_map(|p| p.parse().ok()).collect();
     if parts.is_empty() {
@@ -389,7 +405,8 @@ async fn build_distribution_state(
 ) -> Result<DistributionState, String> {
     use crate::release_channels::{asset_name, TAG_APP, TAG_FULL};
 
-    let app_version = app_handle.package_info().version.to_string();
+    let app_version = repo_app_version()
+        .unwrap_or_else(|| app_handle.package_info().version.to_string());
     let dir = majestic_out_dir();
     let app_manifest = crate::github_releases::fetch_product_manifest(TAG_APP, force).await;
     let full_manifest = crate::github_releases::fetch_product_manifest(TAG_FULL, force).await;
@@ -622,7 +639,8 @@ async fn build_planned_job(
 ) -> Result<PlannedJob, String> {
     use crate::release_channels::{TAG_APP, TAG_FULL};
 
-    let current = app_handle.package_info().version.to_string();
+    let current = repo_app_version()
+        .unwrap_or_else(|| app_handle.package_info().version.to_string());
     let app_pub = crate::github_releases::fetch_product_manifest(TAG_APP, force)
         .await
         .ok()
@@ -917,7 +935,8 @@ pub async fn run_local_rel_refresh(
         }
     }
 
-    let version = app_handle.package_info().version.to_string();
+    let version = repo_app_version()
+        .unwrap_or_else(|| app_handle.package_info().version.to_string());
     let dest = std::env::var("BLACKWELL_LOCAL_REL_DIR").unwrap_or_else(|_| LOCAL_REL_DIR.to_string());
     let planned = PlannedJob {
         id: format!(
