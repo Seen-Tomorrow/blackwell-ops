@@ -150,6 +150,7 @@ fn history_path() -> PathBuf {
 }
 
 pub fn record_download_history(entry: DownloadHistoryEntry) {
+    let _guard = manifest_guard();
     let mut rows = load_download_history();
     rows.retain(|e| e.id != entry.id);
     rows.push(entry);
@@ -159,7 +160,13 @@ pub fn record_download_history(entry: DownloadHistoryEntry) {
     }
     if let Ok(json) = serde_json::to_string_pretty(&rows) {
         let _ = std::fs::create_dir_all(crate::config::cache_dir());
-        let _ = std::fs::write(history_path(), json);
+        // Same tmp+rename discipline as the manifest: a crash mid-write must not
+        // truncate the history the Downloads page reads back.
+        let path = history_path();
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, json).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
     }
 }
 
@@ -233,8 +240,22 @@ fn save_manifest(manifest: &HashMap<String, ManifestEntry>) {
     }
 }
 
+/// Serializes the manager's JSON read-modify-write (task manifest + history).
+///
+/// Sibling shards pause, fail and complete concurrently, and each does a
+/// load → modify → save on the same JSON. Interleaved saves can resurrect a row
+/// another worker just removed (or drop a live one); recovery then turns the
+/// resurrected row into a phantom "partial data missing" task. The file itself
+/// was never at fault — the RMW was.
+static MANIFEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn manifest_guard() -> std::sync::MutexGuard<'static, ()> {
+    MANIFEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Persist a task to the manifest for crash recovery.
 fn persist_task_to_manifest(task: &DownloadTask) {
+    let _guard = manifest_guard();
     let mut manifest = load_manifest();
     manifest.insert(task.id.clone(), ManifestEntry {
         task_id: task.id.clone(),
@@ -257,8 +278,21 @@ fn persist_task_to_manifest(task: &DownloadTask) {
 
 /// Remove a task from the manifest.
 fn remove_task_from_manifest(task_id: &str) {
+    let owned = task_id.to_string();
+    remove_tasks_from_manifest(std::slice::from_ref(&owned));
+}
+
+/// Remove several rows with one load/save — batch finalize drops a whole shard
+/// set at once.
+fn remove_tasks_from_manifest(task_ids: &[String]) {
+    if task_ids.is_empty() {
+        return;
+    }
+    let _guard = manifest_guard();
     let mut manifest = load_manifest();
-    manifest.remove(task_id);
+    for id in task_ids {
+        manifest.remove(id);
+    }
     save_manifest(&manifest);
 }
 
@@ -337,10 +371,58 @@ pub fn partial_download_path(dest_path: &str) -> String {
 }
 
 /// Bytes currently held by the `.part` file for `dest_path` (0 when absent).
-fn partial_len(dest_path: &str) -> u64 {
+pub(crate) fn partial_len(dest_path: &str) -> u64 {
     std::fs::metadata(partial_download_path(dest_path))
         .map(|m| m.len())
         .unwrap_or(0)
+}
+
+/// Free bytes on the volume that holds `path`.
+///
+/// `None` when no mounted disk matches (UNC/network paths): a preflight must
+/// never block what it cannot measure.
+pub fn free_space_for_path(path: &str) -> Option<u64> {
+    let target = std::path::Path::new(path);
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let mut best: Option<(usize, u64)> = None;
+    for disk in &disks {
+        let mount = disk.mount_point();
+        if target.starts_with(mount) {
+            // Longest mount prefix wins (C:\ before D:\ when nested mounts exist).
+            let len = mount.as_os_str().len();
+            if best.map_or(true, |(best_len, _)| len > best_len) {
+                best = Some((len, disk.available_space()));
+            }
+        }
+    }
+    best.map(|(_, free)| free)
+}
+
+/// Refuse a download that cannot fit on the destination volume before any bytes
+/// are written. A full disk otherwise turns every shard into a write error and
+/// leaves a half-finished batch behind.
+pub(crate) fn ensure_space_for_download(
+    dest_path: &str,
+    total_bytes: u64,
+    file_name: &str,
+) -> Result<(), String> {
+    if total_bytes == 0 {
+        return Ok(());
+    }
+    let Some(free) = free_space_for_path(dest_path) else {
+        return Ok(());
+    };
+    // Bytes already in the `.part` are consumed from the volume already.
+    let remaining = total_bytes.saturating_sub(partial_len(dest_path).min(total_bytes));
+    if free >= remaining {
+        return Ok(());
+    }
+    Err(format!(
+        "Not enough free space for {}: needs {}, only {} free on the destination volume.",
+        file_name,
+        crate::model_catalog::calc_size_str_from_bytes(remaining),
+        crate::model_catalog::calc_size_str_from_bytes(free),
+    ))
 }
 
 /// Offset a resume may continue from, given what the `.part` actually holds.
@@ -458,6 +540,12 @@ impl DownloadManager {
         batch_id: Option<String>,
         self_arc: Arc<RwLock<Self>>,
     ) -> Result<String, String> {
+        // Single-file downloads preflight here; a sharded batch preflights once
+        // against its whole remaining size in the command that enqueues it.
+        if batch_id.is_none() {
+            ensure_space_for_download(&dest_path, total_bytes, &file_name)?;
+        }
+
         let task_id = generate_task_id();
 
         let task = DownloadTask {
@@ -912,6 +1000,16 @@ impl DownloadManager {
         let mut stale = 0usize;
 
         for (task_id, entry) in manifest {
+            // The final file is already in place: the row is a leftover from a
+            // finalize that crashed between rename and manifest cleanup (or a
+            // resurrected row). Recovering it as Paused reports "N GB already
+            // downloaded" for bytes that were successfully moved.
+            if final_file_complete(&entry.dest_path, entry.total_bytes, &entry.lfs_oid) {
+                stale += 1;
+                remove_task_from_manifest(&task_id);
+                continue;
+            }
+
             let partial_path = partial_download_path(&entry.dest_path);
             let on_disk = std::fs::metadata(&partial_path)
                 .ok()
@@ -921,6 +1019,16 @@ impl DownloadManager {
             // Nothing on disk and nothing claimed: genuinely never started.
             if on_disk == 0 && entry.downloaded_bytes == 0 {
                 stale += 1;
+                continue;
+            }
+
+            // A batched shard with no `.part` has nothing to resume: the batch
+            // record owns the shard set and requeues a clean task at 0. Keeping
+            // the row only shows a paused "18 GB already downloaded" task for
+            // bytes that no longer exist.
+            if on_disk == 0 && entry.batch_id.is_some() {
+                stale += 1;
+                remove_task_from_manifest(&task_id);
                 continue;
             }
 
@@ -1752,6 +1860,18 @@ fn part_bytes_ready(dest_path: &str, expected_size: u64, lfs_oid: &str) -> bool 
     download_bytes_complete(meta.len(), expected_size)
 }
 
+/// The FINAL file (not the `.part`) satisfies the expected part. Metadata can be
+/// missing when a crash landed between rename and the sidecar write, so fall
+/// back to the byte size.
+fn final_file_complete(dest_path: &str, expected_size: u64, lfs_oid: &str) -> bool {
+    if crate::config::quant_part_already_downloaded(dest_path, expected_size, lfs_oid) {
+        return true;
+    }
+    std::fs::metadata(dest_path)
+        .map(|m| download_bytes_complete(m.len(), expected_size))
+        .unwrap_or(false)
+}
+
 fn save_hf_metadata_for_part(
     dest_path: &str,
     hf_model_id: &str,
@@ -1855,12 +1975,21 @@ fn try_finalize_quant_batch_sync(dm: &mut DownloadManager, batch_id: &str) -> Re
         task.status_message = None;
         finished_rows.push(task.id.clone());
     }
-    for id in finished_rows {
-        remove_task_from_manifest(&id);
-    }
+    remove_tasks_from_manifest(&finished_rows);
 
     dm.quant_batches.remove(batch_id);
     remove_quant_batch(batch_id);
+
+    // No row for this batch may survive the finalize. A pause/fail persist that
+    // landed just before the rename can leave a manifest entry with no in-memory
+    // task; recovery would resurrect it as a paused shard whose `.part` is gone.
+    let stale_ids: Vec<String> = load_manifest()
+        .into_iter()
+        .filter(|(_, entry)| entry.batch_id.as_deref() == Some(batch_id))
+        .map(|(id, _)| id)
+        .collect();
+    remove_tasks_from_manifest(&stale_ids);
+
     log::info!(
         "[download] Finalized sharded quant batch {} ({} part(s))",
         batch_id,
@@ -2869,6 +2998,28 @@ mod tests {
         let bad_str = bad.to_string_lossy().to_string();
         assert!(verify_file_integrity(&bad_str, &"00".repeat(32)).is_err());
         assert!(!bad.exists(), "mismatched bytes must be deleted");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Recovery must not turn a finalized shard (rename done, sidecar missing)
+    /// back into a "partial data missing" paused row.
+    #[test]
+    fn final_file_complete_falls_back_to_size_without_metadata() {
+        let dir = std::env::temp_dir().join(format!("boc-final-{}", generate_task_id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+
+        let dest = dir.join("shard.gguf");
+        std::fs::write(&dest, vec![0u8; 16]).expect("write");
+        let dest_str = dest.to_string_lossy().to_string();
+        assert!(final_file_complete(&dest_str, 16, "deadbeef"));
+        assert!(!final_file_complete(&dest_str, 32, "deadbeef"));
+
+        // A `.part` alone is not a finalized file.
+        let other = dir.join("other.gguf");
+        let other_str = other.to_string_lossy().to_string();
+        std::fs::write(partial_download_path(&other_str), vec![0u8; 16]).expect("write partial");
+        assert!(!final_file_complete(&other_str, 16, "deadbeef"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

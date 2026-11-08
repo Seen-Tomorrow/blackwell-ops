@@ -118,6 +118,37 @@ pub async fn start_quant_download(
         });
     }
 
+    // Aggregate preflight: a shard set larger than the free space would fill the
+    // volume and fail every worker mid-write. Fail once, before any bytes move.
+    {
+        let needed: u64 = batch_parts
+            .iter()
+            .filter(|p| {
+                !crate::config::quant_part_already_downloaded(
+                    &p.dest_path,
+                    p.total_bytes,
+                    &p.lfs_oid,
+                ) && !dm.has_active_task_for_dest(&p.dest_path)
+            })
+            .map(|p| {
+                let already =
+                    crate::download_manager::partial_len(&p.dest_path).min(p.total_bytes);
+                p.total_bytes.saturating_sub(already)
+            })
+            .sum();
+        if needed > 0 {
+            if let Some(free) = crate::download_manager::free_space_for_path(&default_path) {
+                if free < needed {
+                    return Err(format!(
+                        "Not enough free space: this download still needs {}, only {} is free on the destination volume.",
+                        crate::model_catalog::calc_size_str_from_bytes(needed),
+                        crate::model_catalog::calc_size_str_from_bytes(free),
+                    ));
+                }
+            }
+        }
+    }
+
     let batch_id = if parts.len() > 1 {
         Some(dm.begin_quant_batch(
             hf_model_id.clone(),
