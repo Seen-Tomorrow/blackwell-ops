@@ -167,28 +167,56 @@ fn record_calibration_pair(ready: &NvramSnapshot) {
     let Some(pre) = latest_before_phase("pre_launch", &ready.captured_at) else {
         return;
     };
+    // The engine's own breakdown is in CUDA_VISIBLE order (a launch masked to one card renumbers
+    // it CUDA0), so it cannot be indexed by machine device. Map it by what actually moved instead:
+    // the devices whose NVML usage grew between the two captures.
+    let mut grew: Vec<(u32, f64, &GpuSnap)> = Vec::new();
+    for gpu in &ready.gpus {
+        let Some(pre_gpu) = pre.gpus.iter().find(|p| p.index == gpu.index) else {
+            continue;
+        };
+        if gpu.used_mib <= pre_gpu.used_mib {
+            continue;
+        }
+        grew.push((gpu.index, (gpu.used_mib - pre_gpu.used_mib) as f64, gpu));
+    }
     for engine in &ready.engines {
         let Some(breakdown) = engine.gpu_breakdown_mib.as_ref() else {
             continue;
         };
-        for (index, buffers_mib) in breakdown.iter().enumerate() {
-            let Some(gpu) = ready.gpus.iter().find(|gpu| gpu.index as usize == index) else {
-                continue;
-            };
-            let Some(pre_gpu) = pre.gpus.iter().find(|gpu| gpu.index as usize == index) else {
-                continue;
-            };
-            if gpu.used_mib < pre_gpu.used_mib {
-                continue;
+        // Full-width vectors are positional; a single non-zero entry belongs to the one device
+        // that grew. Anything else is ambiguous — skip rather than guess.
+        let pairs: Vec<(u32, f64, &GpuSnap, f64)> = if breakdown.len() == ready.gpus.len() {
+            breakdown
+                .iter()
+                .enumerate()
+                .filter_map(|(index, buffers)| {
+                    grew.iter()
+                        .find(|(idx, _, _)| *idx as usize == index)
+                        .map(|(idx, used, gpu)| (*idx, *buffers, *gpu, *used))
+                })
+                .collect()
+        } else {
+            match (grew.as_slice(), breakdown.iter().filter(|b| **b > 0.0).count()) {
+                ([(idx, used, gpu)], 1) => vec![(*idx, breakdown[0], *gpu, *used)],
+                _ => {
+                    log::debug!(
+                        "[nvram] calibration skipped: {} device(s) grew, {} breakdown entry(ies)",
+                        grew.len(),
+                        breakdown.len()
+                    );
+                    continue;
+                }
             }
-            let used_mib = (gpu.used_mib - pre_gpu.used_mib) as f64;
-            if *buffers_mib <= 0.0 || used_mib < *buffers_mib {
+        };
+        for (index, buffers_mib, gpu, used_mib) in pairs {
+            if buffers_mib <= 0.0 || used_mib < buffers_mib {
                 continue;
             }
             let recorded = crate::gpu_calibration::record_pair_residual(
                 crate::gpu_calibration::PairResidual {
                     device_index: index as u32,
-                    buffers_mib: *buffers_mib,
+                    buffers_mib,
                     used_mib,
                     capacity_mib: gpu.total_mib as f64,
                     model_path: engine.model_path.clone(),
