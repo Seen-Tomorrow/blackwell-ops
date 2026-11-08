@@ -321,6 +321,8 @@ impl DiffRow {
     fn is_interesting(&self) -> bool {
         match (self.before, self.after) {
             (Some(b), Some(a)) => (a - b).abs() > 1e-9,
+            // Both sides unknown is not a change — and not worth a row.
+            (None, None) if self.before_text.is_none() && self.after_text.is_none() => false,
             _ => self.before_text != self.after_text || self.note.is_some(),
         }
     }
@@ -492,28 +494,26 @@ pub fn diff_snapshots(before: &NvramSnapshot, after: &NvramSnapshot) -> Vec<Diff
         }
     }
 
-    // The glass: the scalars the forecast is made of.
-    const UI_NUMBERS: &[(&str, &[&str])] = &[
-        ("inventory", &["state", "vramInventoryGb"]),
-        ("runtime", &["state", "runtimeOverheadGb"]),
-        ("need", &["state", "vramNeedGb"]),
-        ("plan.total", &["state", "plan", "totalMib"]),
-        ("plan.budget", &["state", "plan", "budgetSumMib"]),
-        ("plan.boundary", &["state", "plan", "boundary"]),
-        ("plan.optimal", &["state", "plan", "optimalBoundary"]),
-        ("plan.applied", &["state", "plan", "appliedBoundary"]),
+    // The glass: the scalars the forecast is made of. Paths track `VramBadge`'s published state —
+    // a field it stops publishing shows up as `unknown`, not as a silent zero.
+    const UI_NUMBERS: &[(&str, &[&str], &str)] = &[
+        ("need", &["state", "vramNeedGb"], "GB"),
+        ("ramNeed", &["state", "ramNeedGb"], "GB"),
+        ("ctx", &["state", "ctx"], ""),
+        ("plan.total", &["state", "plan", "totalMib"], "MiB"),
+        ("plan.budget", &["state", "plan", "budgetSumMib"], "MiB"),
+        ("plan.layers", &["state", "plan", "layers"], "layers"),
+        ("plan.boundary", &["state", "plan", "boundary"], "layers"),
+        ("plan.optimal", &["state", "plan", "optimalBoundary"], "layers"),
+        ("plan.applied", &["state", "plan", "appliedBoundary"], "layers"),
     ];
-    for (label, path) in UI_NUMBERS {
+    for (label, path, unit) in UI_NUMBERS {
         rows.push(DiffRow::number(
             "ui",
             *label,
             ui_num(&before.ui, path),
             ui_num(&after.ui, path),
-            if label.starts_with("plan.boundary") || label.starts_with("plan.optimal") || label.starts_with("plan.applied") {
-                "layers"
-            } else {
-                "GB/MiB"
-            },
+            unit,
         ));
     }
     const UI_TEXTS: &[(&str, &[&str])] = &[
@@ -521,8 +521,10 @@ pub fn diff_snapshots(before: &NvramSnapshot, after: &NvramSnapshot) -> Vec<Diff
         ("sourceDetail", &["state", "sourceDetail"]),
         ("fits", &["state", "fits"]),
         ("tone", &["state", "needTone"]),
+        ("launchPaint", &["state", "launchPaint"]),
         ("kvQuant", &["state", "kvQuant"]),
         ("split", &["state", "splitMode"]),
+        ("fitOff", &["state", "fitOff"]),
     ];
     for (label, path) in UI_TEXTS {
         rows.push(DiffRow::text(
@@ -532,31 +534,49 @@ pub fn diff_snapshots(before: &NvramSnapshot, after: &NvramSnapshot) -> Vec<Diff
             ui_text(&after.ui, path),
         ));
     }
-    // Per-card plan distribution, the thing a placement change moves.
-    let ui_array = |ui: &Option<Value>, key: &str| -> Vec<f64> {
-        ui.as_ref()
-            .and_then(|ui| ui.get("state"))
-            .and_then(|state| state.get("plan"))
-            .and_then(|plan| plan.get(key))
+    // Per-card arrays: the bars (`gpuLoadsGb`) and the plan's distribution (`plan.gpuMib`) are
+    // what a placement change moves first.
+    let ui_array = |ui: &Option<Value>, path: &[&str]| -> Vec<f64> {
+        json_at(ui, path)
             .and_then(Value::as_array)
             .map(|items| items.iter().filter_map(Value::as_f64).collect())
             .unwrap_or_default()
     };
-    let plan_before = ui_array(&before.ui, "gpuMib");
-    let plan_after = ui_array(&after.ui, "gpuMib");
-    let cards = plan_before.len().max(plan_after.len());
-    for i in 0..cards {
-        rows.push(DiffRow::number(
-            "ui.plan",
-            format!("card{i}"),
-            plan_before.get(i).copied(),
-            plan_after.get(i).copied(),
-            "MiB",
-        ));
+    for (scope, path, unit) in [
+        ("ui.bars", &["state", "gpuLoadsGb"][..], "GB"),
+        ("ui.plan", &["state", "plan", "gpuMib"][..], "MiB"),
+    ] {
+        let before_cards = ui_array(&before.ui, path);
+        let after_cards = ui_array(&after.ui, path);
+        let cards = before_cards.len().max(after_cards.len());
+        for i in 0..cards {
+            rows.push(DiffRow::number(
+                scope,
+                format!("card{i}"),
+                before_cards.get(i).copied(),
+                after_cards.get(i).copied(),
+                unit,
+            ));
+        }
     }
-    let ts_before = ui_text(&before.ui, &["state", "plan", "ts"]);
-    let ts_after = ui_text(&after.ui, &["state", "plan", "ts"]);
-    rows.push(DiffRow::text("ui.plan", "ts", ts_before, ts_after));
+    rows.push(DiffRow::text(
+        "ui.plan",
+        "ts",
+        ui_text(&before.ui, &["state", "plan", "ts"]),
+        ui_text(&after.ui, &["state", "plan", "ts"]),
+    ));
+    rows.push(DiffRow::text(
+        "ui.plan",
+        "applyTs",
+        ui_text(&before.ui, &["state", "plan", "applyTs"]),
+        ui_text(&after.ui, &["state", "plan", "applyTs"]),
+    ));
+    rows.push(DiffRow::text(
+        "ui",
+        "model",
+        ui_text(&before.ui, &["state", "modelName"]),
+        ui_text(&after.ui, &["state", "modelName"]),
+    ));
 
     rows.retain(DiffRow::is_interesting);
     rows

@@ -115,7 +115,7 @@ def print_result(payload: dict) -> int:
     if payload.get("ok"):
         result = payload.get("result") or {}
         print("OK")
-        for key in ("slot", "port", "alias", "ready", "startup_ms", "stopped", "stop_error"):
+        for key in ("slot", "port", "alias", "ready", "startup_ms", "stopped", "stop_error", "path"):
             if key in result:
                 print(f"  {key:12} {result[key]}")
         for key in ("weights_mib", "kv_mib", "compute_mib", "total_mib"):
