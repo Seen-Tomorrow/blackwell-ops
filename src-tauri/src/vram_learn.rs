@@ -1545,7 +1545,6 @@ fn interpolate_between_ctx(
         let mut ctx_tokens = None;
         let mut kv_token = "";
         let mut split_token = "";
-        let mut batch_token = "";
         let mut ubatch_token = "";
         for token in key[prefix.len()..].split('|') {
             if let Some(v) = token.strip_prefix("ctx=") {
@@ -1554,8 +1553,6 @@ fn interpolate_between_ctx(
                 kv_token = v;
             } else if let Some(v) = token.strip_prefix("split=") {
                 split_token = v;
-            } else if let Some(v) = token.strip_prefix("batch=") {
-                batch_token = v;
             } else if let Some(v) = token.strip_prefix("ubatch=") {
                 ubatch_token = v;
             }
@@ -1736,12 +1733,9 @@ fn learned_vram_for_model_blocking(
         // config (1.88x the truth).
         let mut entry_kv = "";
         let mut entry_split = "";
-        let mut entry_batch = "";
         let mut entry_ubatch = "";
         for token in key[prefix.len()..].split('|') {
-            if let Some(v) = token.strip_prefix("batch=") {
-                entry_batch = v;
-            } else if let Some(v) = token.strip_prefix("ubatch=") {
+            if let Some(v) = token.strip_prefix("ubatch=") {
                 entry_ubatch = v;
             } else if let Some(v) = token.strip_prefix("ctx=") {
                 entry_ctx = ctx_tokens_from_str(v);

@@ -6,6 +6,7 @@ import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import SegmentSwitch from "./SegmentSwitch";
+import NvramSnapshotChip from "./NvramSnapshotChip";
 import { formatTensorSplit, type LayerPlan } from "../lib/vramLayerPlan";
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
@@ -437,6 +438,7 @@ export default function VramBadge({
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
+        <NvramSnapshotChip />
         {/* Placement handover, visible both ways: which side owns placement is always on screen.
             APP TAKEOVER writes the plan's -ts and turns fit off; ENGINE FIT gives placement back
             (clears -ts first — a leftover one makes --fit bail with "tensor_split already set"). */}

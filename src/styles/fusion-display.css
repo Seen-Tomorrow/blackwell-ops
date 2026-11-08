@@ -989,6 +989,55 @@
   color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
 }
 
+/* NVRAM SNAP — capture a snapshot, hover for the diff against the previous one. Same recap
+   chrome as MEMORY FORECAST SOURCE, anchored to the right edge of the header. */
+.vram-fc-snap {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: calc(8px * var(--vram-fc-scale, 1.12));
+}
+
+.vram-fc-snap__button[data-snap-state="capturing"] {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+.vram-fc-snap__recap {
+  left: auto;
+  right: 0;
+  max-width: min(400px, 90vw);
+}
+
+.vram-fc-snap__row {
+  grid-template-columns: 9.5rem 1fr;
+}
+
+.vram-fc-snap__values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 5px;
+}
+
+.vram-fc-snap__before {
+  color: color-mix(in srgb, var(--display-face-recap-text) 60%, transparent);
+}
+
+.vram-fc-snap__arrow {
+  color: color-mix(in srgb, var(--display-face-recap-text) 38%, transparent);
+}
+
+.vram-fc-snap__delta {
+  font-weight: 700;
+  color: color-mix(in srgb, var(--theme-tel-amber) 88%, var(--display-face-recap-text));
+}
+
+.vram-fc-snap__delta[data-dir="unknown"] {
+  font-weight: 500;
+  color: color-mix(in srgb, var(--display-face-recap-text) 55%, transparent);
+}
+
 
 
 

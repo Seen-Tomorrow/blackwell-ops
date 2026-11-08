@@ -925,6 +925,27 @@ export interface MemorySource {
   confidence: 1 | 2 | 3 | 4;
 }
 
+/** One row of an NVRAM snapshot diff (Rust `nvram_snapshot::DiffRow`, snake_case on the wire). */
+export interface NvramDiffRow {
+  scope: string;
+  field: string;
+  /** `null` is unknown, never zero. */
+  before: number | null;
+  after: number | null;
+  /** `null` when either side is unknown — there is nothing to subtract from. */
+  delta: number | null;
+  unit: string;
+  before_text: string | null;
+  after_text: string | null;
+  note: string | null;
+}
+
+export interface NvramDiffPayload {
+  before_at: string;
+  after_at: string;
+  count: number;
+  rows: NvramDiffRow[];
+}
 export interface VramManifest {
   scenario: Scenario;
   style: StyleObject;

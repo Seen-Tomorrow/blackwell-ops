@@ -40,6 +40,8 @@
   "ModelMetadata": ["architecture", "modelTypeLabel", "n_layer", "n_ctx_train", "n_embd", "n_head", "n_head_kv", "n_expert", "n_expert_used", "rope_freq_base", "rope_dim", "feed_forward_length", "expert_feed_forward_length", "file_type_str", "bpw", "tensor_counts", "total_params_str", "vocab_size", "general_name", "rope_scaling_type", "tokenizer_model", "file_size_bytes", "scan_timestamp", "file_created", "nextn_predict_layers", "rawKvs", "general_author", "general_repo_url", "general_basename", "general_quantized_by", "general_license", "general_tags", "base_models"],
   "ModelPathEntry": ["path", "label", "isDefault"],
   "ModelPathScan": ["label", "resolvedPath", "exists", "ggufCount", "error"],
+  "NvramDiffPayload": ["before_at", "after_at", "count", "rows"],
+  "NvramDiffRow": ["scope", "field", "before", "after", "delta", "unit", "before_text", "after_text", "note"],
   "PathDiskUsage": ["path", "totalGgufBytes", "fileCount"],
   "PluginCatalogEntry": ["id", "displayName", "description", "installed", "enabled", "profiles"],
   "PluginCatalogResponse": ["catalogVersion", "plugins"],

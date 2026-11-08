@@ -248,9 +248,56 @@ pub async fn capture_nvram_snapshot(
     Ok(written.display().to_string())
 }
 
+/// Snapshot files oldest → newest. The name carries a fixed-width timestamp, so lexical order is
+/// chronological order.
+fn snapshot_files() -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(snapshot_dir())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .map(|name| {
+                    let name = name.to_string_lossy();
+                    name.starts_with("snap-") && name.ends_with(".json")
+                })
+                .unwrap_or(false)
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffPayload {
+    pub before_at: String,
+    pub after_at: String,
+    pub count: usize,
+    pub rows: Vec<DiffRow>,
+}
+
+/// The two newest snapshots, diffed — what the glass shows behind the SNAP chip.
+#[tauri::command]
+pub fn nvram_snapshot_compare() -> Result<DiffPayload, String> {
+    let files = snapshot_files();
+    if files.len() < 2 {
+        return Err("need two snapshots: capture, change a knob, capture again".to_string());
+    }
+    let before = read_snapshot(&files[files.len() - 2])?;
+    let after = read_snapshot(&files[files.len() - 1])?;
+    let rows = diff_snapshots(&before, &after);
+    Ok(DiffPayload {
+        before_at: before.captured_at,
+        after_at: after.captured_at,
+        count: rows.len(),
+        rows,
+    })
+}
+
 // ── diff ─────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DiffRow {
     /// Where it lives: `gpu0`, `slot0`, `learned ctx=262144`, `ui.plan`, `cal0`.
     pub scope: String,
@@ -261,7 +308,7 @@ pub struct DiffRow {
     pub after: Option<f64>,
     /// `after - before`; `None` when either side is unknown.
     pub delta: Option<f64>,
-    pub unit: &'static str,
+    pub unit: String,
     /// Set for non-numeric fields (ts string, status, model path, …).
     pub before_text: Option<String>,
     pub after_text: Option<String>,
@@ -292,7 +339,7 @@ impl DiffRow {
             before,
             after,
             delta,
-            unit,
+            unit: unit.to_string(),
             before_text: None,
             after_text: None,
             note,
@@ -311,7 +358,7 @@ impl DiffRow {
             before: None,
             after: None,
             delta: None,
-            unit: "",
+            unit: String::new(),
             before_text: before,
             after_text: after,
             note: None,
@@ -624,7 +671,7 @@ pub fn render_diff(before: &NvramSnapshot, after: &NvramSnapshot, rows: &[DiffRo
         before: String,
         after: String,
         delta: String,
-        unit: &'static str,
+        unit: String,
         note: String,
     }
     let lines: Vec<Line> = rows
@@ -639,7 +686,7 @@ pub fn render_diff(before: &NvramSnapshot, after: &NvramSnapshot, rows: &[DiffRo
             } else {
                 fmt_delta(row.delta)
             },
-            unit: if row.before_text.is_some() { "" } else { row.unit },
+            unit: if row.before_text.is_some() { String::new() } else { row.unit.clone() },
             note: row
                 .note
                 .as_deref()
@@ -736,7 +783,7 @@ pub fn run_cli() -> Option<i32> {
 mod tests {
     use super::*;
 
-    fn snapshot(used: u64, vram: Option<f64>, ts: &str) -> NvramSnapshot {
+    fn snapshot(used: u64, ts: &str) -> NvramSnapshot {
         NvramSnapshot {
             format: SNAPSHOT_FORMAT,
             captured_at: "t".into(),
@@ -780,8 +827,8 @@ mod tests {
 
     #[test]
     fn diff_reports_measured_moves_and_placement_text() {
-        let before = snapshot(10_000, Some(80_000.0), "0.549,0.451");
-        let after = snapshot(10_500, Some(81_000.0), "0.575,0.425");
+        let before = snapshot(10_000, "0.549,0.451");
+        let after = snapshot(10_500, "0.575,0.425");
         let rows = diff_snapshots(&before, &after);
         let used = rows.iter().find(|r| r.scope == "gpu0" && r.field == "used").expect("used row");
         assert_eq!(used.delta, Some(500.0));
@@ -793,7 +840,7 @@ mod tests {
 
     #[test]
     fn snapshot_round_trips_through_serde() {
-        let snap = snapshot(42, Some(1234.5), "0.5,0.5");
+        let snap = snapshot(42, "0.5,0.5");
         let text = serde_json::to_string(&snap).expect("serialize");
         let back: NvramSnapshot = serde_json::from_str(&text).expect("deserialize");
         assert_eq!(back.gpus.len(), 1);
@@ -802,8 +849,8 @@ mod tests {
 
     #[test]
     fn rendered_diff_names_the_move_and_its_unit() {
-        let before = snapshot(10_000, None, "0.549,0.451");
-        let after = snapshot(16_176, None, "0.575,0.425");
+        let before = snapshot(10_000, "0.549,0.451");
+        let after = snapshot(16_176, "0.575,0.425");
         let rows = diff_snapshots(&before, &after);
         let text = render_diff(&before, &after, &rows);
         assert!(text.contains("gpu0"), "{text}");
@@ -817,7 +864,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("nvram-snap-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("temp dir");
         let path = dir.join("snap.json");
-        let mut snap = snapshot(1, None, "0.5,0.5");
+        let mut snap = snapshot(1, "0.5,0.5");
         snap.gpu_error = None;
         snap.learned.clear();
         std::fs::write(&path, serde_json::to_string(&snap).expect("ser")).expect("write");

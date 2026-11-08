@@ -565,6 +565,7 @@ async fn main() {
             vram_profile::get_fit_projection,
             automation::record_ui_state,
             nvram_snapshot::capture_nvram_snapshot,
+            nvram_snapshot::nvram_snapshot_compare,
             config::commands::set_provider_param_value,
             forecast_log::record_plan_forecast,
             forecast_log::record_fit_forecast,
