@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type { GpuInfo } from "../../lib/types";
 import type { GpuOcOverlay } from "../../hooks/useGpuControl";
 import { formatGpuDriverVersion } from "../../lib/benchHwTopo";
-import { hwReservedMib } from "../../services/vram/shared";
 import {
   pcieReadout,
   powerFill,
@@ -53,8 +52,9 @@ export default function HwGpu({
 }: HwGpuProps) {
   const usedVramGb = gpu.memory_used / 1024;
   const totalVramGb = (gpu.memory_total_manufactured || gpu.memory_total) / 1024;
-  const reservedGb = hwReservedMib(gpu.driver_model) / 1024;
-  const freeVramGb = Math.max(0, totalVramGb - usedVramGb - reservedGb);
+  // `memory_used` already contains the driver reservation, and NVML's `memory_free` already
+  // excludes it: subtracting a reserved estimate again understated free by ~1.75 GB.
+  const freeVramGb = Math.max(0, gpu.memory_free / 1024);
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
 
   const driverVer = formatGpuDriverVersion(gpu.driver_version);
