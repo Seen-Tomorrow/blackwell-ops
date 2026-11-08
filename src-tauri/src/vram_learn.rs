@@ -116,6 +116,59 @@ impl LearnedVramEntry {
         }
         Some(snap.gpu_breakdown_mib.as_slice())
     }
+
+    /// Re-evaluate this row's compute term for a different ubatch.
+    ///
+    /// `ubatch` is a measured point, not part of the row's identity: the compute buffers scale
+    /// linearly with it (measured 2026-11-08, 27B: 4096 → 8192 doubled CUDA0/CUDA1/host exactly),
+    /// so the forecast can answer for any ubatch from one measurement instead of missing the row.
+    /// The components are the only place the term is known per device — without them the row is
+    /// left exactly as measured rather than scaled by guesswork.
+    pub fn scale_compute_to_ubatch(&mut self, ubatch: Option<u32>) {
+        let Some(now) = ubatch.filter(|b| *b > 0) else {
+            return;
+        };
+        let Some(reference) = self.reference_ubatch.filter(|b| *b > 0) else {
+            return;
+        };
+        if now == reference {
+            return;
+        }
+        let ratio = now as f64 / reference as f64;
+        let mut scaled = false;
+        if let Some(components) = self.gpu_components_mib.as_mut() {
+            for component in components.iter_mut() {
+                component.compute_mib *= ratio;
+            }
+            let totals: Vec<f64> = components
+                .iter()
+                .map(|c| c.model_mib + c.ctx_mib + c.compute_mib)
+                .collect();
+            self.vram_mib = totals.iter().sum();
+            self.gpu_breakdown_mib = Some(totals);
+            scaled = true;
+        }
+        if let Some(host) = self.host_components_mib.as_mut() {
+            host.compute_mib *= ratio;
+            let total = host.model_mib + host.ctx_mib + host.compute_mib;
+            if total > 0.0 {
+                self.host_mib = Some(total);
+            }
+            scaled = true;
+        }
+        if scaled {
+            // `paint_*` prefer the snapshot, so the scaled figure has to land there too.
+            if let Some(snap) = self.launch_snapshot.as_mut() {
+                snap.vram_mib = self.vram_mib;
+                if let Some(host) = self.host_mib {
+                    snap.host_mib = host;
+                }
+                if let Some(breakdown) = self.gpu_breakdown_mib.as_ref() {
+                    snap.gpu_breakdown_mib = breakdown.clone();
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -261,27 +314,24 @@ fn param_suffix(
     } else {
         format!("|topo={topo}")
     };
-    // `mode` (assisted/full_auto) is a UI mode and changes nothing about memory, so it must
-    // not split the history. `batch` is NOT in the identity: measured 2026-11-05, batch 512 vs
-    // 2048 changed no buffer at all (docs/ENGINE-MEMORY-MEASUREMENTS.md). `ubatch` does move
-    // the graph (+338/+248 MiB per +512), so it stays.
-    let ubatch_token = 
-        if ubatch.trim().is_empty() { "0".to_string() } else { ubatch.trim().to_string() };
-    // `parallel` only when it is not the default. An explicit N splits the context per slot
-    // (KV constant, compute moves); omitting the flag makes llama pick 4 with `kv_unified` and
-    // quadruple the cache, so those two must never share a row.
-    let par_seg = if parallel > 1 { format!("|par={parallel}") } else { String::new() };
+    // Identity is only what changes the *shape* of the footprint: model, kv quant, topology,
+    // split, offload, spec/draft, cache_ram, and the measured ctx.
+    //
+    // `mode` is a UI mode, `batch` moves no buffer at all, and `ubatch` / `parallel` are
+    // measured points rather than identity: they move the compute term, which the forecast
+    // scales by `compute(measured) * ub_now / ub_reference` instead of hiding the row.
+    // Measured 2026-11-08 on the 27B: ubatch 4096 -> 8192 doubled every compute buffer exactly
+    // (CUDA0 2272.6 -> 4545.3, CUDA1 1552.5 -> 3105.0, host 1056.8 -> 2113.5 MiB).
+    let _ = (ubatch, parallel);
     format!(
-        "|{}|ctx={}|kv={}{}|split={}|ubatch={}|offload={}{}{}",
+        "|{}|ctx={}|kv={}{}|split={}|offload={}{}",
         provider_id,
         normalize_ctx_key(ctx),
         kv_quant.trim().to_lowercase(),
         topo_seg,
         split.trim().to_lowercase(),
-        ubatch_token,
         normalize_offload_mode(offload_mode),
         optional_launch_suffix(spec_type, cache_ram, draft_key),
-        par_seg,
     )
 }
 
@@ -778,15 +828,17 @@ fn batch_pair(batch: u32, ubatch: u32) -> String {
 
 /// First measurement becomes the reference; returns true when this write is
 /// the reference pair (base update), false for a delta write.
+/// Whether this launch is a *new base* for the row.
+///
+/// `ubatch` is no longer identity: it moves the compute term, which the forecast scales from
+/// whichever measurement is newest. So a ubatch-only change replaces the base (measured
+/// 2026-11-08: ub 1536 → 15,049 MiB total, ub 8192 → 26,829 MiB at the same ctx) instead of
+/// being filed as a delta against a stale operating point. `batch` moves no buffer, so it is
+/// not compared either; the reference pair is refreshed so the row records what was measured.
 fn batch_reference_matches(entry: &mut LearnedVramEntry, batch: u32, ubatch: u32) -> bool {
-    match (entry.reference_batch, entry.reference_ubatch) {
-        (Some(rb), Some(ru)) => rb == batch && ru == ubatch,
-        _ => {
-            entry.reference_batch = Some(batch);
-            entry.reference_ubatch = Some(ubatch);
-            true
-        }
-    }
+    entry.reference_batch = Some(batch);
+    entry.reference_ubatch = Some(ubatch);
+    true
 }
 
 fn record_batch_delta(
@@ -1769,14 +1821,10 @@ fn learned_vram_for_model_blocking(
                 continue;
             }
         }
-        if learn_key_parallel(key) != want_parallel {
-            continue;
-        }
-        if let Some(want) = want_ubatch.as_deref() {
-            if entry_ubatch != want {
-                continue;
-            }
-        }
+        // `parallel` and `ubatch` are no longer identity: they move the compute term, which the
+        // forecast scales from the row's own components. Filtering on them is what made a tuned
+        // config look like it had never been measured.
+        let _ = (want_parallel, want_ubatch.as_deref(), entry_ubatch);
         let candidate = LearnedVramForModel {
             vram_mib: entry.vram_mib,
             host_mib: entry.host_mib.unwrap_or(0.0),
@@ -1952,6 +2000,9 @@ pub fn get_learned_vram(
         entry.gpu_components_mib = None;
         entry.host_components_mib = None;
     }
+    // The row is a measurement at one ubatch; the caller may be at another one. Scale the
+    // compute term from the row's own components before anything paints it.
+    entry.scale_compute_to_ubatch(ubatch);
     let painted_v = entry.paint_vram_mib();
     let painted_h = entry.paint_host_mib();
     let painted_bd = entry.paint_gpu_breakdown_mib().map(|b| b.to_vec());
@@ -2360,14 +2411,9 @@ pub fn get_learned_vram_curve(
         if !key_matches_split(k, &split_n) {
             continue;
         }
-        // A curve must not mix slot counts: parallel moves the compute buffers.
-        if learn_key_parallel(k) != wanted_parallel {
-            continue;
-        }
-        // Nor ubatch: it keys the row apart and moves the graph.
-        if !key_matches_ubatch(k, wanted_ubatch) {
-            continue;
-        }
+        // One curve, any ubatch/parallel: both move the compute term only, and the point is
+        // scaled from its own components below.
+        let _ = (wanted_parallel, wanted_ubatch);
         if let Some(topo) = vram_topo.as_deref() {
             if !key_matches_vram_topo(k, topo) {
                 continue;
@@ -2420,11 +2466,15 @@ pub fn get_learned_vram_curve(
                 delta_h += spec_h;
             }
         }
-        let vram = entry.paint_vram_mib() + delta_v;
+        // Each point is scaled from its own components: a curve mixes ubatches as soon as the
+        // knob moves, and a point measured at another ubatch is still a measurement of this ctx.
+        let mut scaled = entry.clone();
+        scaled.scale_compute_to_ubatch(Some(wanted_ubatch));
+        let vram = scaled.paint_vram_mib() + delta_v;
         if vram <= 0.0 {
             continue;
         }
-        let host_mib = match entry.paint_host_mib() {
+        let host_mib = match scaled.paint_host_mib() {
             Some(base) => Some(base + delta_h),
             None if delta_h > 0.0 => Some(delta_h),
             None => None,
