@@ -189,6 +189,10 @@ ipc_registry! {
     // ── NVRAM snapshot / diff (the glass SNAP chip) ────────────────────
     "NvramDiffPayload" => crate::nvram_snapshot::DiffPayload,
     "NvramDiffRow" => crate::nvram_snapshot::DiffRow,
+    "NvramSnapshotMatrix" => crate::nvram_snapshot::SnapshotMatrix,
+    "NvramMatrixRow" => crate::nvram_snapshot::MatrixRow,
+    "NvramMatrixCell" => crate::nvram_snapshot::MatrixCell,
+    "NvramMatrixColumn" => crate::nvram_snapshot::MatrixColumn,
 
     // ── telemetry / metering / logs ───────────────────────────────────
     "GpuInfo" => crate::telemetry::GpuInfo,

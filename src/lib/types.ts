@@ -940,6 +940,32 @@ export interface NvramDiffRow {
   note: string | null;
 }
 
+export interface NvramMatrixCell {
+  /** `null` is unknown, never zero. */
+  number: number | null;
+  /** Set for text cells (status, split, ts, source, …). */
+  text: string | null;
+}
+
+export interface NvramMatrixRow {
+  scope: string;
+  field: string;
+  unit: string;
+  /** One cell per column, oldest → newest. */
+  cells: NvramMatrixCell[];
+}
+
+export interface NvramMatrixColumn {
+  file: string;
+  captured_at: string;
+  phase: string;
+}
+
+/** Newest snapshots side by side — what the glass overlay renders. */
+export interface NvramSnapshotMatrix {
+  columns: NvramMatrixColumn[];
+  rows: NvramMatrixRow[];
+}
 export interface NvramDiffPayload {
   before_at: string;
   after_at: string;

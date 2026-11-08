@@ -165,7 +165,7 @@ async fn run_job(app: &AppHandle, job: &Job) -> Result<Value, String> {
         }
         "snapshot" => {
             // DEV loop: capture, change a knob, capture, then diff on the CLI.
-            let path = crate::nvram_snapshot::capture(app, None).await?;
+            let path = crate::nvram_snapshot::capture(app, None, "manual").await?;
             Ok(json!({ "path": path.display().to_string() }))
         }
         "stop" => {

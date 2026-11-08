@@ -566,6 +566,7 @@ async fn main() {
             automation::record_ui_state,
             nvram_snapshot::capture_nvram_snapshot,
             nvram_snapshot::nvram_snapshot_compare,
+            nvram_snapshot::nvram_snapshot_matrix,
             config::commands::set_provider_param_value,
             forecast_log::record_plan_forecast,
             forecast_log::record_fit_forecast,

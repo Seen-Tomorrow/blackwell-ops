@@ -201,7 +201,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
   }, []);
 
   const showStopAll = liveEngineSlots.length > 1;
-  const showTopChrome = showFitOrDeviceChrome || showStopAll;
+  // The NVRAM snapshot log is a bezel control for the owner and power users: it is always there.
+  const [snapLogOpen, setSnapLogOpen] = useState(false);
+  const showTopChrome = showFitOrDeviceChrome || showStopAll || true;
 
   const onGpuPerRow = useCallback((n: DisplayCardsPerRow) => {
     setGpuPerRow(n);
@@ -366,7 +368,18 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                 >
                   STOP ALL
                 </button>
-              ) : null}
+              ) : (
+                <span className="ml-auto shrink-0" aria-hidden />
+              )}
+              <button
+                type="button"
+                onClick={() => setSnapLogOpen((open) => !open)}
+                title="NVRAM snapshots — the newest three side by side"
+                className="display-bezel-nvram-log font-mono uppercase tracking-wider shrink-0"
+                data-snap-log={snapLogOpen ? "open" : "closed"}
+              >
+                NVRAM LOG
+              </button>
             </div>
           )}
           <div
@@ -387,6 +400,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onToggleFitOff={onToggleFitOff}
               onReleasePlacement={onReleasePlacement}
               layerPlan={layerPlan}
+              snapLogOpen={snapLogOpen}
+              onCloseSnapLog={() => setSnapLogOpen(false)}
               planApplyTs={planApplyTs}
               planKvSource={planKvSource}
               planSqueezed={planSqueezed}

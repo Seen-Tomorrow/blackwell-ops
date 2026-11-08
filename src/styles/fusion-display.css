@@ -991,596 +991,190 @@
   color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
 }
 
-/* NVRAM SNAP — capture a snapshot, hover for the diff against the previous one. Same recap
-   chrome as MEMORY FORECAST SOURCE, anchored to the right edge of the header. */
-.vram-fc-snap {
-  flex: 0 0 auto;
-  align-self: center;
-  margin-left: calc(8px * var(--vram-fc-scale, 1.12));
+/* NVRAM LOG — bezel control (top-right of the frame) + the full-glass snapshot overlay.
+   The overlay is a veil, not a second glass: it dims the face and covers it, and the content
+   behind stays where it was. No blur — WebView2 pegs the iGPU on a live backdrop-filter. */
+.display-bezel-nvram-log {
+  padding: 2px 8px;
+  border: 1px solid var(--theme-provider-pill-border);
+  background: var(--theme-provider-pill-bg);
+  color: var(--theme-provider-pill-text);
+  border-radius: 0.125rem;
+  font-size: var(--type-label);
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.vram-fc-snap__button[data-snap-state="capturing"] {
-  opacity: 0.72;
+.display-bezel-nvram-log:hover:not(:disabled) {
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-hover-text);
+}
+
+.display-bezel-nvram-log[data-snap-log="open"] {
+  border-color: color-mix(in srgb, var(--theme-accent) 62%, transparent);
+  color: var(--theme-accent-bright);
+}
+
+.vram-snap-ov {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: calc(8px * var(--vram-fc-scale, 1.12)) calc(10px * var(--vram-fc-scale, 1.12));
+  background: color-mix(in srgb, #000 88%, transparent);
+  color: var(--display-face-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.vram-snap-ov__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--display-face-text) 14%, transparent);
+}
+
+.vram-snap-ov__title {
+  font-size: calc(11px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.vram-snap-ov__count {
+  margin-left: auto;
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
+}
+
+.vram-snap-ov__action {
+  padding: 2px 9px;
+  border: 1px solid var(--theme-provider-pill-border);
+  background: var(--theme-provider-pill-bg);
+  color: var(--theme-provider-pill-text);
+  border-radius: 0.125rem;
+  font: inherit;
+  font-size: var(--type-label);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.vram-snap-ov__action:hover:not(:disabled) {
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-hover-text);
+}
+
+.vram-snap-ov__action:disabled {
+  opacity: 0.6;
   cursor: progress;
 }
 
-/* Anchored to the header (position: relative above), so a long diff stays inside the glass. */
-.vram-fc-snap__recap {
-  left: auto;
-  right: 0;
-  width: min(560px, 96%);
-  min-width: 0;
-  max-width: none;
+.vram-snap-ov__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
-.vram-fc-snap__row {
-  grid-template-columns: 12.5rem minmax(0, 1fr);
+.vram-snap-ov__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(10px * var(--vram-fc-scale, 1.12));
 }
 
-/* One row per change: the key never wraps, it ellipsises and carries the full text in `title`. */
-.vram-fc-snap__k {
+.vram-snap-ov__table th,
+.vram-snap-ov__table td {
+  padding: 2px 6px;
+  vertical-align: top;
+  text-align: right;
+  font-weight: 400;
+}
+
+.vram-snap-ov__table thead th {
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, #000 94%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--display-face-text) 18%, transparent);
+  padding-bottom: 4px;
+}
+
+.vram-snap-ov__rowlab {
+  width: 30%;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.vram-fc-snap__values {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 3px 5px;
+.vram-snap-ov__scope {
+  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
+  margin-right: 6px;
 }
 
-.vram-fc-snap__before {
-  color: color-mix(in srgb, var(--display-face-recap-text) 60%, transparent);
-}
-
-.vram-fc-snap__arrow {
-  color: color-mix(in srgb, var(--display-face-recap-text) 38%, transparent);
-}
-
-.vram-fc-snap__delta {
+.vram-snap-ov__field {
   font-weight: 700;
-  color: color-mix(in srgb, var(--theme-tel-amber) 88%, var(--display-face-recap-text));
 }
 
-.vram-fc-snap__delta[data-dir="unknown"] {
-  font-weight: 500;
-  color: color-mix(in srgb, var(--display-face-recap-text) 55%, transparent);
+.vram-snap-ov__unit {
+  margin-left: 5px;
+  color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }
 
-
-
-
-
-.vram-forecast-scenario-badge {
-  width: auto;
-  min-width: 0;
-  min-height: 0;
+.vram-snap-ov__col {
+  min-width: 88px;
 }
 
-
-
-
-
-.vram-forecast-header__fit-row,
-.vram-fc__source-row {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--vram-fc-scale));
-  min-width: 0;
-}
-
-.vram-forecast-header__fit-row .segment-switch--fit-launch {
-  flex-shrink: 0;
-}
-
-.vram-forecast-source {
-  padding-top: 0;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-/* Body: ASSISTED bars dominate, then topo fills */
-.vram-fc__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vram-fc-gap);
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-/* ASSISTED body — fixed-height dominant bars; GPU bank keeps remaining space */
-
-/* ASSISTED measure — SOURCE strip | NEED frame (spans up); rails under SOURCE */
-/* Keep compact so GPU topo keeps height inside the phosphor (248/300) */
-.vram-fc-measure {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: calc(2px * var(--vram-fc-scale, 1.12));
-  flex: 0 0 auto;
-  align-self: stretch;
-  width: 100%;
-  min-width: 0;
-}
-/*
- * Grid (subgrid on NEED frame so GB values lock to bar rows):
- *   [ SOURCE strip ........ ] [ status + RE-PROBE ]
- *   [ VRAM bar ............ ] [ need 42.0 GB      ]
- *   [ RAM bar ............. ] [ need  1.2 GB      ]
- */
-.vram-fc-measure__main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto auto;
-  column-gap: calc(6px * var(--vram-fc-scale, 1.12));
-  row-gap: calc(6px * var(--vram-fc-scale, 1.12));
-  width: 100%;
-  min-width: 0;
-  align-items: stretch;
-}
-.vram-fc-measure__source {
-  grid-column: 1;
-  grid-row: 1;
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  justify-content: flex-end;
-  gap: calc(8px * var(--vram-fc-scale, 1.12));
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  padding: 3px 8px 3px 10px;
-  border-radius: 3px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--display-face-source-wash-mid) 42%,
-    var(--display-face-source-wash-end) 100%
-  );
-  border: none;
-  box-sizing: border-box;
-}
-/* Match PROVIDER bar label cadence */
-.vram-fc-measure__source .vram-fc-source__lab {
-  font-size: var(--type-tiny);
-  font-weight: 600;
+.vram-snap-ov__phase {
+  display: block;
+  font-weight: 700;
   letter-spacing: 0.1em;
-  opacity: 0.85;
-  color: var(--display-face-source-lab);
-}
-/* LEARNED / kind — same family as value-chip / provider pills */
-.vram-fc-measure__source .vram-fc-source__kind {
-  padding: 1px 6px;
-  border-radius: 0.125rem;
-  border: 1px solid var(--display-face-source-kind-border);
-  background: var(--display-face-source-kind-bg);
-  box-shadow: 0 1px 2px var(--fixed-black-a28);
-}
-.vram-fc-measure__source .vram-fc-source__kind-lab {
-  font-size: var(--type-label);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  opacity: 1;
-}
-.vram-fc-measure__source .vram-fc__source-row {
-  margin: 0;
-  width: auto;
-  max-width: 100%;
-  flex: 0 0 auto; /* don't stretch — recap anchors to this box */
-  min-width: 0;
-  background: transparent;
-}
-.vram-fc-measure__source .vram-forecast-source {
-  width: auto;
-  max-width: 100%;
-  flex: 0 0 auto;
-  background: transparent;
-}
-.vram-fc-measure__source .vram-fc-source--dominant .vram-fc-source__head {
-  justify-content: flex-end;
-  flex-wrap: nowrap;
-  width: auto;
-  min-height: 0;
-}
-.vram-fc-measure__source .vram-fc-source--dominant {
-  position: relative;
-  width: auto;
-  max-width: 100%;
-  margin-left: 0;
-  margin-right: 0;
-  background: transparent;
-}
-/* Recap sits under MEMORY FORECAST SOURCE · LEARNED (right-packed cluster) */
-.vram-fc-measure__source .vram-fc-recap {
-  left: auto;
-  right: 0;
-  top: calc(100% + 6px);
-  min-width: min(280px, 72vw);
-}
-/* Spacer when no SOURCE — keeps need-frame grid row alignment */
-.vram-fc-measure__source--empty {
-  min-height: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  pointer-events: none;
 }
 
-
-/* Rails unwrap so each bar is its own main-grid row */
-.vram-fc-measure__main > .vram-fc-measure__rails,
-.vram-fc__body--assisted .vram-fc-measure__main > .vram-fc-measure__rails.vram-fc-bars--assisted,
-.vram-fc[data-forecast-mode="assisted"] .vram-fc-measure__main > .vram-fc-measure__rails.vram-fc-bars {
-  display: contents;
-}
-.vram-fc-measure__main .vram-fc-bar-row--vram {
-  grid-column: 1;
-  grid-row: 2;
-}
-.vram-fc-measure__main .vram-fc-bar-row--ram {
-  grid-column: 1;
-  grid-row: 3;
-}
-.vram-fc-measure__main .vram-fc-bar-row {
-  width: 100%;
-  min-width: 0;
-}
-.vram-fc-measure__main .vram-fc-bar--fused {
-  width: 100%;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-/* Track-only bars: round the right edge (need frame is separate) */
-.vram-fc-bar--track-only {
-  border-top-right-radius: 4px;
-  border-bottom-right-radius: 4px;
+.vram-snap-ov__when {
+  display: block;
+  color: color-mix(in srgb, var(--display-face-text-muted) 82%, transparent);
 }
 
-/*
- * NEED frame — bumped 3D plate; subgrid locks GB heroes to bar rows.
- * Status sits in row 1 (beside SOURCE strip).
- */
-.vram-fc-need-frame {
-  --need-frame-accent: color-mix(in srgb, var(--theme-accent) 55%, transparent);
-  --need-frame-hi: var(--fixed-white-a18);
-  --need-frame-lo: var(--fixed-black-a48);
-  --need-frame-ring: color-mix(in srgb, var(--display-face-text-muted) 42%, transparent);
-  --need-frame-face: color-mix(
-    in srgb,
-    var(--display-face-bar-bg, color-mix(in srgb, var(--theme-accent) 12%, transparent)) 78%,
-    transparent
-  );
-  grid-column: 2;
-  grid-row: 1 / -1;
-  display: grid;
-  grid-template-rows: subgrid;
-  align-items: stretch;
-  min-width: calc(11ch + 4.6rem);
-  width: calc(11ch + 4.6rem);
-  /*
-   * Double-border air only on the sides — vertical margin was shorting the
-   * plate vs SOURCE/VRAM/RAM rows so status + need strips misaligned.
-   */
-  margin: 0 3px;
-  /* Slightly taller plate so status / VRAM / RAM bands meet the bar rows */
-  padding-block: 2px;
-  box-sizing: border-box;
-  border: 1px solid var(--need-frame-ring);
-  border-radius: 4px;
-  /* Outer ring — 3px air gap between borders */
-  outline: 1px solid var(--need-frame-ring);
-  outline-offset: 3px;
-  background:
-    /* Reverse of SOURCE strip: dense on bar side → clear on outer edge */
-    linear-gradient(
-      90deg,
-      var(--display-face-plate-wash-start) 0%,
-      var(--display-face-plate-wash-mid) 55%,
-      transparent 100%
-    ),
-    linear-gradient(
-      165deg,
-      var(--fixed-white-a1) 0%,
-      transparent 42%,
-      var(--fixed-black-a14) 100%
-    ),
-    var(--need-frame-face);
-  /* Raised 3D bump on the inner plate */
-  box-shadow:
-    0 1px 0 var(--fixed-black-a35),
-    0 3px 6px var(--fixed-black-a28),
-    inset 1px 1px 0 var(--need-frame-hi),
-    inset -1px -1px 0 var(--need-frame-lo),
-    inset 0 0 0 1px var(--fixed-black-a18);
-  overflow: hidden;
-  /* Anchor for mini-display live overlay */
-  position: relative;
-  isolation: isolate;
-}
-.vram-fc-need-frame[data-source-kind="learned"],
-.vram-fc-need-frame[data-source-kind="learned_curve"] {
-  /* Premium gold */
-  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-amber) 52%, var(--fixed-amber-200) 18%);
-}
-.vram-fc-need-frame[data-source-kind="fit_probe"] {
-  /* Instrument cyan */
-  --need-frame-accent: color-mix(in srgb, var(--theme-telemetry-cyan) 55%, transparent);
+.vram-snap-ov__ord {
+  display: block;
+  color: color-mix(in srgb, var(--display-face-text-muted) 55%, transparent);
+  font-size: 0.85em;
 }
 
-/*
- * NEED frame live cue — single perimeter ring.
- * RE-PROBE: solid chase + spark. CTX scrub: dashed chase.
- */
-.vram-fc-need-frame__live {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: hidden;
-  border-radius: inherit;
-}
-.vram-fc-need-frame__live-rim,
-.vram-fc-need-frame__live-tick {
-  --rim-angle: 0deg;
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 2px;
-  box-sizing: border-box;
-  pointer-events: none;
-  -webkit-mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  mask-composite: exclude;
-}
-.vram-fc-need-frame__live-rim {
-  opacity: 0.55;
-  background: conic-gradient(
-    from var(--rim-angle),
-    var(--fixed-white-a08) 0deg,
-    var(--fixed-white-a08) 200deg,
-    var(--fixed-white-a55) 250deg,
-    var(--fixed-white-a95) 280deg,
-    var(--fixed-white-a55) 310deg,
-    var(--fixed-white-a08) 360deg
-  );
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.2);
-}
-.vram-fc-need-frame__live.is-mode-scan .vram-fc-need-frame__live-rim {
-  background: conic-gradient(
-    from var(--rim-angle),
-    var(--fixed-white-a9) 0deg 14deg,
-    transparent 14deg 28deg,
-    var(--fixed-white-a55) 28deg 40deg,
-    transparent 40deg 54deg,
-    var(--fixed-white-a9) 54deg 68deg,
-    transparent 68deg 82deg,
-    var(--fixed-white-a55) 82deg 94deg,
-    transparent 94deg 108deg,
-    var(--fixed-white-a9) 108deg 122deg,
-    transparent 122deg 136deg,
-    var(--fixed-white-a55) 136deg 148deg,
-    transparent 148deg 162deg,
-    var(--fixed-white-a9) 162deg 176deg,
-    transparent 176deg 190deg,
-    var(--fixed-white-a55) 190deg 202deg,
-    transparent 202deg 216deg,
-    var(--fixed-white-a9) 216deg 230deg,
-    transparent 230deg 244deg,
-    var(--fixed-white-a55) 244deg 256deg,
-    transparent 256deg 270deg,
-    var(--fixed-white-a9) 270deg 284deg,
-    transparent 284deg 298deg,
-    var(--fixed-white-a55) 298deg 310deg,
-    transparent 310deg 324deg,
-    var(--fixed-white-a9) 324deg 338deg,
-    transparent 338deg 360deg
-  );
-  box-shadow: 0 0 5px var(--fixed-white-a22);
-}
-.vram-fc-need-frame__live-tick {
-  opacity: 0.7;
-  padding: 2.5px;
-  background: conic-gradient(
-    from var(--rim-angle),
-    transparent 0deg,
-    transparent 262deg,
-    var(--fixed-white-a35) 272deg,
-    var(--fixed-white) 280deg,
-    var(--fixed-white-a35) 288deg,
-    transparent 298deg,
-    transparent 360deg
-  );
-  filter: drop-shadow(0 0 3px var(--fixed-white-a75));
-}
-.vram-fc-need-frame__live.is-mode-full .vram-fc-need-frame__live-rim {
-  padding: 2.5px;
-}
-.vram-fc-need-frame .vram-fc-bar__need-chip,
-.vram-fc-need-frame__need {
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  min-height: 0;
-  border: none;
-  border-radius: 0;
-  justify-content: flex-start;
-  align-items: center;
-  padding: 0 6px;
-}
-.vram-fc-need-frame__need--vram {
-  grid-row: 2;
-}
-.vram-fc-need-frame__need--ram {
-  grid-row: 3;
-  border-top: 1px solid color-mix(in srgb, var(--need-frame-accent) 28%, transparent);
-}
-.vram-fc-need-frame__status-stack {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  min-width: 0;
-}
-.vram-fc-need-frame__precision {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-.vram-fc-need-frame__precision-label {
-  margin-right: 2px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(6.5px * var(--vram-fc-scale, 1.12));
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--display-face-text) 48%, transparent);
-}
-.vram-fc-need-frame__pip {
-  width: 5px;
-  height: 5px;
-  border: 1px solid color-mix(in srgb, var(--display-face-text) 38%, transparent);
-  background: transparent;
-  opacity: 0.32;
-}
-.vram-fc-need-frame__pip.is-on {
-  opacity: 1;
-  background: color-mix(in srgb, var(--display-face-text) 72%, transparent);
-  border-color: color-mix(in srgb, var(--display-face-text) 55%, transparent);
+.vram-snap-ov__cell {
+  font-variant-numeric: tabular-nums;
 }
 
-.vram-fc-need-frame__status-row--empty {
-  padding: 0;
-  border-bottom: none;
-  background: transparent;
-  pointer-events: none;
-}
-.vram-fc-need-frame__status {
-  flex: 0 1 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(13.5px * var(--vram-fc-scale, 1.12));
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1;
-  white-space: nowrap;
-  color: color-mix(in srgb, var(--display-face-text) 94%, transparent);
-  text-shadow:
-    0 1px 0 var(--fixed-black-a45),
-    0 0 10px color-mix(in srgb, var(--need-frame-accent) 40%, transparent);
-  user-select: none;
-}
-.vram-fc-need-frame__status.is-empty {
-  display: none;
-}
-.vram-fc-need-frame__status.is-exact {
-  opacity: 1;
-  letter-spacing: 0.12em;
-}
-.vram-fc-need-frame__status.is-incomplete {
-  opacity: 0.96;
-}
-/* One point, scaled: the word is longer than the measured states — keep the frame calm. */
-.vram-fc-need-frame__status[data-status="INCOMPLETE"] {
-  font-size: calc(10.5px * var(--vram-fc-scale, 1.12));
-  letter-spacing: 0.06em;
-  opacity: 0.94;
-}
-.vram-fc-need-frame[data-source-kind="learned"] .vram-fc-need-frame__status,
-.vram-fc-need-frame[data-source-kind="learned_curve"] .vram-fc-need-frame__status {
-  color: color-mix(in srgb, var(--theme-telemetry-amber) 82%, var(--fixed-amber-200) 28%);
-}
-.vram-fc-need-frame[data-source-kind="fit_probe"] .vram-fc-need-frame__status {
-  color: var(--theme-telemetry-cyan);
+.vram-snap-ov__val {
+  display: block;
 }
 
-.vram-fc__body--assisted .vram-fc-measure {
-  flex: 0 0 auto;
-}
-.vram-fc__body--assisted .vram-fc-bars--assisted {
-  gap: calc(6px * var(--vram-fc-scale, 1.12));
-}
-
-.vram-fc__body--assisted {
-  /* Air between RAM bar and GPU bank (one empty-row feel) */
-  gap: calc(12px * var(--vram-fc-scale, 1.12));
-  justify-content: flex-start;
-}
-.vram-fc__body--assisted .vram-fc-bars--assisted {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: calc(4px * var(--vram-fc-scale, 1.12));
-}
-.vram-fc__body--assisted .vram-fc-bar-row {
-  flex: 0 0 auto;
-  height: calc(34px * var(--vram-fc-scale, 1.12));
-  min-height: calc(34px * var(--vram-fc-scale, 1.12));
-  max-height: calc(34px * var(--vram-fc-scale, 1.12));
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-}
-.vram-fc__body--assisted .vram-fc-bar--fused {
-  height: 100%;
-  min-height: 0;
-  max-height: none;
-}
-.vram-fc__body--assisted .vram-fc__topo--compact {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: none;
-  display: flex;
-  flex-direction: column;
-  /* Extra separation from RAM measure cluster */
-  margin-top: calc(4px * var(--vram-fc-scale, 1.12));
-  padding-top: calc(2px * var(--vram-fc-scale, 1.12));
+.vram-snap-ov__delta {
+  display: block;
+  font-size: 0.86em;
+  color: color-mix(in srgb, var(--theme-tel-amber) 88%, var(--display-face-text));
 }
 
-/* Placement switch feedback: the numbers can land in the same place (a launch measured with our
-   -ts is also the learned row), so the topo re-scans and the bars ease to their new widths
-   instead of jumping. A mode switch must always be visible. */
-.vram-fc__topo .gpu-card__bar-fill {
-  transition: width 0.32s ease-out;
+.vram-snap-ov__empty {
+  padding: 18px 4px;
+  max-width: 60ch;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--display-face-text) 74%, transparent);
 }
 
-.vram-fc__topo[data-placement-flash="1"] {
-  animation: vram-placement-scan 0.6s ease-out;
+.vram-snap-ov__foot {
+  padding-top: 6px;
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  color: color-mix(in srgb, var(--display-face-text-muted) 82%, transparent);
 }
 
-@keyframes vram-placement-scan {
-  0% {
-    filter: brightness(1.4);
-  }
-  100% {
-    filter: none;
-  }
+.vram-snap-ov__error {
+  padding-top: 6px;
+  color: var(--fixed-red-400);
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .vram-fc__topo .gpu-card__bar-fill {
-    transition: none;
-  }
-  .vram-fc__topo[data-placement-flash="1"] {
-    animation: none;
-  }
-}
-
 
 /* topo scroll/container rules live with GPU topology block */
 

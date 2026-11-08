@@ -29,6 +29,10 @@ use tauri::{AppHandle, Manager};
 
 pub const SNAPSHOT_FORMAT: u32 = 1;
 
+pub fn default_phase() -> String {
+    "manual".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSnap {
     pub version: String,
@@ -77,6 +81,10 @@ pub struct CalSnap {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NvramSnapshot {
     pub format: u32,
+    /// What moment this is: `pre_launch` / `ready` / `stopped` / `probe` / `manual`. Automatic
+    /// capture sets it; the overlay labels each column with it.
+    #[serde(default = "default_phase")]
+    pub phase: String,
     pub captured_at: String,
     pub app: AppSnap,
     /// Empty with `gpu_error` set when NVML is unavailable — never a fake zero-device list.
@@ -131,7 +139,7 @@ fn timestamp_slug() -> String {
 
 /// Capture everything the app can see right now and write it to `path` (default under
 /// `config/cache/nvram/`). Returns the file it wrote.
-pub async fn capture(app: &AppHandle, path: Option<PathBuf>) -> Result<PathBuf, String> {
+pub async fn capture(app: &AppHandle, path: Option<PathBuf>, phase: &str) -> Result<PathBuf, String> {
     let ctx = app.state::<crate::AppContext>();
 
     let (gpus, gpu_error) = match crate::nvml_metrics::scan() {
@@ -201,6 +209,7 @@ pub async fn capture(app: &AppHandle, path: Option<PathBuf>) -> Result<PathBuf, 
 
     let snapshot = NvramSnapshot {
         format: SNAPSHOT_FORMAT,
+        phase: phase.to_string(),
         captured_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         app: AppSnap {
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -240,11 +249,12 @@ pub async fn capture(app: &AppHandle, path: Option<PathBuf>) -> Result<PathBuf, 
 pub async fn capture_nvram_snapshot(
     app: AppHandle,
     path: Option<String>,
+    phase: Option<String>,
 ) -> Result<String, String> {
     let requested = path
         .filter(|p| !p.trim().is_empty())
         .map(PathBuf::from);
-    let written = capture(&app, requested).await?;
+    let written = capture(&app, requested, phase.as_deref().unwrap_or("manual")).await?;
     Ok(written.display().to_string())
 }
 
@@ -275,6 +285,175 @@ pub struct DiffPayload {
     pub after_at: String,
     pub count: usize,
     pub rows: Vec<DiffRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatrixCell {
+    /// `None` is unknown, never zero.
+    pub number: Option<f64>,
+    /// Set for text cells (status, split, ts, source, …).
+    pub text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatrixRow {
+    pub scope: String,
+    pub field: String,
+    pub unit: String,
+    /// One cell per column, oldest → newest.
+    pub cells: Vec<MatrixCell>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatrixColumn {
+    pub file: String,
+    pub captured_at: String,
+    pub phase: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotMatrix {
+    pub columns: Vec<MatrixColumn>,
+    pub rows: Vec<MatrixRow>,
+}
+
+/// Flat, ordered cells for one snapshot. The key is `scope` + `field`; the same key across
+/// snapshots is the same measurement, which is what makes the columns comparable.
+fn snapshot_cells(snap: &NvramSnapshot) -> Vec<(String, String, &'static str, MatrixCell)> {
+    let mut cells: Vec<(String, String, &'static str, MatrixCell)> = Vec::new();
+    // Macros, not closures: two closures would borrow `cells` mutably at once.
+    macro_rules! number {
+        ($scope:expr, $field:expr, $unit:expr, $value:expr $(,)?) => {
+            cells.push(($scope, $field, $unit, MatrixCell { number: $value, text: None }))
+        };
+    }
+    macro_rules! text {
+        ($scope:expr, $field:expr, $value:expr $(,)?) => {
+            cells.push(($scope, $field, "", MatrixCell { number: None, text: $value }))
+        };
+    }
+
+    for gpu in &snap.gpus {
+        let scope = format!("gpu{}", gpu.index);
+        number!(scope.clone(), "used".into(), "MiB", Some(gpu.used_mib as f64));
+        number!(scope.clone(), "free".into(), "MiB", Some(gpu.free_mib as f64));
+        number!(scope, "util".into(), "%", Some(gpu.utilization_gpu as f64));
+    }
+    for engine in &snap.engines {
+        let scope = format!("slot{}", engine.slot);
+        text!(scope.clone(), "status".into(), Some(engine.status.clone()));
+        number!(scope.clone(), "ctx".into(), "", Some(engine.n_ctx as f64));
+        number!(scope.clone(), "parallel".into(), "", Some(engine.parallel as f64));
+        text!(scope.clone(), "split".into(), Some(engine.split_mode.clone()));
+        number!(scope.clone(), "vram".into(), "MiB", engine.vram_mib);
+        if let Some(breakdown) = engine.gpu_breakdown_mib.as_ref() {
+            for (i, mib) in breakdown.iter().enumerate() {
+                number!(scope.clone(), format!("gpu{i}"), "MiB", Some(*mib));
+            }
+        }
+    }
+    for row in &snap.learned {
+        let scope = format!("learned {}", learned_identity(row));
+        number!(scope.clone(), "vram".into(), "MiB", Some(row.vram_mib));
+        number!(scope.clone(), "host".into(), "MiB", row.host_mib);
+        if let Some(components) = row.components.as_ref() {
+            for (i, comp) in components.iter().enumerate() {
+                number!(scope.clone(), format!("gpu{i}.model"), "MiB", Some(comp.model_mib));
+                number!(scope.clone(), format!("gpu{i}.kv"), "MiB", Some(comp.ctx_mib));
+                number!(scope.clone(), format!("gpu{i}.compute"), "MiB", Some(comp.compute_mib));
+            }
+        }
+    }
+    let ui = &snap.ui;
+    number!("ui".into(), "need".into(), "GB", ui_num(ui, &["state", "vramNeedGb"]));
+    number!("ui".into(), "ramNeed".into(), "GB", ui_num(ui, &["state", "ramNeedGb"]));
+    number!("ui".into(), "plan.total".into(), "MiB", ui_num(ui, &["state", "plan", "totalMib"]));
+    number!(
+        "ui".into(),
+        "plan.boundary".into(),
+        "layers",
+        ui_num(ui, &["state", "plan", "boundary"]),
+    );
+    text!(
+        "ui".into(),
+        "plan.ts".into(),
+        ui_text(ui, &["state", "plan", "ts"]),
+    );
+    text!("ui".into(), "source".into(), ui_text(ui, &["state", "sourceKind"]));
+    text!("ui".into(), "fits".into(), ui_text(ui, &["state", "fits"]));
+    text!(
+        "ui".into(),
+        "placement".into(),
+        ui_text(ui, &["state", "fitOff"]),
+    );
+    let bars = json_at(ui, &["state", "gpuLoadsGb"])
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(Value::as_f64).collect::<Vec<_>>())
+        .unwrap_or_default();
+    for (i, gb) in bars.iter().enumerate() {
+        number!("ui.bars".into(), format!("card{i}"), "GB", Some(*gb));
+    }
+    cells
+}
+
+/// The newest `limit` snapshots side by side, as one row per measurement.
+///
+/// Columns are oldest → newest so a reader follows the flow; rows keep the order of first
+/// appearance, so a value that only exists later still shows up with gaps before it.
+#[tauri::command]
+pub fn nvram_snapshot_matrix(limit: Option<usize>) -> Result<SnapshotMatrix, String> {
+    let limit = limit.unwrap_or(3).clamp(1, 6);
+    let files = snapshot_files();
+    if files.is_empty() {
+        return Ok(SnapshotMatrix { columns: Vec::new(), rows: Vec::new() });
+    }
+    let start = files.len().saturating_sub(limit);
+    let mut snaps = Vec::new();
+    for file in &files[start..] {
+        snaps.push((file.clone(), read_snapshot(file)?));
+    }
+
+    let mut columns = Vec::new();
+    for (file, snap) in &snaps {
+        columns.push(MatrixColumn {
+            file: file
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            captured_at: snap.captured_at.clone(),
+            phase: snap.phase.clone(),
+        });
+    }
+
+    let mut order: Vec<(String, String, &'static str)> = Vec::new();
+    let mut index: std::collections::HashMap<(String, String), usize> = std::collections::HashMap::new();
+    let per_snapshot: Vec<Vec<(String, String, &'static str, MatrixCell)>> =
+        snaps.iter().map(|(_, snap)| snapshot_cells(snap)).collect();
+    for cells in &per_snapshot {
+        for (scope, field, unit, _) in cells {
+            let key = (scope.clone(), field.clone());
+            if !index.contains_key(&key) {
+                index.insert(key, order.len());
+                order.push((scope.clone(), field.clone(), unit));
+            }
+        }
+    }
+
+    let mut rows = Vec::with_capacity(order.len());
+    for (scope, field, unit) in order {
+        let mut cells = Vec::with_capacity(per_snapshot.len());
+        for snapshot in &per_snapshot {
+            let found = snapshot
+                .iter()
+                .find(|(s, f, _, _)| *s == scope && *f == field)
+                .map(|(_, _, _, cell)| cell.clone())
+                .unwrap_or(MatrixCell { number: None, text: None });
+            cells.push(found);
+        }
+        rows.push(MatrixRow { scope, field, unit: unit.to_string(), cells });
+    }
+
+    Ok(SnapshotMatrix { columns, rows })
 }
 
 /// The two newest snapshots, diffed — what the glass shows behind the SNAP chip.
@@ -786,6 +965,7 @@ mod tests {
     fn snapshot(used: u64, ts: &str) -> NvramSnapshot {
         NvramSnapshot {
             format: SNAPSHOT_FORMAT,
+            phase: "manual".into(),
             captured_at: "t".into(),
             app: AppSnap { version: "1".into(), app_root: ".".into() },
             gpus: vec![GpuSnap {
