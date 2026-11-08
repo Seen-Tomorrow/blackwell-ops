@@ -14,6 +14,8 @@ pub struct GpuInfo {
     pub name: String,
     pub memory_total: u64,     // MB — BIOS-reported (may be less than manufactured)
     pub memory_used: u64,      // MB
+    /// Driver pool folded into `memory_used`; 0 when the driver does not report it.
+    pub memory_reserved: u64,  // MB
     pub memory_free: u64,      // MB
     pub memory_total_manufactured: u64, // MB — actual card capacity (e.g. 98304 = 96 GB)
     pub temperature_gpu: u32,  // Celsius — core GPU temp
@@ -327,6 +329,7 @@ fn nvml_gpus() -> Option<Vec<GpuInfo>> {
                     name: s.name,
                     memory_total: s.memory_total_mib,
                     memory_used: s.memory_used_mib,
+                    memory_reserved: s.memory_reserved_mib,
                     memory_free: s.memory_free_mib,
                     memory_total_manufactured: manufactured,
                     temperature_gpu: s.temperature_gpu,
@@ -434,6 +437,9 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
             name: gpu_name.clone(),
             memory_total,
             memory_used,
+            // The nvidia-smi CLI path does not report the driver pool; 0 means unknown here,
+            // and the UI falls back to its per-driver estimate.
+            memory_reserved: 0,
             memory_free,
             memory_total_manufactured: manufactured_vram(&gpu_name),
             temperature_gpu,
@@ -807,6 +813,7 @@ mod tests {
             name: "Test GPU".to_string(),
             memory_total: 98_304,
             memory_used: 1_024,
+            memory_reserved: 0,
             memory_free: 97_280,
             memory_total_manufactured: 98_304,
             temperature_gpu: 40,

@@ -188,11 +188,14 @@ nvidia-smi --query-gpu=index,driver_model.current,memory.total,memory.reserved,m
 
 - **The 1.3 GiB is a driver reservation, not a process.** `free = total − reserved`, and no
   application can allocate it. It does not move with load and there is no Windows switch for it.
-- **NVML v1 `used` is `total − free`, so it includes the reservation.** `nvmlDeviceGetMemoryInfo_v2`
-  separates `used` / `reserved`; we read v1, and the snapshot field named `used_mib` is really
-  "occupied". That does **not** need fixing: the fit gate spends `free`, and the bar paints
-  `used + need` against `total`, which is the same inequality
-  (`used + need <= total` ⟺ `need <= free`). The calibration pair cancels it too, because the
+- **NVML v1 `used` is `total − free`, so it includes the reservation.** The card now also reads
+  `nvmlDeviceGetMemoryInfo_v2` and carries `memory_reserved` through `GpuInfo` into the topo:
+  the hatched strip and its tooltip show the measured pool (1.3 GB here), not a constant. The
+  fit gate still spends `free`, and the bar paints `used + need` against `total` — the same
+  inequality (`used + need <= total` ⟺ `need <= free`) — so the reservation is counted once.
+  It used to be counted twice: `used` (which includes it) plus a hardcoded 1.75 GiB constant,
+  which painted a 1.3 GB idle card as 3%. The strip is drawn but never added to the total or
+  subtracted from free again. The calibration pair cancels it by construction, because the
   residual is a `pre_launch` → `ready` delta on the same card.
 - **TCC reclaims the reservation and is not free.** The app can switch modes from the HW monitor
   overclock module without a restart, and TCC drops occupancy to ~1 GiB — but TCC also caps the

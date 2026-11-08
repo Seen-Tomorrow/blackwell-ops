@@ -95,6 +95,9 @@ pub struct GpuSample {
     pub driver_model: String,
     pub memory_total_mib: u64,
     pub memory_used_mib: u64,
+    /// Driver pool that `used` above folds in (`v1.used == v2.used + v2.reserved`). 0 when the
+    /// v2 query is unavailable.
+    pub memory_reserved_mib: u64,
     pub memory_free_mib: u64,
     pub temperature_gpu: u32,
     pub power_draw_w: f32,
@@ -108,6 +111,19 @@ pub struct GpuSample {
 #[derive(Debug, Clone, Copy, Default)]
 struct NvmlMemory {
     total: u64,
+    free: u64,
+    used: u64,
+}
+
+/// `nvmlMemory_v2_t`. `used` here is process-attributed and `reserved` is the driver pool that
+/// `used` in the v1 struct folds in (`v1.used == v2.used + v2.reserved`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+struct NvmlMemoryV2 {
+    /// NVML_STRUCT_VERSION(Memory, 2) = sizeof(struct) | (2 << 24) = 40 | 0x02000000.
+    version: u32,
+    total: u64,
+    reserved: u64,
     free: u64,
     used: u64,
 }
@@ -180,6 +196,17 @@ unsafe fn memory_info(lib: &Library, dev: *mut c_void) -> Option<NvmlMemory> {
     let f: Symbol<unsafe extern "C" fn(*mut c_void, *mut NvmlMemory) -> u32> =
         lib.get(b"nvmlDeviceGetMemoryInfo\0").ok()?;
     let mut value = NvmlMemory::default();
+    (f(dev, &mut value) == 0).then_some(value)
+}
+
+/// `nvmlDeviceGetMemoryInfo_v2` — bytes, with the driver pool split out from process usage.
+unsafe fn memory_info_v2(lib: &Library, dev: *mut c_void) -> Option<NvmlMemoryV2> {
+    let f: Symbol<unsafe extern "C" fn(*mut c_void, *mut NvmlMemoryV2) -> u32> =
+        lib.get(b"nvmlDeviceGetMemoryInfo_v2\0").ok()?;
+    let mut value = NvmlMemoryV2 {
+        version: (std::mem::size_of::<NvmlMemoryV2>() as u32) | (2 << 24),
+        ..NvmlMemoryV2::default()
+    };
     (f(dev, &mut value) == 0).then_some(value)
 }
 
@@ -373,6 +400,11 @@ pub fn scan() -> Option<Vec<GpuSample>> {
             };
 
             let memory = memory_info(lib, dev).unwrap_or_default();
+            // v2 splits the driver pool out of `used`; v1 folds it in. Keep both numbers apart so
+            // the UI can name what the reservation is instead of inventing a constant for it.
+            let reserved_mib = memory_info_v2(lib, dev)
+                .map(|v2| v2.reserved / BYTES_PER_MIB)
+                .unwrap_or(0);
             let utilization = utilization_rates(lib, dev).unwrap_or_default();
             samples.push(GpuSample {
                 index,
@@ -381,6 +413,7 @@ pub fn scan() -> Option<Vec<GpuSample>> {
                 driver_model: model,
                 memory_total_mib: memory.total / BYTES_PER_MIB,
                 memory_used_mib: memory.used / BYTES_PER_MIB,
+                memory_reserved_mib: reserved_mib,
                 memory_free_mib: memory.free / BYTES_PER_MIB,
                 temperature_gpu: read_u32_arg(lib, b"nvmlDeviceGetTemperature\0", dev, NVML_TEMPERATURE_GPU)
                     .unwrap_or(0),

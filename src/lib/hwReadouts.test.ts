@@ -23,7 +23,8 @@ function gpu(overrides: Partial<GpuInfo> = {}): GpuInfo {
     name: "Test GPU",
     memory_total: 98_304,
     memory_total_manufactured: 98_304,
-    memory_used: 1_024,
+    memory_reserved: 0,
+      memory_used: 1_024,
     memory_free: 97_280,
     temperature_gpu: 40,
     temperature_hot_spot: null,
@@ -104,7 +105,9 @@ describe("shouldAnimate", () => {
 describe("hwTotals", () => {
   it("sums power and VRAM across cards", () => {
     const totals = hwTotals(
-      [gpu({ power_draw: 100, power_limit: 600, memory_used: 1_024 }), gpu({ index: 1, power_draw: 50, power_limit: 600, memory_used: 512 })],
+      [gpu({ power_draw: 100, power_limit: 600, memory_reserved: 0,
+      memory_used: 1_024 }), gpu({ index: 1, power_draw: 50, power_limit: 600, memory_reserved: 0,
+      memory_used: 512 })],
       null,
     );
     expect(totals.powerW).toBe(150);

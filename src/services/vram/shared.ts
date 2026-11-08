@@ -373,7 +373,15 @@ export function splitGpuTopoBarUsage(
 const HW_RESERVED_TCC_MIB = 1024;
 const HW_RESERVED_WDDM_MIB = 1792;
 
-export function hwReservedMib(driverModel?: string): number {
+/**
+ * The driver pool that `memory_used` already includes, in MiB.
+ *
+ * NVML v2 reports it per card (1,314 MiB on the RTX PRO 6000 pair here); the constants are only
+ * a fallback for the `nvidia-smi` CLI path and for drivers that do not answer v2. Never add this
+ * to `memory_used` — it is already inside it.
+ */
+export function hwReservedMib(driverModel?: string, measuredMib?: number): number {
+  if (measuredMib != null && measuredMib > 0) return measuredMib;
   const m = (driverModel ?? "").toUpperCase();
   if (m.includes("TCC")) return HW_RESERVED_TCC_MIB;
   return HW_RESERVED_WDDM_MIB;
@@ -405,7 +413,7 @@ export function computeGpuAvailableList(gpus: GpuInfo[], runningSlots: RunningSl
     // No NVML reading (CLI fallback or a driver that refused the query): fall back to the
     // conservative estimate so the UI still has a number.
     const manufactured = gpuManufacturedMib(g) / 1024;
-    const reserved = hwReservedMib(g.driver_model) / 1024;
+    const reserved = hwReservedMib(g.driver_model, g.memory_reserved) / 1024;
     return Math.max(0, manufactured - reserved - stackUsed);
   });
 }
@@ -435,7 +443,8 @@ export function buildGpuAllocations(
     vramManufacturedGb: round2(gpuManufacturedMib(g) / 1024),
     vramAvailableGb: round2(gpuAvailable[i] ?? 0),
     nvmlUsedGb: round2(g.memory_used / 1024),
-    hwReservedGb: round2(hwReservedMib(g.driver_model) / 1024),
+    hwReservedGb: round2(hwReservedMib(g.driver_model, g.memory_reserved) / 1024),
+    driverModel: g.driver_model,
     projectedLoadGb: round2(Math.max(0, perGpuLoad[i] ?? 0)),
     runningEngines: getRunningEnginesOnGpu(g.index, runningSlots),
   }));

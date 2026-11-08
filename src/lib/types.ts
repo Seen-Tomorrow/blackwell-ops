@@ -587,6 +587,8 @@ export interface GpuInfo {
   memory_total: number;
   memory_total_manufactured: number;
   memory_used: number;
+  /** Driver pool folded into `memory_used`; 0 when the driver does not report it. */
+  memory_reserved: number;
   memory_free: number;
   temperature_gpu: number;
   temperature_hot_spot: number | null;
@@ -884,8 +886,10 @@ export interface GpuAllocation {
   vramManufacturedGb: number;
   vramAvailableGb: number;
   nvmlUsedGb: number;
-  /** Unusable dedicated floor (TCC ~1G / WDDM ~1.75G). */
+  /** Driver pool folded into `nvmlUsedGb` (measured; ~1.28G on WDDM here, ~0 on TCC). */
   hwReservedGb: number;
+  /** `WDDM` | `TCC` — names the reservation, never inferred from its size. */
+  driverModel?: string;
   projectedLoadGb: number;
   runningEngines: RunningEngine[];
 }

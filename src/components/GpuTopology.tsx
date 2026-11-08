@@ -118,13 +118,14 @@ export default function GpuTopology({
           const enginePct = totalMib > 0 ? (engineBarMib / totalMib) * 100 : 0;
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
 
-          const reservedMib = (alloc.hwReservedGb ?? 1.75) * 1024;
+          // `usedMib` is NVML's occupied figure and already contains this pool, so it is split out
+          // for the hatched strip only — never added a second time to the total or subtracted from
+          // free. (It used to be a 1.75 GiB constant added on top, which painted a 1.3 GB idle
+          // card as 3%.)
+          const reservedMib = (alloc.hwReservedGb ?? 0) * 1024;
           const reservedPct = totalMib > 0 ? (reservedMib / totalMib) * 100 : 0;
-          const liveFreeGb = Math.max(
-            0,
-            alloc.vramManufacturedGb - usedMib / 1024 - reservedMib / 1024,
-          );
-          const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib + reservedMib;
+          const liveFreeGb = Math.max(0, alloc.vramManufacturedGb - usedMib / 1024);
+          const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib;
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
           const barColorHex =
             gpuBarColor.includes("bar-need--hot")
@@ -158,8 +159,11 @@ export default function GpuTopology({
           const overheadLabel = breakdownUnderReports ? "KV/runtime" : "CUDA/runtime";
           const externalDetail = formatExternalTooltip(systemReservedMib, foreignAppsMib);
 
-          const reservedLabel =
-            (alloc.hwReservedGb ?? 0) >= 1.4 ? "WDDM HW reserved" : "TCC/CUDA HW reserved";
+          // Name the reservation by the driver model, not by its size: a TCC card can reserve
+          // more than a WDDM one, and a size threshold mislabels a measured 1.3 GB on WDDM.
+          const reservedLabel = (alloc.driverModel ?? "").toUpperCase().includes("TCC")
+            ? "TCC/CUDA HW reserved"
+            : "WDDM HW reserved";
           const tooltipText = hasOurEngines
             ? attributedOverheadMib >= 64
               ? `Engines: ${(engineBarMib / 1024).toFixed(1)} GB (${(breakdownMib / 1024).toFixed(1)} GB tracked + ${(attributedOverheadMib / 1024).toFixed(1)} GB ${overheadLabel}) | ${externalDetail} | ${reservedLabel} ${(reservedMib / 1024).toFixed(1)} GB`
