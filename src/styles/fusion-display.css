@@ -6004,6 +6004,26 @@ html[data-industrial-bezel="brush"] {
 /* NVRAM LOG — bezel control (top-right of the frame) + the full-glass snapshot overlay.
    The overlay is a veil, not a second glass: it dims the face and covers it. No blur —
    WebView2 pegs the iGPU for as long as a live backdrop-filter is composited. */
+/* Measurement provenance: CORE = patched engine reported its own allocation, LOG = stderr parse. */
+.display-bezel-memory-src {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, var(--display-face-text-muted) 30%, transparent);
+  border-radius: 2px;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--display-face-text-muted) 80%, transparent);
+}
+
+.display-bezel-memory-src--core {
+  color: var(--fixed-telemetry-green, var(--fixed-amber-500));
+  border-color: color-mix(in srgb, var(--fixed-telemetry-green, var(--fixed-amber-500)) 55%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--fixed-telemetry-green, var(--fixed-amber-500)) 40%, transparent);
+}
+
 .display-bezel-nvram-log {
   padding: 2px 8px;
   border: 1px solid var(--theme-provider-pill-border);

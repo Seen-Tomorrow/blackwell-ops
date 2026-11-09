@@ -888,7 +888,46 @@ impl LogHub {
         // fit placements can already have scrolled out of it by the time we build the snapshot.
         let combined = crate::session_log::slot_stderr_text(slot_idx, alias)
             .unwrap_or_else(|| line_buf.join("\n"));
-        let snapshot = crate::launch_memory_parse::parse_launch_memory_snapshot(&combined)?;
+        let parsed = crate::launch_memory_parse::parse_launch_memory_snapshot(&combined);
+
+        // A patched engine reported its own allocation through /memory: prefer that, but keep the
+        // stderr parse as the fallback and log where the two disagree (see engine_memory_view).
+        let port = {
+            let ctx = app_handle.try_state::<crate::engine::AppContext>()?;
+            let stack = ctx.stack.lock().await;
+            stack.get_slot(slot_idx).map(|slot| slot.port)
+        };
+        // Ask the engine for its own ledger. Model is loaded at this point, so the answer is the
+        // complete allocation; fall back to the stderr parse when the endpoint is absent.
+        let core = match port {
+            Some(port) => crate::engine_memory_view::fetch_core_snapshot(port).await,
+            None => None,
+        };
+        let snapshot = match (core, parsed) {
+            (Some(core), Some(parsed)) => {
+                crate::engine_memory_view::log_source_comparison(slot_idx, &core, &parsed);
+                crate::engine_memory_view::emit_source(
+                    slot_idx,
+                    crate::engine_memory_view::MemorySource::Core,
+                );
+                core
+            }
+            (Some(core), None) => {
+                crate::engine_memory_view::emit_source(
+                    slot_idx,
+                    crate::engine_memory_view::MemorySource::Core,
+                );
+                core
+            }
+            (None, Some(parsed)) => {
+                crate::engine_memory_view::emit_source(
+                    slot_idx,
+                    crate::engine_memory_view::MemorySource::Stderr,
+                );
+                parsed
+            }
+            (None, None) => return None,
+        };
         let mib = snapshot.vram_mib;
         let host_mib = snapshot.host_mib;
         let gpu_breakdown = Some(snapshot.gpu_breakdown_mib.clone());
