@@ -479,9 +479,16 @@ fn snapshot_cells(snap: &NvramSnapshot) -> Vec<(String, String, &'static str, Ma
         number!(scope.clone(), "used".into(), "MiB", Some(gpu.used_mib as f64));
         number!(scope.clone(), "free".into(), "MiB", Some(gpu.free_mib as f64));
     }
+    // Before the load starts the slot still carries the *previous* launch's knobs (a pre-launch
+    // capture showed ctx 32,768 against a 256K config, which read as a +229,376 delta). Only the
+    // status is meaningful then; the measurements appear with the `ready` column.
+    let pre_launch = snap.phase == "pre_launch";
     for engine in &snap.engines {
         let scope = format!("slot{}", engine.slot);
         text!(scope.clone(), "status".into(), Some(engine.status.clone()));
+        if pre_launch {
+            continue;
+        }
         number!(scope.clone(), "ctx".into(), "", Some(engine.n_ctx as f64));
         number!(scope.clone(), "parallel".into(), "", Some(engine.parallel as f64));
         text!(scope.clone(), "split".into(), Some(engine.split_mode.clone()));
@@ -536,6 +543,48 @@ fn snapshot_cells(snap: &NvramSnapshot) -> Vec<(String, String, &'static str, Ma
     cells
 }
 
+/// The newest launch cycle on disk, in flow order: `pre_launch` → `ready` → `stopped`.
+///
+/// A cycle is everything from the newest `pre_launch` up to (not including) the next one, so a
+/// relaunch never leaks its predecessor's `stopped` into the columns. Phases are ordered
+/// semantically rather than by clock, because the capture times of a cycle interleave with the
+/// previous run's tail.
+fn latest_cycle(
+    files: &[PathBuf],
+    limit: usize,
+) -> Result<Option<Vec<(PathBuf, NvramSnapshot)>>, String> {
+    let mut newest: Option<usize> = None;
+    for (index, file) in files.iter().enumerate().rev() {
+        if let Ok(snapshot) = read_snapshot(file) {
+            if snapshot.phase == "pre_launch" {
+                newest = Some(index);
+                break;
+            }
+        }
+    }
+    let Some(start) = newest else { return Ok(None) };
+    let mut cycle: Vec<(PathBuf, NvramSnapshot)> = Vec::new();
+    for file in &files[start..] {
+        let snapshot = read_snapshot(file)?;
+        if !cycle.is_empty() && snapshot.phase == "pre_launch" {
+            break;
+        }
+        cycle.push((file.clone(), snapshot));
+    }
+    if cycle.len() < 2 {
+        return Ok(None);
+    }
+    let rank = |phase: &str| match phase {
+        "pre_launch" => 0,
+        "ready" => 1,
+        "stopped" => 2,
+        "probe" => 3,
+        _ => 4,
+    };
+    cycle.sort_by_key(|(_, snapshot)| rank(&snapshot.phase));
+    cycle.truncate(limit.max(3));
+    Ok(Some(cycle))
+}
 /// The newest `limit` snapshots side by side, as one row per measurement.
 ///
 /// Columns are oldest → newest so a reader follows the flow; rows keep the order of first
@@ -547,11 +596,21 @@ pub fn nvram_snapshot_matrix(limit: Option<usize>) -> Result<SnapshotMatrix, Str
     if files.is_empty() {
         return Ok(SnapshotMatrix { columns: Vec::new(), rows: Vec::new() });
     }
-    let start = files.len().saturating_sub(limit);
-    let mut snaps = Vec::new();
-    for file in &files[start..] {
-        snaps.push((file.clone(), read_snapshot(file)?));
-    }
+    // Columns are one launch *cycle*, not "the newest three files": a cycle is
+    // pre_launch → ready → stopped, and taking the newest three by clock mixed the tail of the
+    // previous run (stopped) into the head of the next one, which is what made the order look
+    // random. Fall back to the newest files only when there is no cycle on disk.
+    let snaps = match latest_cycle(&files, limit)? {
+        Some(cycle) => cycle,
+        None => {
+            let start = files.len().saturating_sub(limit);
+            let mut out = Vec::new();
+            for file in &files[start..] {
+                out.push((file.clone(), read_snapshot(file)?));
+            }
+            out
+        }
+    };
 
     let mut columns = Vec::new();
     for (file, snap) in &snaps {

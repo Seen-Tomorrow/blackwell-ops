@@ -6154,6 +6154,12 @@ html[data-industrial-bezel="brush"] {
   min-width: 88px;
 }
 
+.vram-snap-ov__flow {
+  margin-right: 7px;
+  color: color-mix(in srgb, var(--display-face-text-muted) 60%, transparent);
+  font-weight: 700;
+}
+
 .vram-snap-ov__phase {
   font-weight: 700;
   letter-spacing: 0.1em;

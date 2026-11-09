@@ -22,6 +22,21 @@ function deltaText(prev: NvramMatrixCell | undefined, cur: NvramMatrixCell | und
   return `${delta > 0 ? "+" : ""}${text}`;
 }
 
+function stateLabel(phase: string): string {
+  switch (phase) {
+    case "pre_launch":
+      return "IDLE";
+    case "ready":
+      return "RUNNING";
+    case "stopped":
+      return "STOPPED";
+    case "probe":
+      return "PROBE";
+    default:
+      return phase.replace(/_/g, " ").toUpperCase();
+  }
+}
+
 function clock(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -182,11 +197,16 @@ export default function NvramSnapshotOverlay({
             <thead>
               <tr>
                 <th className="vram-snap-ov__rowlab" scope="col">
-                  MEASUREMENT
+                  ENGINE STATE
                 </th>
-                {columns.map((column) => (
+                {columns.map((column, i) => (
                   <th key={column.file} scope="col" className="vram-snap-ov__col">
-                    <span className="vram-snap-ov__phase">{column.phase.replace(/_/g, " ").toUpperCase()}</span>
+                    {i > 0 ? (
+                      <span className="vram-snap-ov__flow" aria-hidden>
+                        →
+                      </span>
+                    ) : null}
+                    <span className="vram-snap-ov__phase">{stateLabel(column.phase)}</span>
                     <span className="vram-snap-ov__when">{clock(column.captured_at)}</span>
                   </th>
                 ))}
