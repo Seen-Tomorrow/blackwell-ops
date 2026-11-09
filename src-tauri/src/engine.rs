@@ -629,7 +629,8 @@ pub async fn launch_engine(
             .unwrap_or(""),
         Some(template.spawn_profile.fusion_adapter.as_str()),
     );
-    let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
+    let mut cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
+    crate::fit_low_vram::apply_default_fit_target(&mut cmd_args);
     // Quoted for console + session logs when install/model dirs contain spaces.
     let launch_cmd = engine_utils::format_cmd_line(&binary_path, &cmd_args);
 
@@ -1242,7 +1243,8 @@ pub(crate) fn assemble_launch_command(
     let gpu_count = detect_gpu_count();
     let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, test_has_split);
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path, &config);
-    let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
+    let mut cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
+    crate::fit_low_vram::apply_default_fit_target(&mut cmd_args);
     // Must be cmd-safe: NoBSproof runs this string inside a .cmd with spaces possible.
     let launch_cmd = engine_utils::format_cmd_line(&binary_path, &cmd_args);
 

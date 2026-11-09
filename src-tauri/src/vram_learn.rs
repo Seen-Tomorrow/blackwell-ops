@@ -124,6 +124,45 @@ impl LearnedVramEntry {
     /// so the forecast can answer for any ubatch from one measurement instead of missing the row.
     /// The components are the only place the term is known per device — without them the row is
     /// left exactly as measured rather than scaled by guesswork.
+    /// Replace the compute term from the family fit at (ctx, ubatch).
+    ///
+    /// Used when the request is at a different ubatch than the row was measured at: the fit is
+    /// affine in ubatch *and* ctx, which the proportional fallback cannot express.
+    fn apply_compute_model(&mut self, ctx: f64, ubatch: f64, model: &ComputeModel) -> bool {
+        let Some(components) = self.gpu_components_mib.as_mut() else {
+            return false;
+        };
+        if components.len() != model.gpu.len() {
+            return false;
+        }
+        for (component, coeffs) in components.iter_mut().zip(model.gpu.iter()) {
+            component.compute_mib = predict_compute(coeffs, ctx, ubatch);
+        }
+        let totals: Vec<f64> = components
+            .iter()
+            .map(|c| c.model_mib + c.ctx_mib + c.compute_mib)
+            .collect();
+        self.vram_mib = totals.iter().sum();
+        self.gpu_breakdown_mib = Some(totals);
+        if let (Some(host), Some(coeffs)) = (self.host_components_mib.as_mut(), model.host.as_ref()) {
+            host.compute_mib = predict_compute(coeffs, ctx, ubatch);
+            let total = host.model_mib + host.ctx_mib + host.compute_mib;
+            if total > 0.0 {
+                self.host_mib = Some(total);
+            }
+        }
+        if let Some(snap) = self.launch_snapshot.as_mut() {
+            snap.vram_mib = self.vram_mib;
+            if let Some(host) = self.host_mib {
+                snap.host_mib = host;
+            }
+            if let Some(breakdown) = self.gpu_breakdown_mib.as_ref() {
+                snap.gpu_breakdown_mib = breakdown.clone();
+            }
+        }
+        true
+    }
+
     pub fn scale_compute_to_ubatch(&mut self, ubatch: Option<u32>) {
         let Some(now) = ubatch.filter(|b| *b > 0) else {
             return;
@@ -1884,6 +1923,165 @@ fn learned_vram_for_model_blocking(
     }
 }
 
+/// Everything in a learned key except the ctx token — the family a compute fit is shared by.
+fn compute_family_key(key: &str) -> String {
+    key.split('|')
+        .filter(|part| !part.trim_start().starts_with("ctx="))
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+
+
+/// One measured compute operating point of a family: (ctx, ubatch) -> per-card compute MiB.
+#[derive(Debug, Clone)]
+struct ComputeSample {
+    ctx: f64,
+    ubatch: f64,
+    gpu: Vec<f64>,
+    host: Option<f64>,
+}
+
+/// `compute_i(ctx, ub) = c0 + c1*ctx + c2*ub + c3*ctx*ub`, coefficients per card.
+///
+/// The measured law is affine in ubatch at a fixed ctx (512 -> 1024 gives ~1.65-1.95x, not 2x)
+/// and the ubatch slope itself grows with ctx, so a single proportional factor cannot hold at
+/// both ends. Measured on DSV4.1 IQ2_XXS, 40 layers, boundary 22 (2026-11-09):
+///   card0 65,536:@512 1,121 / @1024 2,098 | 262,144:@512 3,637 / @1024 5,985
+///   card1 65,536:@512 1,892 / @1024 3,688 | 262,144:@512 5,938 / @1024 11,609
+#[derive(Debug, Clone)]
+struct ComputeModel {
+    gpu: Vec<[f64; 4]>,
+    host: Option<[f64; 4]>,
+}
+
+fn solve_4x4(mut a: [[f64; 4]; 4], mut b: [f64; 4]) -> Option<[f64; 4]> {
+    for col in 0..4 {
+        let mut pivot = col;
+        for row in col + 1..4 {
+            if a[row][col].abs() > a[pivot][col].abs() {
+                pivot = row;
+            }
+        }
+        if a[pivot][col].abs() < 1e-9 {
+            return None;
+        }
+        a.swap(col, pivot);
+        b.swap(col, pivot);
+        for row in col + 1..4 {
+            let factor = a[row][col] / a[col][col];
+            for k in col..4 {
+                a[row][k] -= factor * a[col][k];
+            }
+            b[row] -= factor * b[col];
+        }
+    }
+    let mut out = [0.0f64; 4];
+    for row in (0..4).rev() {
+        let mut acc = b[row];
+        for k in row + 1..4 {
+            acc -= a[row][k] * out[k];
+        }
+        out[row] = acc / a[row][row];
+    }
+    out.iter().all(|v| v.is_finite()).then_some(out)
+}
+
+/// Least squares over `[1, ctx, ub, ctx*ub]`; needs at least 4 samples with spread on both axes.
+fn fit_compute_coeffs(samples: &[(f64, f64, f64)]) -> Option<[f64; 4]> {
+    if samples.len() < 4 {
+        return None;
+    }
+    let mut ata = [[0.0f64; 4]; 4];
+    let mut atb = [0.0f64; 4];
+    for (ctx, ub, y) in samples {
+        let row = [1.0, *ctx, *ub, ctx * ub];
+        for i in 0..4 {
+            for j in 0..4 {
+                ata[i][j] += row[i] * row[j];
+            }
+            atb[i] += row[i] * y;
+        }
+    }
+    // ctx values are ~1e5, so the normal equations are badly scaled: normalise the two
+    // dimensions before solving, then fold the scale back into the coefficients.
+    let ctx_scale = samples.iter().map(|s| s.0).fold(1.0f64, f64::max);
+    let ub_scale = samples.iter().map(|s| s.1).fold(1.0f64, f64::max);
+    let mut ata_n = [[0.0f64; 4]; 4];
+    let mut atb_n = [0.0f64; 4];
+    for (ctx, ub, y) in samples {
+        let row = [1.0, *ctx / ctx_scale, *ub / ub_scale, (*ctx / ctx_scale) * (*ub / ub_scale)];
+        for i in 0..4 {
+            for j in 0..4 {
+                ata_n[i][j] += row[i] * row[j];
+            }
+            atb_n[i] += row[i] * y;
+        }
+    }
+    let mut coeffs = solve_4x4(ata_n, atb_n)?;
+    coeffs[1] /= ctx_scale;
+    coeffs[2] /= ub_scale;
+    coeffs[3] /= ctx_scale * ub_scale;
+    let _ = &mut ata;
+    let _ = &mut atb;
+    Some(coeffs)
+}
+
+fn predict_compute(coeffs: &[f64; 4], ctx: f64, ub: f64) -> f64 {
+    let value = coeffs[0] + coeffs[1] * ctx + coeffs[2] * ub + coeffs[3] * ctx * ub;
+    if value.is_finite() {
+        value.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn fit_compute_model(samples: &[ComputeSample]) -> Option<ComputeModel> {
+    if samples.len() < 4 {
+        return None;
+    }
+    let cards = samples.iter().map(|s| s.gpu.len()).min()?;
+    if cards == 0 {
+        return None;
+    }
+    let mut gpu = Vec::with_capacity(cards);
+    for card in 0..cards {
+        let points: Vec<(f64, f64, f64)> = samples
+            .iter()
+            .map(|s| (s.ctx, s.ubatch, s.gpu[card]))
+            .collect();
+        gpu.push(fit_compute_coeffs(&points)?);
+    }
+    let host_points: Vec<(f64, f64, f64)> = samples
+        .iter()
+        .filter_map(|s| s.host.map(|h| (s.ctx, s.ubatch, h)))
+        .collect();
+    let host = if host_points.len() == samples.len() {
+        fit_compute_coeffs(&host_points)
+    } else {
+        None
+    };
+    Some(ComputeModel { gpu, host })
+}
+
+fn compute_model_for(store: &LearnedVramStore, family: &str) -> Option<ComputeModel> {
+    let mut samples: Vec<ComputeSample> = Vec::new();
+    for (key, entry) in &store.entries {
+        if compute_family_key(key) != family {
+            continue;
+        }
+        let Some(ctx) = ctx_from_learn_key(key).filter(|c| *c > 0) else { continue };
+        let Some(ubatch) = entry.reference_ubatch.filter(|u| *u > 0) else { continue };
+        let Some(components) = entry.gpu_components_mib.as_ref() else { continue };
+        samples.push(ComputeSample {
+            ctx: ctx as f64,
+            ubatch: f64::from(ubatch),
+            gpu: components.iter().map(|c| c.compute_mib).collect(),
+            host: entry.host_components_mib.as_ref().map(|c| c.compute_mib),
+        });
+    }
+    fit_compute_model(&samples)
+}
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Tauri IPC: one param per wire field; bundling would change the invoke shape
 pub fn get_learned_vram(
@@ -2000,9 +2198,38 @@ pub fn get_learned_vram(
         entry.gpu_components_mib = None;
         entry.host_components_mib = None;
     }
-    // The row is a measurement at one ubatch; the caller may be at another one. Scale the
-    // compute term from the row's own components before anything paints it.
-    entry.scale_compute_to_ubatch(ubatch);
+    // The row is a measurement at one (ctx, ubatch); the caller may be at another ubatch. Prefer
+    // the family fit — affine in both, built from every measured point of this model/kv/split/
+    // topo/offload/cache family — and fall back to proportional scaling when there are too few
+    // points (< 4) to solve it.
+    let mut from_model = false;
+    let ubatch_changed = ubatch
+        .filter(|u| *u > 0)
+        .map_or(false, |u| Some(u) != entry.reference_ubatch);
+    if ubatch_changed {
+        if let (Ok(ctx_now), Some(ub)) = (normalize_ctx_key(&ctx).parse::<f64>(), ubatch) {
+            let family = learned_vram_key_with_draft(
+                &model_path,
+                &provider_id,
+                "",
+                &kv_quant,
+                vram_topo.as_deref().unwrap_or(""),
+                &split,
+                &mode,
+                &offload,
+                spec,
+                cache,
+                &draft,
+            );
+            let model = compute_model_for(&load_store(), &family);
+            if let Some(model) = model {
+                from_model = entry.apply_compute_model(ctx_now, f64::from(ub), &model);
+            }
+        }
+    }
+    if !from_model {
+        entry.scale_compute_to_ubatch(ubatch);
+    }
     let painted_v = entry.paint_vram_mib();
     let painted_h = entry.paint_host_mib();
     let painted_bd = entry.paint_gpu_breakdown_mib().map(|b| b.to_vec());
@@ -2586,5 +2813,49 @@ mod cuda_device_tests {
         assert_eq!(cuda_device_index("CUDA_Host"), None);
         assert_eq!(cuda_device_index("CPU"), None);
         assert_eq!(cuda_device_index("CUDA"), None);
+    }
+}
+
+#[cfg(test)]
+mod compute_model_tests {
+    use super::*;
+
+    /// Measured DSV4.1 IQ2_XXS points (2026-11-09): compute MiB on card 0 / card 1.
+    /// Fit on the 65,536 and 262,144 rows of both ubatch sets, then predict held-out launches.
+    #[test]
+    fn the_compute_fit_carries_the_ubatch_slope_at_another_ctx() {
+        let fit = vec![
+            (65_536.0, 512.0, 1121.00),
+            (65_536.0, 1024.0, 2097.77),
+            (262_144.0, 512.0, 3637.50),
+            (262_144.0, 1024.0, 5985.34),
+        ];
+        let coeffs = fit_compute_coeffs(&fit).expect("four points solve the plane");
+        // Held out: 524,288 @ ub 512 measured 6,981.50.
+        let far = predict_compute(&coeffs, 524_288.0, 512.0);
+        assert!((far - 6_981.50).abs() / 6_981.50 < 0.01, "524K@512 predicted {far}");
+        // Proportional scaling from the 65,536 row would say 2 x 1,121 = 2,242 at ub 1024;
+        // the measured value is 2,097.77 - the affine term, which the fit keeps.
+        let near = predict_compute(&coeffs, 65_536.0, 1024.0);
+        assert!((near - 2_097.77).abs() / 2_097.77 < 0.02, "65K@1024 predicted {near}");
+    }
+
+    #[test]
+    fn a_family_needs_four_points_before_it_is_used() {
+        let three = vec![
+            (65_536.0, 512.0, 1121.00),
+            (65_536.0, 1024.0, 2097.77),
+            (262_144.0, 512.0, 3637.50),
+        ];
+        assert!(fit_compute_coeffs(&three).is_none());
+    }
+
+    #[test]
+    fn the_family_key_drops_only_the_ctx_token() {
+        let key = "m.gguf|ggml-master|ctx=262144|kv=q8_0|topo=96|split=layer|offload=regular|cache_ram=16384";
+        assert_eq!(
+            compute_family_key(key),
+            "m.gguf|ggml-master|kv=q8_0|topo=96|split=layer|offload=regular|cache_ram=16384"
+        );
     }
 }

@@ -46,6 +46,32 @@ pub fn fit_target_mib_from_free(fit_free_mib: f64, nvml_free_mib: f64) -> u32 {
     target.round().clamp(1024.0, 512_000.0) as u32
 }
 
+/// Per-device VRAM that `--fit` must leave free on a normal launch.
+///
+/// Measured (2026-11-09, RTX PRO 6000 ×2, DSV4.1): the runtime keeps 552 / 550 MiB per card
+/// (CUDA context + graph pools) *on top of* every buffer the breakdown reports, so a fit that
+/// packs a card to 0 free makes the next launch look that much bigger and leaves the app with
+/// nothing to allocate. 768 leaves the measured residual plus ~200 MiB of slack.
+pub const FIT_TARGET_HEADROOM_MIB: u32 = 768;
+
+/// Give a fit-on launch a free-memory floor unless it already carries one.
+///
+/// This is a launch-layer default, not a template param: the template's `--fit` row stays the
+/// single on/off switch, and the floor is one constant instead of another knob per provider.
+pub fn apply_default_fit_target(args: &mut Vec<String>) {
+    let fit_on = args
+        .windows(2)
+        .any(|w| (w[0] == "--fit" || w[0] == "-fit") && !w[1].eq_ignore_ascii_case("off"));
+    if !fit_on {
+        return;
+    }
+    if args.iter().any(|a| a == "--fit-target" || a == "-fit-target") {
+        return;
+    }
+    args.push("--fit-target".into());
+    args.push(FIT_TARGET_HEADROOM_MIB.to_string());
+}
+
 /// Free-aware FIT args — **no** `-ngl 999` (allows real host weight spill).
 pub fn build_low_vram_fit_command(
     model_path: &str,
@@ -130,6 +156,34 @@ Available devices:
         assert_eq!(f.len(), 2);
         assert!((f[0] - 56353.0).abs() < 0.1);
         assert!((f[1] - 95357.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn a_fit_on_launch_gets_a_free_memory_floor() {
+        let mut args: Vec<String> = ["-m", "m.gguf", "--fit", "on"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        apply_default_fit_target(&mut args);
+        assert_eq!(
+            args.windows(2).last().map(|w| (w[0].as_str(), w[1].as_str())),
+            Some(("--fit-target", "768"))
+        );
+    }
+
+    #[test]
+    fn a_fit_off_launch_gets_no_floor_and_an_explicit_one_wins() {
+        let mut off: Vec<String> = ["--fit", "off"].iter().map(|s| s.to_string()).collect();
+        apply_default_fit_target(&mut off);
+        assert!(!off.iter().any(|a| a == "--fit-target"));
+
+        let mut explicit: Vec<String> = ["--fit", "on", "--fit-target", "2048"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        apply_default_fit_target(&mut explicit);
+        assert_eq!(explicit.iter().filter(|a| *a == "--fit-target").count(), 1);
+        assert_eq!(explicit.last().map(String::as_str), Some("2048"));
     }
 
     #[test]
