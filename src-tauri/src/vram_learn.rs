@@ -135,8 +135,8 @@ impl LearnedVramEntry {
         if components.len() != model.gpu.len() {
             return false;
         }
-        for (component, coeffs) in components.iter_mut().zip(model.gpu.iter()) {
-            component.compute_mib = predict_compute(coeffs, ctx, ubatch);
+        for (component, fit) in components.iter_mut().zip(model.gpu.iter()) {
+            component.compute_mib = fit.predict(ctx, ubatch);
         }
         let totals: Vec<f64> = components
             .iter()
@@ -144,8 +144,8 @@ impl LearnedVramEntry {
             .collect();
         self.vram_mib = totals.iter().sum();
         self.gpu_breakdown_mib = Some(totals);
-        if let (Some(host), Some(coeffs)) = (self.host_components_mib.as_mut(), model.host.as_ref()) {
-            host.compute_mib = predict_compute(coeffs, ctx, ubatch);
+        if let (Some(host), Some(fit)) = (self.host_components_mib.as_mut(), model.host.as_ref()) {
+            host.compute_mib = fit.predict(ctx, ubatch);
             let total = host.model_mib + host.ctx_mib + host.compute_mib;
             if total > 0.0 {
                 self.host_mib = Some(total);
@@ -1951,8 +1951,64 @@ struct ComputeSample {
 ///   card1 65,536:@512 1,892 / @1024 3,688 | 262,144:@512 5,938 / @1024 11,609
 #[derive(Debug, Clone)]
 struct ComputeModel {
-    gpu: Vec<[f64; 4]>,
-    host: Option<[f64; 4]>,
+    gpu: Vec<ComputeFit>,
+    host: Option<ComputeFit>,
+}
+
+/// How a family's compute term is evaluated.
+///
+/// `Plane` needs samples spread over both ctx and ubatch. A family swept at a single ctx (four
+/// ubatch levels, one ctx) cannot identify the plane — the ctx columns collapse — but it *can*
+/// identify the affine ubatch law, which is the shape a ubatch change asks for.
+#[derive(Debug, Clone)]
+enum ComputeFit {
+    Plane([f64; 4]),
+    UbOnly([f64; 2]),
+}
+
+impl ComputeFit {
+    fn predict(&self, ctx: f64, ub: f64) -> f64 {
+        let value = match self {
+            Self::Plane(c) => c[0] + c[1] * ctx + c[2] * ub + c[3] * ctx * ub,
+            Self::UbOnly(c) => c[0] + c[1] * ub,
+        };
+        if value.is_finite() {
+            value.max(0.0)
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Least squares `y = c0 + c1*ub`; needs two distinct ubatch levels.
+fn fit_ub_only(samples: &[(f64, f64, f64)]) -> Option<[f64; 2]> {
+    let distinct: Vec<f64> = {
+        let mut v: Vec<f64> = samples.iter().map(|s| s.1).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        v.dedup();
+        v
+    };
+    if distinct.len() < 2 {
+        return None;
+    }
+    let ub_scale = distinct.iter().fold(1.0f64, |acc, v| acc.max(*v));
+    let n = samples.len() as f64;
+    let (mut s0, mut s1, mut s11, mut sy, mut s1y) = (0.0, 0.0, 0.0, 0.0, 0.0);
+    for (_, ub, y) in samples {
+        let x = ub / ub_scale;
+        s0 += 1.0;
+        s1 += x;
+        s11 += x * x;
+        sy += y;
+        s1y += x * y;
+    }
+    let det = s0 * s11 - s1 * s1;
+    if det.abs() < 1e-9 || n < 2.0 {
+        return None;
+    }
+    let c0 = (s11 * sy - s1 * s1y) / det;
+    let c1 = (s0 * s1y - s1 * sy) / det;
+    Some([c0, c1 / ub_scale])
 }
 
 fn solve_4x4(mut a: [[f64; 4]; 4], mut b: [f64; 4]) -> Option<[f64; 4]> {
@@ -2037,27 +2093,33 @@ fn predict_compute(coeffs: &[f64; 4], ctx: f64, ub: f64) -> f64 {
 }
 
 fn fit_compute_model(samples: &[ComputeSample]) -> Option<ComputeModel> {
-    if samples.len() < 4 {
+    // Two points are enough for the affine ubatch fit; the plane needs four (and a spread of ctx).
+    if samples.len() < 2 {
         return None;
     }
     let cards = samples.iter().map(|s| s.gpu.len()).min()?;
     if cards == 0 {
         return None;
     }
+    let fit_points = |points: &[(f64, f64, f64)]| -> Option<ComputeFit> {
+        fit_compute_coeffs(points)
+            .map(ComputeFit::Plane)
+            .or_else(|| fit_ub_only(points).map(ComputeFit::UbOnly))
+    };
     let mut gpu = Vec::with_capacity(cards);
     for card in 0..cards {
         let points: Vec<(f64, f64, f64)> = samples
             .iter()
             .map(|s| (s.ctx, s.ubatch, s.gpu[card]))
             .collect();
-        gpu.push(fit_compute_coeffs(&points)?);
+        gpu.push(fit_points(&points)?);
     }
     let host_points: Vec<(f64, f64, f64)> = samples
         .iter()
         .filter_map(|s| s.host.map(|h| (s.ctx, s.ubatch, h)))
         .collect();
     let host = if host_points.len() == samples.len() {
-        fit_compute_coeffs(&host_points)
+        fit_points(&host_points)
     } else {
         None
     };
@@ -2868,6 +2930,35 @@ mod compute_model_tests {
             (predicted - 4_111.60).abs() / 4_111.60 < 0.05,
             "65K@ub2048 predicted {predicted}, measured 4,111.6"
         );
+    }
+
+    /// Qwen3.8-Flash-Next (MoE, Q2_0) swept at one ctx (65,536) over four ubatch levels
+    /// (2026-11-09 12:36): compute 555.9/618.0, 916.5/1053.7, 1637.9/1925.0, 2856.5/3443.6.
+    ///
+    /// Its compute is SUB-proportional: ub 4096 costs 5.1x the ub 512 value, not 8x, so a
+    /// proportional factor over-predicts by +56 % at the top. One ctx cannot identify the plane,
+    /// so this family must fall through to the affine ubatch fit.
+    #[test]
+    fn a_single_ctx_sweep_falls_back_to_the_affine_ubatch_fit() {
+        let points = vec![
+            (65_536.0, 512.0, 555.9),
+            (65_536.0, 1024.0, 916.5),
+            (65_536.0, 2048.0, 1637.9),
+            (65_536.0, 4096.0, 2856.5),
+        ];
+        assert!(
+            fit_compute_coeffs(&points).is_none(),
+            "one ctx must be rank-deficient for the plane"
+        );
+        let coeffs = fit_ub_only(&points).expect("affine ubatch fit survives");
+        let at_4096 = coeffs[0] + coeffs[1] * 4096.0;
+        assert!(
+            (at_4096 - 2856.5).abs() / 2856.5 < 0.05,
+            "ub 4096 predicted {at_4096}, measured 2856.5"
+        );
+        // The proportional guess the old code would have made, for contrast.
+        let proportional = 555.9 * 8.0;
+        assert!(proportional > 4_000.0 && at_4096 < proportional);
     }
 
     #[test]

@@ -97,7 +97,13 @@ The 27B dense model gave an almost exactly proportional law for ubatch in its op
 - **A `ubatch^2` term is deliberately absent.** Holding out the 2048 row, a quadratic fit
   predicts 5,699 / 1,768 — with three ubatch levels the top one *is* the curvature. Add it when a
   fourth level exists.
-- **The law is per family, not global.** DSV4.1's affine plane is not Qwen3.8-27B's proportional
+- **The ubatch shape is architecture-specific, and not even the same curvature.** Qwen3.8-Flash-Next
+  (MoE, Q2_0) at one ctx (65,536) over four ubatch levels, card0 compute: 555.9 (512), 916.5
+  (1024), 1637.9 (2048), 2856.5 (4096) MiB — ub 4096 costs **5.1x** the ub 512 value, not 8x, and
+  the slope *falls* (0.70, 0.70, 0.60 MiB/ub) where DSV4.1's *rises* (1.91 then 3.93 at 65,536).
+  A proportional factor over-predicts Flash by **+56 %** at ub 4096; the affine ubatch fit lands
+  within ~5 %. One ctx cannot identify the plane, so that family falls through to
+  `compute = c0 + c1*ub` instead.- **The law is per family, not global.** DSV4.1's affine plane is not Qwen3.8-27B's proportional
   line, and Qwen3.8-Flash will have its own. Families with fewer than four measured points keep
   the proportional fallback, so a new model starts simple and earns its coefficients.
 
