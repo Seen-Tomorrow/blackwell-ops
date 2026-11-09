@@ -1,0 +1,74 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 2189aa644..57bcd402c 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -5996,6 +5996,45 @@ void server_routes::init_routes() {
+         return res;
+     };
+ 
++    // Device memory as the engine sees it. On Windows/WDDM the CUDA free number is a budget
++    // (VRAM + shared system memory), so --fit can plan against a card other models already hold.
++    this->get_memory = [this](const server_http_req &) {
++        auto res = create_response(true);
++
++        json devices = json::array();
++        for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
++            ggml_backend_dev_t dev = ggml_backend_dev_get(i);
++            size_t free_bytes  = 0;
++            size_t total_bytes = 0;
++            ggml_backend_dev_memory(dev, &free_bytes, &total_bytes);
++            const enum ggml_backend_dev_type type = ggml_backend_dev_type(dev);
++            const char * type_name = type == GGML_BACKEND_DEVICE_TYPE_GPU
++                ? "GPU"
++                : (type == GGML_BACKEND_DEVICE_TYPE_ACCEL ? "ACCEL" : "CPU");
++            devices.push_back({
++                {"index",       i},
++                {"name",        ggml_backend_dev_name(dev)},
++                {"description", ggml_backend_dev_description(dev)},
++                {"type",        type_name},
++                {"total_mib",   total_bytes / (1024 * 1024)},
++                {"free_mib",    free_bytes  / (1024 * 1024)},
++            });
++        }
++
++        res->ok({
++            {"devices",    devices},
++            {"slot_n_ctx", meta->slot_n_ctx},
++            {"model", {
++                {"name",        meta->model_name},
++                {"size_mib",    meta->model_size / (1024 * 1024)},
++                {"n_params",    meta->model_n_params},
++                {"n_ctx_train", meta->model_n_ctx_train},
++                {"ftype",       meta->model_ftype},
++            }},
++        });
++        return res;
++    };
++
+     this->get_props = [this](const server_http_req &) {
+         auto res = create_response(true);
+         // note: do NOT use ctx_server here, this endpoint must be accessible during sleep
+diff --git a/tools/server/server-context.h b/tools/server/server-context.h
+index 05c538ea1..9d0a0c6b1 100644
+--- a/tools/server/server-context.h
++++ b/tools/server/server-context.h
+@@ -110,6 +110,7 @@ struct server_routes {
+     // they won't be called until ctx_http.is_ready is set to true
+     server_http_context::handler_t get_health;
+     server_http_context::handler_t get_metrics;
++    server_http_context::handler_t get_memory;
+     server_http_context::handler_t get_slots;
+     server_http_context::handler_t post_slots;
+     server_http_context::handler_t get_props;
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 312cb8f55..6226429cc 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -437,6 +437,7 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+     ctx_http.get ("/health",                   ex_wrapper(routes.get_health)); // public endpoint (no API key check)
+     ctx_http.get ("/v1/health",                ex_wrapper(routes.get_health)); // public endpoint (no API key check)
+     ctx_http.get ("/metrics",                  ex_wrapper(routes.get_metrics));
++    ctx_http.get ("/memory",                   ex_wrapper(routes.get_memory));
+     ctx_http.get ("/props",                    ex_wrapper(routes.get_props));
+     ctx_http.post("/props",                    ex_wrapper(routes.post_props));
+     ctx_http.get ("/models",                   ex_wrapper(routes.get_models));
