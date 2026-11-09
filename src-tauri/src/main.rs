@@ -181,6 +181,20 @@ async fn main() {
 
     #[cfg(debug_assertions)]
     std::env::set_var("RUST_BACKTRACE", "1");
+
+    // DEV: expose the WebView over CDP on a fixed port so the harness (scripts/ui-probe.mjs) can
+    // attach to whatever DEV instance is running, without the shell having to export
+    // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS first. Release builds never take this branch, and an
+    // explicit value from the environment always wins.
+    #[cfg(debug_assertions)]
+    {
+        if std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_none() {
+            std::env::set_var(
+                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                "--remote-debugging-port=9222",
+            );
+        }
+    }
     // Custom panic handler: payload first, then location, then backtrace.
     // stderr is written unconditionally; file logging is best-effort but reports
     // failures and falls back to writable dirs. Do not route into the Output
