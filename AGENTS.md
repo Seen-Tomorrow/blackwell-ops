@@ -2,258 +2,86 @@
 
 Traps and invariants only — not a code map. Read the source for flows, schemas, and file layout.
 
+**This file is the short law.** Mechanics, measurements, history and *why* live in
+`docs/AGENTS-REFERENCE.md` under the same headings. Read that section only when a rule below is not
+enough; everything here is a rule that costs real time or data when missed.
+
 ---
 
 ## No real users yet — never write migration code
 
-**There is no installed base. Backward compatibility is not a requirement — delete the old shape.**
-
-Do not write: persisted-state shims, legacy-key repair, `OBSOLETE_*` stripping, "if an older
-version wrote X" branches, versioned up-converters, dual-read fallbacks, or deprecation aliases —
-for configs, localStorage keys, catalog/learned-memory files, templates, or any on-disk format.
-Change the shape and let stale data be wrong; the owner resets config / cache locally, which is
-free. Carrying a field forward "just in case" is pure debt.
-
-Existing shims and repair passes (obsolete spec-key stripping, `Repair mtp_*/dflash_* …`, migrate
-branches in `systemParams` / `EngineConfigPanel`) are **legacy debt, not contracts** — delete them
-when you touch that area rather than extending them. This also removes the usual reason to keep two
-implementations of one rule in sync: prefer one authoritative side (Rust or TS) and let the other
-consume it.
-
-Revisit this section only when the first real install ships.
-
----
+- No persisted-state shims, legacy-key repair, `OBSOLETE_*` stripping, dual-read fallbacks,
+  versioned up-converters or deprecation aliases — for configs, localStorage, catalog/learned files,
+  templates, any on-disk format.
+- Change the shape and let stale data be wrong; the owner resets config/cache locally, which is free.
+- Existing shims (`Repair mtp_*`/`dflash_*`, obsolete spec-key stripping, migrate branches in
+  `systemParams` / `EngineConfigPanel`) are **debt, not contracts**: delete them when you touch that
+  area instead of extending them.
+- Revisit this section only when the first real install ships.
 
 ## CRITICAL: never kill the running app
 
-**NEVER `Stop-Process` / kill `blackwell-ops` without explicitly asking the user first.**
-The running instance is frequently the REL build serving the LLM engine that runs the agent
-session itself — killing it kills the session. A locked `blackwell-ops.exe` during `cargo build`
-(`Access is denied (os error 5)`) means REL is up: ask the user to close it, or build to a
-separate target. A full app restart is the only exception — still confirm first.
-(There is **no** `npm run tauri` script; the app runs via `npm run dev`.)
-
-**REL vs DEV, by exe path** (`scripts/identify-app-processes.ps1`):
-- **REL** = path contains `Blackwell OPS portable` → serves the engine/session; **never kill**.
-- **DEV** = path contains `target\debug`.
-
----
+- **NEVER `Stop-Process` / kill `blackwell-ops` without explicitly asking first.** The running
+  instance may be the REL build serving the engine that runs this session.
+- A locked `blackwell-ops.exe` during `cargo build` (`Access is denied (os error 5)`) means an app is
+  up: ask the user, or build to a separate target.
+- **REL** = exe path contains `Blackwell OPS portable` → never kill. **DEV** = path contains
+  `target\debug`. (`scripts/identify-app-processes.ps1`.)
+- Closing DEV (only for a rebuild, after asking): `(Get-Process -Id <pid>).CloseMainWindow()` →
+  exits 0. `Stop-Process -Force` leaves `0xffffffff` in the log and reads as a crash.
+- There is **no** `npm run tauri`; the app runs via `npm run dev`.
 
 ## Where runtime data lives — git cannot see it
 
-**"App root" = the folder holding `blackwell-ops.exe`, not the repo root** (`config::app_root_dir()` is
-`current_exe().parent()`): `src-tauri/target/debug/` for DEV, the portable install folder for REL.
-`toolchain/`, `config/`, `runtime/` and the engine binaries all live there and are **gitignored** — so
-`git grep`, `git ls-files` and a repo-root `Get-ChildItem` cannot see any of it. Absence from git is not
-absence from disk. Concrete trap: repo-root `toolchain/` holds only `manifest.json` (~1.3 KB, the
-`include_str!` input); the real ~5 GB toolchain sits under the app root.
-
-**Never call a directory empty from a rounded size.** `(... | Measure-Object Length -Sum).Sum / 1MB`
-prints `0.0` for a folder holding a 1.3 KB file — list the files. On the CRCRLF partials `Select-String`
-also reports roughly doubled line numbers; use the read tool or a script there.
-
-**`rg` honours `.gitignore`, so a search silently skips `toolchain/`, `dist/`, `target/`.** Use
-`git grep` for source (tracked files only) and `rg --no-ignore <pat> <dir>` when the artifact tree is
-what you actually need. Ignoring never affected `git grep`/`git ls-files` — they were only ever
-looking at tracked files — so an ignore rule cannot "clean up" those searches, and adding one to try
-is the wrong lever. The repo's ignore list is correct on the merits (generated, GB-scale shipped
-artifacts, user data); `repoInvariants` guards the one mistake that matters, a rule broad enough to
-swallow source.
-
-**`toolchain/` is a runtime dependency, not just a build one.** `portable_cuda_env_for_profile` refuses
-to launch without its CUDA runtime DLLs (cublas\*/cublaslt\*/cudart\*), and the engine launch env is
-`toolchain CUDA bin(s) + scrubbed(inherited PATH)` — `scrub_foreign_cuda_from_path` deliberately drops a
-user's own CUDA toolkit so the bundled one always wins. Do not treat the pack as optional.
-
-**Uninstall keeps the vitals** — `docs/UNINSTALL.md` is the contract. The NSIS uninstaller deletes
-program + re-downloadable caches and keeps `config\*.json`, `config\cache\`, `config\automation\`,
-`config\external-tools\pi-home\` and the user's model files. Never add a model path to the
-uninstaller's `RMDir` list: models may sit inside `$INSTDIR` or on another drive, and that path is
-user media, not app data.
-
----
+- **App root** = the folder holding `blackwell-ops.exe`, not the repo root:
+  `src-tauri/target/debug/` in DEV, the portable folder in REL.
+- `toolchain/`, `config/`, `runtime/` are gitignored, so `git grep` / `git ls-files` cannot see
+  them. Absence from git is not absence from disk.
+- `rg` honours `.gitignore`: use `git grep` for source and `rg --no-ignore <pat> <dir>` for artefacts.
+- Never call a directory empty from a rounded size — list the files.
+- `toolchain/` is a **runtime** dependency (CUDA runtime DLLs), not just a build input.
+- Uninstall keeps `config\*.json`, `config\cache\`, `config\automation\`,
+  `config\external-tools\pi-home\` and user models (`docs/UNINSTALL.md` is the contract). Never add a
+  model path to the uninstaller's `RMDir` list.
 
 ## Line endings — LF everywhere
 
-`.gitattributes` pins `* text=auto eol=lf`; only `*.bat` / `*.cmd` stay CRLF (cmd.exe parses
-parenthesized blocks badly without it). Agents are the only writers and nothing else consumes
-this tree, so there is no CRLF checkout to manage — one form means `git diff` is raw bytes and
-`git add` never rewrites a file.
+- Write UTF-8 / LF. `.gitattributes` pins `eol=lf`; only `*.bat` / `*.cmd` stay CRLF.
+- Healthy: `git ls-files --eol <file>` → `i/lf w/lf`. `i/crlf` → `git add --renormalize`.
+  `w/crlf` only → delete and `git checkout -- <file>`.
+- A whole-file diff with no content change is that signature; never "fix" it by editing the file.
+- After scripted writes, check for `\r\r`.
 
-- **Healthy**: `git ls-files --eol <file>` → `i/lf w/lf`.
-- **`i/crlf`** (blob committed with CRLF): every later edit diffs as a whole-file rewrite.
-  `git add --renormalize <file>` and commit — do not "preserve its bytes" with
-  `-c core.autocrlf=false add`.
-- **`w/crlf` only**: something converted the file; git sees no content change and will not
-  restore it. Delete it and `git checkout -- <file>`, or rewrite the bytes as LF.
-- **A whole-file diff with no content change is that signature**; `git diff --ignore-cr-at-eol`
-  empty confirms it. Never "fix" it by editing the file.
-- **Write UTF-8 / LF**, keep one-line edits to one-line diffs, and check for `\r\r` after
-  scripted writes (the CSS note above).
+## CSS / themes
 
----
-
-## CSS / themes (frontend)
-
-**Themes law** — Color lives in `src/themes/app-themes.ts` + `src/styles/tokens-base.css`. CSS/TSX only *name* tokens. To recolor an element: grep the class → if it’s a `var(--token)`, edit the token (all three themes, or base if shared); if it’s a hex, that site is the source of truth until someone wires a token. Frozen set: MATRIX / SLATE / ARCTIC × DOTTED / CLEAN. Do not add themes, faces, `[data-theme="…"]` forks, or `var(--x, #hex)` “just in case.”
-
-**`var(--x, <literal>)` fallbacks are a decoy, not defense** — if the token is undefined there the
-literal *is* the paint and the theme switch silently does nothing; if defined it is never read and only
-pollutes a hex grep. Meter: `python scripts/fb-triage.py` (`DEAD` / `DEAD-CHAIN` unreachable → strip to
-`var(--x)`; `DEAD-FLAT` base literal never switches; `LIVE-LITERAL` = token undefined, the literal
-paints on **every** face → always fix). Face presence is read off `app-themes.ts` only, so a token
-themed via a `[data-theme]` CSS block is mislabelled — `LIVE-LITERAL` is the one category whose
-conclusion does not depend on that.
-
-**Non-color fallbacks are the JS-runtime idiom — do NOT strip them** — `var(--seg-thumb-width, 0px)`, `var(--device-pixel-ratio, 1)`, `var(--bench-control-row-h, 18px)` and ~143 siblings are not decoys: the token is written at runtime by JS (`style.setProperty`) and the CSS literal is the documented pre-JS default, so removing it would break layout before the first measurement, not "clean a shadow". `scripts/fb-triage.py` matches hex / `rgba()` only and therefore ignores these, plus nested `var(--a, var(--b))` (184 sites, which still theme-switch). Target state is zero hex/`rgba()` fallbacks; a non-zero count of these two families is expected forever.
-
-**Deliberately off-theme — do NOT theme these** — owner verdict 2026-09-03, recorded so nobody
-re-litigates: `--boc-*` (ops output console) and `--dev-danger*` (DEV-only chrome) stay fixed;
-`--theme-nv-green` and `--theme-telemetry-*` are legacy **aliases**, not a third palette — point them at
-`--theme-accent` / `--theme-tel-*` / `--theme-secondary-bright`; `--custom-flags-amber*` is fixed
-product amber (`--theme-tel-amber` is the themed variant — do not invent another). ARCTIC-only tokens
-are not a bug: dark defaults live in `tokens-base.css`, ARCTIC overrides them. Never copy ARCTIC ice
-onto MATRIX/SLATE; a token missing from base needs the **dark** default, not the light one.
-
-**Domain partials** — Styles live under `src/styles/*.css`; `src/index.css` is Tailwind + `@import` only. Edit the matching partial (chrome, cockpit, fusion-display, config, launch, …).
-
-**`cfg-mut` / `cfg-bord` / `cfg-acc` are room-role vocabulary, not drift** — owner decision 2026-09-03; do NOT "fix" them into per-element surface classes (rejected: churn across hundreds of sites, zero gain). A site resolves to a ROLE — muted ink, hairline border, accent text — inside the Config room, all defined in `src/styles/config-params.css`, so one edit re-tones the whole room coherently. That is the trade being made: the blast radius spans many files and is **not** readable from the rule, so grep the class before editing and treat it as a room-wide change. When a single element must diverge, add a narrow surface class beside the family.
-
-**Tailwind = layout only** — no Tailwind **color** utility and no arbitrary `text-[Npx]` in TSX/TS
-(migration closed 2026-09-03; meter: `python scripts/tw-census.py` → paint 0 / px 0). Paint lives in
-named surface classes inside the partials, so "grep the class → change the color without opening TSX"
-keeps working. Named sizes (`text-xs` … `text-2xl`) stay — they carry `line-height`. The `stealth` /
-`nv` / `telemetry` / `theme` color maps are physically **gone** from `tailwind.config.js`: a new color
-utility compiles to nothing instead of painting.
-
-**Container corrections must not match utility names** — pre-migration CSS repaired bad hues with
-selectors like `[data-config-page] .text-yellow-400\/70`. Deleting the utility kills the correction
-**silently**: no build error, one wrong color on one face. Correct shape: (a) re-scope the semantic
-token on the container — valid ONLY when the old hook corrected *every* property that token drives in
-that subtree — or (b) a **property-scoped class list** (`[data-model-hub] .cfg-acc… { color: … }`) when
-the hook was text-only and the token also paints fills/borders there. Detector:
-`python scripts/hook-check.py` (diffs hook lists against `a38f23abf`; require `broken=0`).
-
-**`bg-black/NN` reproductions are face-unsafe** — `color-mix(in srgb, var(--theme-panel) 25%, black)` renders **charcoal on ARCTIC paper** (`--theme-panel` is `#ffffff` there). Face-correct inset fill: `color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent))` — see `.fnd-cache-row`.
-
-**`/NN` alpha tails never fold onto the plain token** — write `color-mix(in srgb, var(--x) NN%, transparent)` with the exact percentage (no `rgba()`, no hex). Folding turned hairlines into hard borders once already. Literal hex stays legal for **data**, not chrome: ANSI terminal output, GPU swatches, the VRAM forecast bar ramp (`badges.css` `.bar-need--*`), MoE gold.
-
-**CSS comment must never contain `*/`** — a class glob in prose (`text-*/60`) terminates the comment
-early and the leftover parses as a selector. **postcss accepts it**, so DEV and scratch parsers look
-fine and only `vite build` fails (`[lightningcss minify] Invalid empty selector`). Gate:
-`node scripts/css-minify-gate.mjs`.
-
-**Type scale is the LAST `@import`** — `src/styles/type-scale.css` must stay last in `src/index.css`
-(immediately before `@tailwind`): `.type-*` replaces Tailwind `text-[Npx]`, which was emitted after
-every partial and therefore won every same-specificity tie; declaring the scale earlier lets later
-partials (`value-chip`, `fnd-*`, `config.css`) silently resize migrated text. Related trap: `chrome.css`
-keys some font-size overrides on the **literal utility name** (`.foundry-window .text-\[9px\]`, a
-compact-density `.config-spec-decoding ~ div.text-\[8px\]`) so Foundry text follows `--foundry-scale`.
-Swap the class and the override stops matching — text shrinks in that container. When removing a
-`text-[Npx]`, grep `text-\\[` in `src/styles/` and re-key every hit onto the matching `.type-*` selector
-(keep the utility selector for unmigrated rooms).
-
-**CSS counts are REPORTED, with one tripwire** — the 2026-10 reduction campaign took source
-`!important` 525 -> 22 and left literal hex/rgba largely **data-owned**; that work is closed.
-`npm run css:audit` (inside `npm run check`) prints source/dist bytes, `!important`, literal
-colors, `color-mix`, px font sizes and dead CSS every run. Two things fail it: a change to the
-canonical `src/index.css` partial order, and source `!important` above **50** — a
-campaign-scale-regression alarm, not a budget. Do not reintroduce size or paint ceilings, and
-do not tighten the `!important` tripwire toward the current count: its old ceilings were a
-snapshot of that campaign's baseline and turned every legitimate UI addition into
-declaration-shaving. Treat a big jump in the report as a signal to look, not a build failure.
-
-**An `!important` may only be removed with one of three proofs** — a declaration loses to exactly
-three things: another `!important`, a rule at equal-or-higher specificity, or an **inline style**.
-
-- Selector already out-specifies every competitor -> delete `!important`.
-- Tie -> **raise specificity by duplicating the class** (`.x.x`), never by adding `!important`.
-- Competitor is an inline style -> `!important` is the **only** tool that beats it. Keep it, and
-  comment why. That is the single surviving `!important` in `fusion-display.css`: the
-  compact-topology `grid-template-rows`, because `GpuTopology.tsx` writes `gridTemplateRows`
-  inline. A CSS rule cannot win against `style=` by specificity at all.
-
-Mutually exclusive selectors are **not** competitors: `.a:not([data-x="1"])` vs `.a[data-x="1"]`,
-or `[data-need-tone="caution"]` vs `[data-need-tone="hot"]`, never match the same element. A
-scanner that reports them as competing is wrong — check the pair before believing it.
-
-**Generated Tailwind utilities are invisible to a `src/styles` scan** — they are emitted at build
-time and come **last** (after `type-scale.css`), at (0,1,0). So a one-class selector ties with a
-utility and loses on source order, while two classes or more wins outright. Grep the TSX for
-utilities on that element before trusting a cascade analysis that only read the partials.
-
-**A shadowed base rule is not necessarily dead** — `.running-engine-card { background: #222522 }`
-at (0,1,0) is beaten by `[data-config-panel] .running-engine-card` at (0,2,0) on the Config page,
-yet the same class mounts inside `EngineGpuForecast` and `EngineLaunchDock`, where it paints.
-Grep the class across TSX for **every** mount point before deleting a base rule or calling it
-shadowed.
-
-**Do not re-open the cross-domain primitives refactor** — the "15-25% source reduction" premise was
-measured and is false: identical declaration blocks are 8.9% of declaration bytes, **5.0% of
-source**, and the largest groups are single declarations already at token level
-(`color: var(--theme-text-muted)` x55). Capturing even that needs a primitive class at ~1,000 TSX
-sites for ~1% gzip. Re-open only with new evidence.
-
-**Never let a scripted CSS edit double the CR** — nine partials once carried `\r\r\n`
-(`chrome.css` even `\r\r\r\n`): 11,585 bytes of padding that no parser sees but that corrupts
-every byte metric and every diff. It comes from writing `"\r\n"` into a buffer that is already
-CRLF. Round-trip the file's own EOL, and check for `/\r\r/` before committing a scripted edit.
-
-**Removed modules** — Mobile Sentinel Bridge (`mobile_bridge.rs`, WebSocket `0.0.0.0:3814`, `tokio-tungstenite`) is fully removed — backend and UI. Do not revive it.
-
-**Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). HW monitor widgets use the same face (`.hw-mon .phosphor-display-surface`). Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
-
-**No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
-
-**Vite/Rolldown barrel re-exports** — Never mix `type` into a value re-export list:
-`export { type Foo, bar } from "./x"`. Vite 8 / Rolldown can emit an **empty module** (only a sourcemap):
-black WebView, DevTools `Uncaught SyntaxError`, while `tsc` / `npm run build` stay clean. Split:
-`export { bar } from "./x"` + `export type { Foo } from "./x"`. Sanity-check a suspect URL:
-`curl http://127.0.0.1:1420/src/.../file.ts` must show real `export { ... }`.
-
-**WebView2 module cache** — After a bad transform (empty barrel, half-HMR), F5 / Vite restart / rebuild
-may still black-screen: Chromium caches the broken JS under
-`%LOCALAPPDATA%\com.blackwell-ops.app.dev\EBWebView\Default\` (`Cache`, `Code Cache`, `GPUCache`,
-`Service Worker`). Clear those folders (close the DEV window first if locked), then reload. REL profile
-is `com.blackwell-ops.app`. **Not** localStorage — wiping storage keys will not fix a cached module.
-
-**VRAM forecast is measured-only** — No GGUF formula path. Paint sources `LEARNED` / `LEARNED≈` /
-`FIT PROBE` only (`src/services/vram/forecast/`, default adapter `ggml_master`); `evaluate()` returns
-`null` → skeleton until probe/learned lands. `scenarios/scenarios_factory.ts` is a thin compat re-export
-only. Formula evaluators (`auto_fit` / `hw_locked`) and old scenarios live under gitignored
-`tmp/archive_vram_formula/`, never imported. **One** ASSISTED forecast glass: `VramBadge` is the shell
-(ASSISTED cluster or fusion fill), height lives in `EngineGpuForecast` — no second FULL AUTO UI;
-`EVALUATING` copy is pre-manifest only. Library FIT tensor is usually noΔ (`Meta` ≈ none): do not
-`Meta`×N fit-print; the layer tax from a library Δ is real. Law: `docs/VRAM-FORECAST.md`.
-
----
+- Color lives in `src/themes/app-themes.ts` + `src/styles/tokens-base.css`; CSS/TSX **name** tokens
+  only. Frozen set MATRIX / SLATE / ARCTIC × DOTTED / CLEAN — no new themes or `[data-theme]` forks.
+- `var(--x, <literal>)` is a decoy, not defense. Non-color fallbacks written by JS at runtime are the
+  idiom — do **not** strip those.
+- Off-theme by decision: `--boc-*`, `--dev-danger*`, `--custom-flags-amber*`.
+  `--theme-nv-green` / `--theme-telemetry-*` are aliases, not a third palette.
+- Styles live in domain partials (`src/styles/*.css`); `src/index.css` is Tailwind + imports only, and
+  `type-scale.css` stays last.
+- Tailwind = layout only: no color utilities, no arbitrary `text-[Npx]`.
+- `bg-black/NN` reproductions are face-unsafe; `/NN` alpha tails always
+  `color-mix(in srgb, var(--x) NN%, transparent)`.
+- A CSS comment must never contain `*/`. Gate: `node scripts/css-minify-gate.mjs`.
+- `npm run css:audit` is in the gate. Two things fail it: a change to partial order, and source
+  `!important` above 50. Treat its counts as a report, not a budget.
+- An `!important` may only be removed with one of three proofs (out-specifies / tie → duplicate the
+  class / only tool against an inline style).
+- Never let a scripted CSS edit double the CR.
+- **Before editing these areas, read `docs/AGENTS-REFERENCE.md` → CSS / themes** — `cfg-*` / `!important` /
+  container-hook / `text-[Npx]` / shadowed-rule rules and their detectors live there.
 
 ## Product floor / layout density
 
-**Supported viewports** — **1080p minimum (marginal)**, **1440p+ recommended**, **4K optimal**; below
-1080 is out of scope. Vertical space is the constraint; horizontal is fine. Prefer **manual** density
-(display bezel **GPU 2|3** / **ENG 2|3** cards-per-row) over auto viewport policies. HW monitor: rail
-body scrolls; **FULL/CMPT** density is its own header toggle (compact drops the clocks + PCIe rows in
-JSX, never hides them with CSS), and the OC panel is a header-triggered overlay in both placements.
-
-**DEV tools (header)** — `VIEW` = physical panel presets + live Windows scale (app zoom 100% when testing). `GPU+` = fake multi-GPU topo (real SKU names/VRAM) for layout + forecast stress — session only. Do not ship these in REL UX.
-
-**DEV renderer growth has two causes — one is React's performance-track, one was a real leak (fixed)** — the dev build emits
-`performance.measure("<ComponentName>")` for every component render. Those entries live in the renderer's
-**native** performance timeline, not the JS heap, so V8 cannot reclaim them: a DEV app left open for a day
-accumulated **3.4 M measures (~4 GB private WS)** in the WebView2 renderer while `JSHeapUsedSize` stayed at
-~60 MB and forced GC changed nothing. REL emits none. `src/lib/perfTimelineGuard.ts` (installed from
-`main.tsx` in dev builds) clears the timeline past 20 k measures, so a short DevTools recording still works.
-Diagnose with `performance.getEntriesByType("measure").length`; a forced heap snapshot will look clean
-throughout, so do not conclude "not a leak" from heap numbers alone.
-
-That guard did **not** explain the leak that climbed to gigabytes in hours: the culprit was a second
-model-catalog instance inside the ENGINE CONFIG modal (reachable via the `/` shortcut), re-rendering every
-model and its props on a repeated poll. Removing it stopped the growth — DEV now runs for days with models
-loaded. If private WS climbs again, look for a component polling on a short interval and re-rendering a
-list, before blaming the performance timeline.
-
----
+- **1080p minimum (marginal), 1440p+ recommended, 4K optimal**; below 1080 is out of scope.
+- Prefer **manual** density (GPU 2|3, ENG 2|3) over viewport auto-policies. Vertical space is the
+  constraint; horizontal is fine.
+- HW monitor: rail body scrolls, FULL/CMPT is its own header toggle (drop rows in JSX, never hide with
+  CSS), OC panel is a header-triggered overlay in both placements.
+- DEV tools (`VIEW`, `GPU+`) never ship in REL UX.
 
 ## DEV automation — attach, never start another
 
@@ -266,8 +94,9 @@ When the user says "use automation" (or asks for a UI check, a launch, a memory-
   instances also duplicate the automation queue, so both would run the same job.
 - **No port answering** = the running instance predates the default, or it is a REL build. Ask for
   one restart (`npm run dev`); never launch a parallel instance to get a port.
-- **Closing DEV** (only when a rebuild is required, and after asking): `(Get-Process -Id <pid>).CloseMainWindow()`,
-  which exits 0. `Stop-Process -Force` leaves `0xffffffff` in the log and looks like a crash.
+- **Closing DEV** (only when a rebuild is required, and after asking):
+  `(Get-Process -Id <pid>).CloseMainWindow()`, which exits 0. `Stop-Process -Force` leaves
+  `0xffffffff` in the log and looks like a crash.
 
 The queue itself is DEV-only (`automation::spawn` returns immediately in release):
 
@@ -287,394 +116,124 @@ Results land in `{app_root}/config/automation/results/<job>.json`; UI state in
 `automation-ui` event; a command that needs a running slot (e.g. `select-slot`) is cleared by the UI
 when nothing is running, so launch first.
 
----
-
 ## Agent harness
 
-**Supported harness = pi only** (`pi_code`). Product surface is the neutral agentic harness framework:
-`harness-*` CSS, `html[data-harness-open]` / `data-harness-wizard`, `--theme-harness-brain-*` /
-`--theme-harness-worker-*`, `EVENTS.harness*`, `HarnessToolId = "pi"`. `external_agents.rs` **stays**
-(`pi_code.rs` + `download_manager.rs` depend on it). Future harness tools plug into the same chrome +
-`HarnessToolId`, never product-branded class names. pi models.json: per-seat **`input: text|image`**
-only when that engine launched with **`--mmproj`** (`stack.vision`); BRAIN and WORKER are independent.
+- **Supported harness = pi only** (`pi_code`). Product surface is the neutral framework
+  (`harness-*` CSS, `html[data-harness-open]`, `EVENTS.harness*`, `HarnessToolId = "pi"`); never
+  product-brand class names. `external_agents.rs` stays.
+- **Session roles:** this seat is the designer/planner. BRAIN thinks, WORKER does grunt work,
+  Adviser (external) only when blocked.
+- **Temp / debug / scratch → gitignored `tmp/`**, never the repo root; clean up after.
+  **Commit only real source changes**, split per concern.
+- **Never ship or run a PE built under a Low-stamped tree.** A workspace-write session stamps the
+  workspace Low and the stamp outlives it; keep this workspace full-access, raise the root once
+  after such a session (`icacls <root> /setintegritylevel Medium`) and rebuild. Symptoms: silent
+  `os error 5` in `%TEMP%` (~15 `cargo test` failures), or a DEV webview dying with
+  `0x800700AA`.
+- **Do NOT commit TEMP-redirect / `/Z7` workarounds** for that stamp (they live in
+  `git stash list` → `grok-lowil-workarounds`); they must never land.
+- While a workspace-write session is live its ACEs **are** the confinement design: don't hand-edit
+  them, don't `icacls /T`, don't elevate. Clear the stamp only after the session ends.
+- Orphaned puppeteer Chromium: reap by path filter `*\.omp\puppeteer\*`; a bare
+  `Stop-Process -Name chrome` is forbidden.
+- Detail: `docs/AGENTS-REFERENCE.md` → Agent harness (incl. the `docs/windows-forensics.md` trail).
 
-**Session roles (local stack)** — this seat is the **designer/planner**. **BRAIN** = thinking model
-(design, planning, hard reasoning); **WORKER** = fast non-thinking grunt (mechanical edits, lookups,
-bulk work); **Adviser** = external Claude / Grok escalate. Route grunt work to WORKER, keep
-design/judgment here, escalate only when blocked.
+## Regressions to avoid (checklist)
 
-**Temp / debug / scratch files → gitignored `tmp/`** (repo root), never the repo root or a tracked
-path; clean up afterwards. **Commit only real source changes**, split per concern (feature / fix /
-theme).
-
-**Never ship or run a PE built under a Low-stamped tree** — a DSH `workspace-write` session stamps
-the workspace folder **Low** and the stamp **outlives the session** (`danger-full-access` does not
-stamp). Inheritance applies at creation time, so every PE built afterwards under `target\` is Low —
-app, test binaries, and the copied `llama-server.exe`s — and neither switching the sandbox mode back
-nor lifting the root later fixes children already stamped. Keep this workspace on **full access**;
-after any such session raise the root once (`icacls <root> /setintegritylevel Medium`) and rebuild.
-Do **not** do that before every build — it treats the symptom. Symptoms: silent `os error 5` writing
-`%TEMP%` (~15 `cargo test` failures in the `temp_dir()` modules while tsc/vitest stay green), or a DEV
-webview dying with `0x800700AA "The requested resource is in use"`. Shipping is unaffected — 7z/NSIS
-carry no SACLs — so only PEs run *in place from `target\`* are Low, which is why DEV silently loses
-`%TEMP%\blackwell-crash.log`. Full trail incl. Dev Drive/ReFS: `docs/windows-forensics.md`.
-
-**Do NOT commit TEMP-redirect or `/Z7` workarounds for the Low stamp** — `TEMP`/`TMP = tmp/rust-temp`
-and `debug = false` for `aws-lc-sys` / `ring` are symptom patches on a build that was only broken by
-the label. They survive in `git stash list` → `grok-lowil-workarounds` if a re-stamped tree ever needs
-them to build at all; they must never land.
-
-**While a `workspace-write` session is live its ACEs are the confinement design — leave them alone.**
-`Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`, `Everyone:(CI)(DENY)(DC)` and an `S-1-4-*` grant are
-*expected*; never hand-edit them mid-session, never `icacls /T` the tree, never elevate — unconfined
-does not elevate the token. Clear the orphaned stamp only after the session ends.
-
-**Orphaned headless Chrome (visual checks)** — The agent browser tool (puppeteer) runs its own headless Chromium under `C:\Users\<user>\.omp\puppeteer\chrome\win64-<ver>\chrome-win64\chrome.exe`. Sessions/tabs that close (or error mid-run) **orphan the process tree** — invisible (no window) but ~85 MB each, accumulating until the user Task Manager-hunts them. **Reap them in the same step as closing the browser session.** Kill by path filter ONLY — the user's real Chrome/Edge share the `chrome.exe` name, so a bare `Stop-Process -Name chrome` is forbidden:
-```powershell
-Get-Process -Name chrome -ErrorAction SilentlyContinue |
-  Where-Object { $_.Path -like '*\.omp\puppeteer\*' } |
-  Stop-Process -Force
-```
-The bash tool mangles `$_`/`$p` in inline `powershell -Command` strings (eats the `$`) — write the snippet to a script under gitignored `tmp/` and run `powershell -NoProfile -ExecutionPolicy Bypass -File tmp/<name>.ps1`.
-
-
----
-
-## Regressions to avoid
-
-**Engine ports** — Do not reintroduce port-based taskkill (`kill_process_by_port` or netstat carpet-bomb) on launch, stop, or fail paths. Launch uses `engine_port_lock::reclaim_our_ghost_or_fail` (verified orphan only); teardown is PID-only via `stop_child_fast` / `kill_process_by_pid`. Old behavior killed ESTABLISHED fusion/health clients and sibling app instances.
-
-**Engine lifetime** — Engines join a private Job Object (`engine_job`, `KILL_ON_JOB_CLOSE`). Never bare `AppHandle::exit` without `engine::teardown_all_for_app_exit` (update path included). Stop is taskkill-by-PID only (no console CTRL+C). Startup runs `kill_orphans_of_dead_owners` then `sweep_stale_locks`.
-
-**App exit path (`teardown_all_for_app_exit` → `finish_process_exit` → `std::process::exit(0)`)** — After engines are stopped, do **not** use `AppHandle::exit(0)` or `WebviewWindow::destroy()` for process death: skip the WebView teardown and the whole Tauri Drop cascade. During shutdown `app_lifecycle::begin_shutdown` suppresses fusion/IPC and pipe-EOF FIT work; fusion warm-idle poll is 250ms (not 50ms) so multi-engine HTTP does not stampede on the way out.
-
-*History, so nobody re-derives it:* this was built around a `0xC0000374` STATUS_HEAP_CORRUPTION seen in ntdll right after "main window destroyed". That attribution turned out to be **wrong** — the crash cluster disappeared once a real renderer leak was fixed (a second model-catalog instance inside the ENGINE CONFIG modal, re-rendering on a poll several times a second; see the renderer-growth note above), and the exit path has been quiet for days since. The skip-teardown path **stays anyway**: it is cheap, and not running Tauri's Drop cascade is one less teardown hazard regardless of which bug used to fire there. Do not re-litigate the crash theory; do keep the exit path.
-
-**`0xC0000409` after reboot = `Instant` underflow, not WebView** — Windows `Instant` is boot-relative,
-so `Instant::now() - Duration` panics with `overflow when subtracting duration from instant` whenever
-the window exceeds uptime; with `panic = "abort"` the process dies right after the frontend ping
-(canvas blinks). Use `saturating_duration_since` / `checked_sub` — never a bare `Instant - Duration`,
-in rate budgets, TTLs, or caches. Enforced by `repoInvariants.test.ts`; diagnose via
-`%TEMP%\blackwell-panic.log`.
-
-**`0xC0000409` is ALSO the signature of commit exhaustion — read app stdout before any GPU theory.**
-`memory allocation of N bytes failed` means the system commit limit ran out: not a panic, not the GPU,
-not heap corruption. Commit is charged by *promise*, not by use, so it fires with plenty of free RAM —
-check **Details → "Commit size"**, never the Memory column — and under WDDM VRAM allocations charge
-host commit too, so **"DEV crashes, REL is fine" is not evidence of a DEV bug**. Diagnose with
-`\Memory\Committed Bytes` vs `\Memory\Commit Limit`. Detail: `docs/windows-forensics.md`.
-
-**Tauri listeners** — Use `useTauriListen`; raw `listen()` in `useEffect` leaks under StrictMode because unsubscribe resolves after first cleanup.
-
-**Frontend persistence** — New localStorage keys → `storage.ts`. New window events → `events.ts`. Tauri event names (`engine-log-batch`, etc.) are backend-owned strings.
-
-**Windows `is_process_alive`** — `PROCESS_QUERY_INFORMATION` only. `PROCESS_VM_READ` is denied on child processes → false “dead” reads. `OpenProcess` failure is **NULL (0)**, not `INVALID_HANDLE_VALUE` — must treat both as failure or dead PIDs look “alive” via `GetExitCodeProcess(null)`. On open failure: `ERROR_INVALID_PARAMETER` = PID gone (dead); `ERROR_ACCESS_DENIED` = treat as alive (protected process).
-
-**Windows detached console spawn** — Never use `CREATE_BREAKAWAY_FROM_JOB`. Cargo/Tauri/dev hosts put the process in a job that denies breakaway → immediate `Access is denied (os error 5)`. Detached visible windows: `Start-Process` (or `cmd start "" …`) via a `CREATE_NO_WINDOW` helper — see `engine::spawn_nobsproof_cmd_window` and `distribution::spawn_detached_plan`. `CREATE_NEW_CONSOLE` alone is last resort; breakaway is never OK. Pack/ship do not need gsudo/admin.
-
-**Windows paths with spaces** — Users may install anywhere (incl. `"C:\AI-MASTER\Blackwell OPS portable"`). NSIS default folder is `Blackwell-Ops` (no space) for hygiene only — **do not** require space-free paths. Symptom of broken quoting: `'C:\…\Blackwell' is not recognized as an internal or external command` at Foundry cmake configure.
-
-- **`cmd /s /c` batch launch** — `/s` strips the outer quotes CreateProcess adds. A bare path arg becomes unquoted and splits on spaces. Always launch `.cmd`/`.bat` via `sidecar_elevate::cmd_script_raw_tail` / `apply_cmd_script_raw_arg` / `cmd_script_launch` → literal `cmd /d /s /c ""path\to\script.bat""` attached with `CommandExt::raw_arg` (not `.args()` on the tail). Same for app-update helper, GPU priv scripts, silent update spawn. Do **not** reintroduce `cmd … /c` + unquoted path or `.args(["/c", path])`.
-- **Command lines embedded in `.cmd`** — Prefer `Command::new(exe).args([...])` (CreateProcess argv — spaces OK). When a full line must run inside a batch (Foundry cmake, NoBSproof, session `LAUNCH_CMD`), quote every token: `engine_utils::format_cmd_line` / `format_cmd_arg` / `format_debug_executable`. Never `binary.display()` + `args.join(" ")` without quoting. Inside batches: `call "vsdevcmd"`, `set "PATH=…"`, cmake `-B "…" -S "…"` already.
-- **Safe patterns already** — Engine/FIT/GGUF spawn via argv; explorer `/select,` + path as separate args; 7z `-o{dest}` as one argv; GPU smi/inspector via `quote_exe` in priv batch; PS `Start-Process -ArgumentList @(...)` with single-quoted paths.
-
-**Release channels (frozen)** — `docs/RELEASE-CHANNELS.md` is the authority: rolling channel tags (`full`, `app`, `engines`, `toolchain`, `link`, `link-setup`), class-prefixed asset names (`FULL_SETUP_`, `APP_UPDATE_`, `ENGINE_`, toolchain names unchanged), and a `channel.json` manifest per channel as the **only** client interface — the client never parses filenames or scans release lists. No per-version releases, no `CORE_`/`PLUGIN_` prefixes, no `setup`/`app` name heuristics. Machine table: `src-tauri/release-channels.json` (client embeds it, packer reads it; self-check runs in `majestic -Mode check`). **Engines are independent of app builds**: `engines/channel.json` is authoritative for what is offered and verified, and `majestic:pack:engines` → `majestic:ship:engines` (or Pack+Ship `<profile>`) publishes one pack without touching the app; the embedded `engines.json` is only the build-time record and offline/repair fallback. Engine packs carry llama's readable version plus the machine build id (`ENGINE_…-0.8.0-dev-b12017-5047748f.7z`), and the manifest keeps both (`version`, `build`). Rollback = repoint `channel.json` and upload only that file. GitHub immutable releases must stay OFF.
-
-**App Pack/Ship identity** — DISTRIBUTION Pack+Ship must never publish a DEV PE under a REL tag. Pack scrubbs `TAURI_CONFIG`, forces `cargo clean -p blackwell-ops --release`, builds with default `tauri.conf.json` only (never merge `tauri.conf.dev.json`), then asserts PE ProductName=`Blackwell Ops`, FileVersion=conf version, no `.app.dev`/`:1420`. Ship re-asserts App `.7z` contents before `gh release`. Header semver uses runtime `package_info` (`get_app_package_version`), not Vite `__TAURI_VERSION__` alone.
-
-**Binary sources** — Core: bundled **seed** (`runtime/`, installer-owned, immutable) + Foundry (`foundry/artifacts/...`) + Catalog overlay (`runtime-catalog/{id}/{profile}/`). Plugins: catalog install under `runtime/` (+ Foundry if built). Engines **overlay** the seed; nothing clobbers it, so there is no "must not clobber NSIS" reconciliation to enforce. `binarySourcePerEnv` is the sole ACTIVE pointer (`foundry` | `bundled` | `catalog`). An explicit value always wins. Otherwise the **newest engine build id** wins (`b<build>-<sha>`, compared numerically — never by file mtime, which moved on every copy); sources whose identity cannot be read fall back to **pack > foundry > bundled seed**. Downloads only register a catalogue copy and must never activate themselves. The seed is a floor and a repair path, not a managed version: MANAGE offers it as `Bundled`, never as an equal `third version`. Product tag (`downloadedVersion`) belongs to the app update row only; engine identity = `llama-server --version` (normalized to `<version> (build N)`; the commit is not part of the identity) or the `build-info.txt` sidecar (`b<build>-<sha>`); the UI renders `version: X, build: N` and never shows the app tag. Internal names keep `provider` (ids, dirs, commands, config keys) — only the UI says Engine; OPERATIONS -> RUNNING is the running stack, CONFIG -> ENGINE the installed engine. Engine sources are switched per mode from ENGINE -> MANAGE (Bundled / Downloaded / Built locally). Plugin metadata: `runtime-catalog/plugins.json`.
-
----
+- **Engine ports** — no port-based taskkill; launch uses
+  `engine_port_lock::reclaim_our_ghost_or_fail`; teardown is PID-only.
+- **Engine lifetime** — private Job Object (`KILL_ON_JOB_CLOSE`); never bare `AppHandle::exit`;
+  startup runs `kill_orphans_of_dead_owners` + `sweep_stale_locks`.
+- **App exit path** — `teardown_all_for_app_exit` → `finish_process_exit` →
+  `std::process::exit(0)`; don't use `AppHandle::exit` / `destroy()` for process death.
+- **`Instant - Duration` panics after reboot** (`0xC0000409`) — use `saturating_duration_since` /
+  `checked_sub`; enforced by `repoInvariants.test.ts`.
+- **`0xC0000409` can also be commit exhaustion** — read app stdout
+  (`memory allocation of N bytes failed`) before blaming the GPU.
+- **Tauri listeners** — `useTauriListen`, never raw `listen()` in `useEffect`.
+- **Persistence** — new localStorage keys → `storage.ts`; new window events → `events.ts`; Tauri
+  event names are backend-owned.
+- **`is_process_alive`** — `PROCESS_QUERY_INFORMATION` only; NULL handle or
+  `ERROR_INVALID_PARAMETER` = dead, `ERROR_ACCESS_DENIED` = alive.
+- **Detached spawn** — never `CREATE_BREAKAWAY_FROM_JOB`; short-lived hidden children via the
+  `CREATE_NO_WINDOW` helpers; `.cmd` via `cmd /d /s /c ""path""` + `raw_arg`.
+- **Paths with spaces** — quote every token (`format_cmd_line`); never join without quoting.
+- **Release identity** — Pack must never publish a DEV PE under a REL tag; channels are frozen
+  (`docs/RELEASE-CHANNELS.md`); the client reads only `channel.json`.
+- **Binary sources** — `binarySourcePerEnv` is the only ACTIVE pointer; the newest build id wins,
+  never file mtime.
 
 ## Foundry paths
 
-**Foundry `work/` CMake cache** — Retained between builds for all users when the configure fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`). Fingerprint miss, configure failure (cold path), or CLEAR CACHE wipes the tree. `foundry/artifacts/.../Release/` is the only durable **runtime** binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
+- `foundry/artifacts/<provider>/<profile>/Release/` is the only durable **runtime** binary location;
+  provider `binary_path` must point there, never at `work/` cmake temp output. The `work/` CMake
+  cache survives only while its fingerprint matches (miss, configure failure or CLEAR CACHE wipes it).
+- **No binary mirror** — `src-tauri/runtime/<provider>/config/` holds factory templates only. DEV
+  sync, `pack-provider-runtime.ps1` and `prepare-release-runtime.ps1` read artifacts directly; do not
+  reintroduce a copy step.
+- Foundry batches run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail), never
+  plain `cmd /c path`.
+- **Vendor patches track upstream HEAD** and are applied in filename order
+  (`single-model-load-sse` → `telemetry-sse`). `npm run check:patches` verifies them in a throwaway
+  `origin/master` worktree; a failed patch aborts Foundry configure (no silent unpatched build).
+- Detail: `docs/AGENTS-REFERENCE.md` → Foundry paths.
 
-**No binary mirror** — `src-tauri/runtime/<provider>/config/` holds factory templates only; engine
-binaries are never copied into `src-tauri/runtime/`. DEV sync, `pack-provider-runtime.ps1` and
-`prepare-release-runtime.ps1` read `foundry/artifacts/<provider>/<profile>/Release/` directly
-(artifacts are durable; a rebuild replaces only the profile it built). Do not reintroduce a
-copy step — it is what made the panel show an old build while Foundry had a new one.
+## APP / engine logs
 
-**Foundry batch spawn** — Configure/build write `_build_cfg_*.bat` / `_build_run_*.bat` under `work/` then run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail). Do not spawn those batches with plain `cmd /c path` — install dirs with spaces fail before cmake starts (see **Windows paths with spaces** above).
-
-**Vendor patches track upstream HEAD.** Check origin for the feature before adding or rebasing
-a patch — upstream may already provide it (it has the router `/models/sse`; the single-model
-`/models/sse` and `/events/sse` are ours). After a server entrypoint refactor, re-port
-`ggml-master-single-model-load-sse.patch` + `ggml-master-telemetry-sse.patch` onto the new
-`server_register_routes` / `server_run_instance` hooks; filename order matters (load-sse first —
-the telemetry HTTP hunk builds on it). The obsolete `cuda-graph-instance` patch is gone: upstream
-#30804 replaced `graph->instance` with the `instances` vector and carries the fix.
-
-`npm run check:patches` checks each vendor patch in a throwaway `origin/master` worktree
-(PASS / FAIL / UPSTREAM marker) without touching the build clone — the local clone is normally
-dirty after a build, so checking it in place lies. Foundry's configure stage now **aborts** on a
-patch failure instead of silently building unpatched; only `BLACKWELL_FOUNDRY_ALLOW_UNPATCHED=1`
-opts into the old fallback (SSE fusion then falls back to polling).
-
----
-## APP/engine logs
-
-**Three different "consoles" ship in this app — never say "the console" without saying which.**
-Confusion here has already cost a debugging round trip: a fix was reported as "the console
-still spams", while the lines had in fact moved to the Rust log and the stale DEV binary was
-the one printing.
-
-| Name | What it is | Who sees it | Written by |
-|---|---|---|---|
-| **BOC** (Blackwell Output Console) | In-app panel, category tabs `engines / utils / foundry / error / scenarios / debug`, plus the docked one-line bar in the footer | Users, in DEV **and** REL | `log_hub.emit_console_line` / `output_console_cmds.rs`; categories in `src/lib/outputConsole.ts` + `output_console.rs` |
-| **Tauri/Rust console** | The app process's stdout/stderr — in DEV the terminal running `npm run dev` | Developers only | `log::info!` / `log::warn!` / `log::debug!` (and `println!`, which never belongs in status paths) |
-| **WebView console** | Chromium DevTools console for the renderer | Developers only (needs DevTools open) | `console.log` / `console.warn` from `src/` |
-
-Rules that follow from the split:
-
-- **User-facing status → BOC, developer tracing → Rust log.** A line the user should read
-  goes to `utils`; a line only a developer wants goes to `log::debug!` or the BOC `debug`
-  tab. Never `println!` a status line: it lands in the Tauri console, which REL users cannot see.
-- **The docked one-liner only shows non-debug lines** (`get_latest_line_across_categories`
-  skips `Debug`). Trace traffic can therefore be emitted to the `debug` tab freely without
-  claiming the one visible row — locked by tests in `output_console.rs`.
-- **A BOC change is not live until the app is rebuilt.** `npm run dev` is `--no-watch`, so a
-  Rust logging change keeps showing the old text until a rebuild/restart. If reported logs
-  do not match the source, check the binary before the code.
-- **Per-item chatter belongs in `debug`, not `utils`.** A library pass runs every scan point
-  for every model; one line each buried the panel. Emit a summary to `utils`, detail to `debug`.
-
-DEV session files (engine stderr/stdout + launch): `{exe_dir}/config/logs/sessions/`  
-→ typically `src-tauri/target/debug/config/logs/sessions/session-*/`  
-Always ON in DEV and REL (CONFIG → RUNTIME). `BLACKWELL_SESSION_LOG=0` off, `=1` force-on. Last **25** sessions kept.
-Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, illegal insn `0xC000001D`).
----
+- Three consoles, never "the console": **BOC** (users, DEV **and** REL), the **Rust/Tauri console**
+  (DEV stdout only), the **WebView console** (DevTools).
+- User-facing status → BOC `utils`; developer tracing → `log::debug!` / BOC `debug`. Never `println!`
+  a status line.
+- A BOC change is not live until rebuild — `npm run dev` is `--no-watch`.
+- Session files: `{app_root}/config/logs/sessions/session-*/` (last 25 kept); crashes append
+  `%TEMP%\blackwell-crash.log`.
 
 ## Provider config merge
 
-`merge_template_for_provider` syncs structure from factory templates on every load/save. User-owned fields that must not be overwritten: `hidden`, `order`, `userAddedValues`, `hidden_values`. Bump factory `templateVersion` when shipping param changes — mismatch surfaces `needs_template_attention` in ConfigPage.
-
-**Spec profiles (`SPECULATIVE-MTP` / `SPECULATIVE-DFLASH`)** — Template-owned groups with independent knobs (`mtp_*` / `dflash_*`). Boost selects which profile is visible (`set_group_hidden`); Off hides both. Launch flattens the active profile to CLI keys (`spec_type`, …) via `buildSpecCliExtraParams` — do not emit profile row keys as raw extras. Defaults live only in factory templates (Config editor), not hardcoded presets.
-
-**DSpark** — Product Boost method only; **no separate template group**. Shares **SPECULATIVE-DFLASH** knobs + `dflash_draft_model` → `--spec-draft-model` (`-md`); CLI type is **`draft-dspark`**. Do not reintroduce free-form factory `spec_type` chips.
-
-**Hidden profile knobs → CLI** — Config/cockpit **hide** (`hidden` / `userHidden`) on `mtp_*` / `dflash_*` must **not** reach CLI. `buildSpecCliExtraParams` skips hidden rows; Rust must not force-emit hidden profile knobs from `extra_params` (override path + post-loop). Draft path keys still allowed when external draft is active.
-
-**CORS** — Launch injects `--cors-origins localhost` when unset (llama-server default `*` + no API key spams security warnings). Do not force open `*` for desktop.
-
-**Protected groups (CONFIG policy)** — Flag-driven via provider `protectedGroups` (not name hardcoding). Factory ships the list; DEV can toggle **SYS** on a group header. Protected groups sort under a **SYSTEM PARAMS** section (auto-collapsed on open). Actors: locked / user (editor unlocked) / dev (`isDevBuild` unrestricted, or **USER VIEW** preview). Users on protected groups: set defaults, add/hide values (not whole-row hide); cannot delete factory values (hide only) or tear down factory structure. Placement chrome (`split`/`ctx`/SYSTEM bucket) remains Launch placement-locked for users. Do not pin `mtp_*`/`dflash_*` into SYSTEM.
-
-**Launch forces vs template** — Prefer `spawn_profile` (verbosity_args, enable_metrics, fit_style) and template params only. Do **not** invent CLI keys absent from the provider param list (no silent `cont_batching` force). Custom `template_type=custom` uses bare launch shell (model/port/alias only) plus optional `customCapabilities` (fusion / metrics / verbose+free-form flags). Cockpit binds only when Master param **keys** exist on the template (hide unbound knobs). Essentials pack inserts regular user-editable rows (not protected). Custom soft-launches despite VRAM `fits=false` (warn only); factory providers keep hard gate.
-
----
+- `merge_template_for_provider` syncs structure from factory templates; user-owned fields
+  (`hidden`, `order`, `userAddedValues`, `hidden_values`) must not be overwritten. Bump
+  `templateVersion` when shipping param changes.
+- Spec profiles are template-owned; launch flattens them to CLI keys (`buildSpecCliExtraParams`),
+  never raw profile keys. Hidden `mtp_*` / `dflash_*` must not reach the CLI.
+- Protected groups are flag-driven (`protectedGroups`), not name-hardcoded. Do not invent CLI keys
+  absent from the provider param list.
 
 ## Known gaps / flags
 
-- **Fusion telemetry has two paths, and the old one is not dead code.** `/events/sse` (engine
-  patch, `docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`) is the primary source for **both** shapes: a
-  single-slot engine reads its lane snapshot, a parallel engine reads `aggregate(port)` over its
-  lanes. There is no per-lane brain — fusion runs **one brain per engine, not per llama slot** — so
-  a single lane's snapshot must never stand in for a 16-lane engine. `/slots` + `/metrics` + stderr
-  remain the fallback for unpatched engines and the other providers. `telemetrySource` in
-  `FusionUpdate` reports which path fed the tick; when it says `SSE` the values are the stream's.
-- **PP is displayed steady-state, not raw.** `PREFILL_SETUP_MS = 54` in `fusion/meter.rs`
-  (`steady_prefill_tps`) deducts the measured per-request server setup so the hero compares with
-  llama-bench. It is a calibration, capped at 65 % of the window; re-measure it when the engine
-  patch level or launch flags change (procedure in the handoff doc), and keep raw `PP tok/s` in
-  the report so the difference stays visible.
-- **The poll loop is the render tick.** `FusionUpdate` is emitted once per loop iteration, so
-  throttling `/slots` throttles the hero even when every value came from SSE. Decouple render
-  from poll before slowing the poller.
-- **Engine vendor patches are ordered by filename** (`foundry/patches/<provider>-*.patch`):
-  `single-model-load-sse` → `telemetry-sse` (the telemetry HTTP hunk builds on load-sse's
-  `/models/sse` early-attach). A failed patch aborts Foundry configure; `npm run check:patches`
-  runs the same check without touching the clone.
-- Reaper clears slots + `engine-locks` on unexpected exit (Loading or Running). Stale locks from prior sessions are swept on app start and when launching on a free port.
-- **Quiet stderr loads** — Some models stop writing to stderr early (pipe EOF) while still loading. `log_hub` must not fail the slot when spawn-time `engine_pid` is still alive; HTTP `/slots` or `/health` readiness owns promotion to Running. Do not require stderr “model loaded” lines for these models.
-- **GPU topo “External apps”** — Grey = NVML used minus (breakdown SELF + capped CUDA/runtime, max 4 GiB/GPU). Do not assign all NVML to our bar when a foreign app (LM Studio) shares the GPU. Stale NVML after stop = background `scan_gpus` + `gpuMemoryKey` re-eval + burst poll on `slot-cleared` (+2s).
-- **GPU + RAM telemetry must never spawn per tick.** The HW monitor polls `scan_gpus` at 4 Hz and
-  system RAM at 0.5 Hz. Measured on the dev box: one `nvidia-smi` spawn = **56 ms CPU / 91 ms wall**,
-  one `powershell Get-CimInstance Win32_PhysicalMemory` = **318 ms CPU**. Both are gone: `scan_gpus`
-  builds the full `GpuInfo` from `nvml_metrics::scan()` in process (`nvml.dll` via `libloading` —
-  identity, VRAM, util, temp, power, PCIe/clocks/throttle; parity verified field-by-field against
-  the CLI), and installed RAM is `GetPhysicallyInstalledSystemMemory`, cached in a `LazyLock`
-  (`physical_ram_bytes`). The `nvidia-smi` CLI path stays as a fallback only (no usable `nvml.dll`),
-  with its `SmiGate` backoff. Before adding a field to a polled command, check NVML/kernel32 first.
-  The disk I/O PDH sampler is **demand-driven**: it starts on `scan_disk_io` and stops itself after
-  `DISK_IO_IDLE_STOP_MS` (5 s) with no calls — the disk widget only exists during model boot, so
-  nothing samples it while the app idles.
-- **PCIe on the GPU tile.** `nvml_metrics.rs` reads `nvmlDeviceGetPcieThroughput` (KB/s TX/RX -> MiB/s,
-  i.e. bytes not bits) plus current/max link gen and width; the CLI fallback resolves the device by
-  `pci.bus_id`. The rate is **device-wide** (every process on that card). Show the
-  **negotiated** width: NVML's `MaxPcieLinkWidth` is the card's capability, not the slot's - an
-  x8/x8 bifurcated board still reports max 16 - and mark idle off the gen downshift only.
-  The `// peak` after each row is a frontend session max (module map, resets with the app).
-  **`nvmlDeviceGetPcieThroughput` costs ~32 ms per call** (driver counter read; two calls per
-  device) and `nvmlDeviceGetDriverModel` ~2.9 ms — both are cached in `nvml_metrics::scan`
-  (`PCIE_SAMPLE_TTL` 1 s / `DRIVER_MODEL_TTL` 30 s) and must never return to the fast path:
-  uncached they capped every scan at ~135 ms, so a 100 ms slider just queued scans and the
-  app stalled. Refreshes are **spread** — at most one card's counters per scan (oldest due),
-  so scan latency stays bounded for 4/8/12-card rigs — and CONFIG → RUNTIME can switch the
-  counters off entirely (PCIE ON/OFF). The per-tick scan is otherwise sub-millisecond and
-  runs on the blocking pool.
-  The same NVML read feeds the tile's MEM clock and THR row (clock-throttle reasons: 0x40 HW
-  thermal, 0x20 SW thermal, 0x80 power brake, 0x8 HW slowdown, 0x4 power cap, 0x200 board
-  limit; the 0x1 idle / 0x400 reliability bits are ignored) - the supported proxy for
-  thermal/power limits, since the memory junction is not exposed.
-  `nvidia-smi` cannot report throughput; do not replace this with a query field.
+Read `docs/AGENTS-REFERENCE.md` → Known gaps / flags before touching: fusion telemetry (SSE primary, **one brain per engine**), the
+54 ms PP calibration, PCIe/NVML caching costs, memory junction absent from NVML, the 25 ms telemetry
+tick, quiet-stderr loads, GPU "external apps", FIT adapters + library cache, runtime profiles
+(`edge` / `stable`), CPU MHz, SWA slots.
 
-- **Memory junction temp is not in NVML on this stack.** Probed driver 616.92 / RTX PRO 6000
-  Blackwell: `nvidia-smi` says `Memory Current Temp: N/A`; `nvmlDeviceGetThermalSettings`
-  returns only target GPU (the die), no MEMORY target; `nvmlDeviceGetTemperature(1)` is
-  GPU_MAX (not memory) and returns INVALID_ARGUMENT; `nvmlDeviceGetTemperatureThreshold(MEM_MAX)`
-  is NOT_SUPPORTED. HWiNFO reads it through its own driver, not NVML. Do not re-add the old
-  sensor-ID guesses (1-7) - `nvml_probe.rs` was removed for that reason.
-- `BINARY_UPDATES_ENABLED = true` — App `.7z` + Full NSIS + provider packs via GitHub releases (Majestic ships assets).
-- Fusion prefill % needs `prefill_tokens_total` from `NewPrompt` log; `/slots` `n_prompt_tokens_processed` is the numerator. Do not call `reset_prefill_counters()` on `/slots` new_request after NewPrompt — it zeroes total and forces fallback to sparse `print_timing` stderr lines.
-- Bench warmup→measured has no `/slots` idle gap — call `reset_bench_meters_for_port` at each bench phase start or hero AVG/LIVE TPS bleeds warmup into measured.
-- **Telemetry tick:** one knob — `log_hub::telemetry_tick_ms()` — drives the stderr batch flush,
-  the poll brain's active `/slots` poll and the SSE brain's render tick; keep them synced. Default
-  **25 ms** (~40 HTTP polls/s per active engine on the poll path; the SSE brain does no HTTP at
-  all), overridable live from CONFIG → RUNTIME (10–250 ms, `set_telemetry_timings`) or at startup
-  via `BLACKWELL_TELEMETRY_TICK_MS`. The poll brain and the log flush re-read it per tick; an SSE
-  brain picks a change up on its next stream start. 10 ms was most reliable but heavy; 50 ms is
-  lighter if phase detection still holds.
-- **Fusion adapters:** Per-provider metrics live in `src-tauri/src/fusion/adapters/` — set `spawn_profile.fusion_adapter` in factory JSON (`ggml_master` | `ggml_tom` | `ggml_quiet`). Per-slot KV/decode/prompt tracking lives in `fusion/slotstate.rs` (`SlotBank`); the frontend `FusionUpdate` contract + emit fingerprint + snapshot rehydrate cache live in `fusion/emit.rs`; pure hero TPS math in `fusion/meter.rs` (`session_avg_tps`, `per_slot_tps`, the 54 ms prefill calibration). **One brain per engine, chosen once at launch:** `start_brain` probes `/events/sse`; a patched engine runs `fusion/sse.rs` (stream only, no polling), everything else runs `fusion/brain.rs` (the poll brain: orchestrator + phase/log-handler). Phase, request clock, TTFT and the freeze/latch policy are shared in `fusion/lifecycle.rs` — never re-derive them in either brain. The registry is `BrainHandle::{Poll,Sse}`; `Sse` has no inbound channel, so quiet-mode flips and bench meter resets are no-ops there (request boundaries come from the stream's `request_epoch`). `ggml_quiet` = silent server (no stderr PP/TG logs); the poll brain derives PP totals/progress from `/slots` peak `n_prompt_tokens` and opens the multi-slot TG window on decode-without-log signal. Custom providers: `customCapabilities.fusionAdapter`.
-- **Runtime quiet toggle:** Silent models on a normal ggml-master provider (e.g. DS4) flip the live brain via the fusion-display `QUIET`/`LOGS` button → `set_fusion_quiet_mode(port, quiet)` → `BrainInbound::SetQuietMode` toggles `has_log_belt` + re-polls `/slots`. Persisted per model (`fusion.quiet.<model>` localStorage). Do not gate this on provider template — it is per-model. Tom uses stdout `PromptProcessingProgress` at `-lv 3`; brain skips `/slots` PP when `slots_expose_prompt_processed() == false`.
-- **FIT adapters:** Per-provider `llama-fit-params` + learned VRAM in `src-tauri/src/fit_adapters/` — set `spawn_profile.fit_adapter`. Tom rejects `--fit-print`; use `projected to use N MiB` from `llama_params_fit_impl` (do not parse CUDA init VRAM lines).
-- **FIT library cache:** `config/cache/fit_scan_full.json` is partitioned by `fit_adapter` (`ggml_master` | `ggml_tom`), not shared across providers. Legacy flat file migrates into `ggml_master` on first read.
-- **Runtime profiles:** `edge` (CUDA 13.4, VS2026 — the fast path) + `stable` (12.9, VS2022 — for models whose kernels lag 13.x and lose prefill). Portable toolkit: `{app_root}/toolchain/cuda/v13.4`. Profile ids have no aliases: a retired id (`vanguard`/`fresh`/`frontier`) falls back to the default, so a stale preference is replaced rather than migrated.
-- **Live CPU MHz (HW monitor):** Registry/`Processor Frequency` stick at base on modern CPUs — use PDH `% Processor Performance` × WMI base. Cores open → hero shows live MHz; closed → usage %.
-- **SWA / long-lived slots (Opencode):** TG detection must use **per-request** `n_decoded > request_start_n_decoded`, not `n_decoded > 0`. Parse `forcing full prompt re-processing` → PP. Slot may never idle between turns — also detect `id_task` change as `new_request`. Raw `n_decoded` from prior chat looks like TG during SWA re-prefill.
-- **Agent burst micro-idle:** Opencode file-read cadence &lt;1s — don't `stop_request_clock` / IDLE / zero CTX on brief `/slots` idle; use `INTER_REQUEST_GAP_HOLD_MS` + `max(live, sessionNDecoded)` on bars.
+## npm scripts
 
----
-
-## npm scripts (dev / release)
-
-**Only facts `package.json` cannot tell you** (do not restate the script table — it rots):
-
-- `tauri.conf.dev.json` has **no** `beforeDevCommand` — Vite and Tauri are deliberately separate. Do not re-couple them without an explicit reason.
-- `npm run dev` is `--no-watch`: after a `.rs` edit you rebuild/restart manually. `dev:watch` is the auto-rebuild variant.
-- **`npm run dev` MUST run in the foreground** (two terminals: `server`, then `dev`).
-  Launched via `Start-Process -WindowStyle Hidden` the app fails to initialize correctly —
-  observed, mechanism not identified in this app (registered Tauri plugins are only
-  `shell` + `updater`; there is no MCP/WebSocket bridge plugin to blame).
-- **The crate graph and the compiler are both pinned.** Every direct cargo call
-  passes `--locked`, and `rust-toolchain.toml` names the exact toolchain. The
-  compiler is what executes the 65 `build.rs` + proc-macro crates of the 285-crate
-  Windows graph, so a floating `stable` silently moves the build while Cargo.lock
-  shows no diff at all. **`tauri build` forwards no cargo flags** — it cannot take
-  `--locked`. Hence `npm run check:lock` (a `cargo metadata --locked` resolve) runs
-  before it in `build:exe` / `release`, and Pack calls `Assert-CargoLockPinned`:
-  a lock that already satisfies every manifest gives the nested cargo nothing to
-  re-resolve, which is what puts the pinned graph on the shipped binary.
-  `majestic:bump` refreshes the lock via `cargo update --workspace --offline` —
-  Cargo.lock mirrors `[package] version`, so bumping without that trips the gate.
-
----
+- `npm run dev` = `tauri dev --no-watch --config src-tauri/tauri.conf.dev.json`; no
+  `beforeDevCommand` (Vite is separate) and it must run in the **foreground**.
+- Crate graph and compiler are pinned: every direct cargo call passes `--locked`. `tauri build`
+  cannot, so `check:lock` runs before `build:exe` / `release`.
+- Everything else is in `package.json`.
 
 ## Tests
 
-**`npm run check` is the one command** — `css:audit` → `css:minify` → `tsc --noEmit` →
-vitest → `cargo test`, about 15 s warm. Run it instead of the parts
-separately. `css:minify` replays the lightningcss pass `vite build` uses, so the `*/`-inside-a
-comment trap fails here instead of in a release build. `lint:dead` (knip) and
-`lint:dead:rust` (cargo machete) are deliberately NOT in it: they report real but accepted
-debt today, so they stay opt-in and never gate. `.github/workflows/test.yml` runs both
-suites **plus `css:audit`** on every push to `main` and every PR; `majestic ship` runs both
-suites too — but **not** the CSS gates (`Invoke-ReleaseTestGate` is `npm test` + `cargo test`
-only), so a CSS budget breach reaches ship only if CI or a manual `npm run check` caught it
-first. Rust tests live
-in `#[cfg(test)] mod …` beside their code —
-`config.rs::merge_tests` is by far the largest, run it after any
-`merge_template_for_provider` change.
-
-**Invariants only, never snapshots** — this app is iterated daily, mostly chrome /
-theme / CSS and copy. A test asserts a relationship that must hold (IPC command
-parity, parser input→output, config merge rules), never “output looks like this”.
-NEVER add: snapshot tests or `.snap` files, assertions on exact user-visible strings,
-tooltips or wording, or tests that mirror a function’s implementation. A test that
-needs editing because the UI legitimately changed is the wrong test — delete it, do
-not update it. Model: `src/lib/tauriCommandParity.test.ts` hard-codes no command
-names, ordering or wording, so adding a command the normal way never touches it.
-
-**Repo-wide invariants live in `src/lib/repoInvariants.test.ts`** and scan tracked files:
-every tracked text file must be valid UTF-8 with no CP1252 mojibake (the corruption
-`majestic:bump` used to cause — `src/lib/releaseNotes.tsx` is allow-listed because it is the
-runtime *sanitizer* for that exact byte family), and no `.rs` file may subtract from an
-`Instant` outside `#[cfg(test)]` (the `0xC0000409` blink-close crash above). Fix a violation
-in the source; NEVER widen the allow-list or relax the pattern to get green. Related trap:
-these tests read `git ls-files`, so a filter bug makes them scan nothing and pass vacuously —
-when adding a scanner-style test, plant a deliberate violation and watch it fail first.
-
-**Rust↔TS name matching is NOT testable by regex** — a parity check over Rust *source* was
-attempted and rejected: helpers share command names, Tauri injects `AppHandle`/`State`/
-`Arc<RwLock<…>>` params never sent from JS, and nested arg objects break brace matching. It
-produced false positives. Only the compiler can answer — see below.
-
-**The IPC field contract IS guarded — by asking serde, never by parsing text.** `wire_keys::<T>()`
-in `src-tauri/src/ipc_contract.rs` (test-only) reads the `FIELDS` constant serde's derived
-`Deserialize` passes to `deserialize_struct`: the post-`rename` wire names, no instance needed.
-`src/lib/ipcContract.test.ts` reads the committed `src/lib/generated/ipc-wire-keys.json` through
-the TypeScript compiler API and fails when a declared field is a key serde never emits. Three
-hand-rolled text scanners were written first and **all three lied** — one read
-`#[serde(skip_serializing_if)]` as `skip`, one took nested-object members for flat fields, one
-missed a multi-line `#[serde(...)]` block.
-
-- **After changing any registered IPC type's field:** `cargo test --manifest-path
-  src-tauri/Cargo.toml -- --ignored regenerate_ipc_wire_keys`, then fix the TS interface. The
-  normal suite never writes; the freshness test prints the exact `+added / -removed` keys.
-- **Registered types derive `Deserialize` even when nothing deserializes them** — that derive is
-  the only data-independent way to enumerate what a type emits. Add it with the registry entry.
-- **A TS interface must never both re-export a generated type and declare it locally** — the local
-  declaration silently wins, `tsc` exits 0, and the drift survives. Re-export explicitly by name.
-- **`HfSearchFilters` is not an IPC type** — it mirrors an internal Rust struct; the command takes
-  separate args that Tauri camelCases itself. Coverage derives from real `invoke<T>`/`listen<T>`
-  call sites, so phantom mirrors are correctly excluded. Do not "fix" it to match.
-- Checks **one direction on purpose**: a Rust field the frontend ignores is normal
-  (`ModelMetadata` emits 35 keys, TS declares 28). The bug is the reverse — a declared field that
-  never arrives, reading `undefined` forever with every gate green.
-
-**There is no runtime seam to intercept `invoke()`** — Tauri installs it via
-`Object.defineProperty` with `writable`/`configurable` defaulting to false, and defines
-`__TAURI_INTERNALS__` the same way, so neither can be reassigned, redefined, or proxied. A DEV
-wrapper was built, reached DEV, and was removed for throwing `TypeError: Cannot assign to read
-only property 'invoke'`. The only seam is **build-time**: alias `@tauri-apps/api/core` to a local
-module that re-exports the package and overrides `invoke` — that changes resolution for every
-call site *and* for plugins importing core internally, so it needs an explicit decision, never a
-quiet patch.
-
----
+- **`npm run check` is the one command**: `css:audit` → `css:minify` → `tsc --noEmit` → vitest →
+  `cargo test`, ~15 s warm. Run it instead of the parts.
+- **Invariants only**: no snapshots, no assertions on exact user-visible strings or tooltips, no
+  tests that mirror an implementation.
+- `src/lib/repoInvariants.test.ts` scans tracked files (UTF-8, no mojibake; no `Instant - Duration`
+  outside tests). Fix the source — never widen the allow-list.
+- **IPC field contract**: after changing a registered type's field, run
+  `cargo test --manifest-path src-tauri/Cargo.toml -- --ignored regenerate_ipc_wire_keys`, then fix
+  the TS interface.
+- `lint:dead` / `lint:dead:rust` are opt-in and never gate.
+- Detail: `docs/AGENTS-REFERENCE.md` → Tests (why text scanners lie, the no-runtime-seam rule, CI).
 
 ## Release-build process spawn (CRITICAL)
 
-Windows **release** builds wedge on `tokio::process` + `CREATE_NO_WINDOW`: `ERROR_INVALID_HANDLE`
-(os error 6), or a child that exists with zero output forever. Short-lived hidden subprocesses use
-**`std::process`** with explicit stdio (`Stdio::null()` / `piped()`) + `creation_flags(CREATE_NO_WINDOW)`
-— see `engine_utils::apply_create_no_window`, `fit_scanner::run_fit_process_blocking`,
-`reactor_foundry.rs:433`, and `telemetry.rs:511` (nvidia-smi needs `piped()`, `null()` returns fallback).
-Engines are the exception: `engine_stack.rs` pipes stdout/stderr into `log_hub`.
-
-**CI is tests only — releases ship from your machine** — `npm run build` is `tsc && vite
-build`; clippy is clean and configured by `src-tauri/clippy.toml` (see commit history for
-the `too_many_arguments` threshold). `test.yml` is the **only** workflow. Packaging and
-publishing stay local: `majestic` owns bump → pack → ship, including `gh release create
-<tag> <assets…>`, the PE identity gate, and release notes. **`ship` runs both suites**
-(`Invoke-ReleaseTestGate`) after the YES confirm and before the lock, tag, or upload — a red
-suite throws and GitHub is never touched. `pack` stays ungated on purpose: it is run
-repeatedly while iterating. `ship-provider` / `ship-toolchain` are also ungated — they upload
-engine and toolchain archives, not the app. NEVER add a build/publish workflow back without
-solving `pi-ext` first (below). The previous `release.yml` failed in
-~2 s on every tag push — its `Setup Rust` step named `dbushe/rust-musl-toolchain`, an
-action that does not exist, so the job died in “Set up job” before any step ran.
-
-**`cargo test` cannot build on a clean checkout** — `tauri.conf.json` bundles four
-resource dirs and two are gitignored by design: `src-tauri/runtime-bundle/` (engine
-binaries) and `src-tauri/pi-ext/` (the 1171-file pi-subagents tree, vendored locally via
-Harness UPDATE). `tauri-build` validates every resource path *before* compiling, so a
-fresh clone dies in the build script — `resource path \`runtime-bundle\` doesn't exist` —
-without reaching a single test. `test.yml` fabricates both as empty trees; no test reads
-them, and `scripts/prepare-release-*.ps1` still hard-exits when the real trees are
-missing, so a stub can never reach an installer. That is the structural reason no hosted
-runner can build the REL installer, and why releases are built and shipped locally.
-
-**`CARGO_NET_GIT_FETCH_WITH_CLI` must be `true`, never `1`** — cargo rejects any other
-value and every registry lookup then fails with “provided string was not `true` or
-`false`”. Caught by CI in 79 s; the removed `release.yml` shipped `1` and would have hit it.
+- Windows **release** builds wedge on `tokio::process` + `CREATE_NO_WINDOW`: short-lived hidden
+  subprocesses use **`std::process`** with explicit stdio + `creation_flags(CREATE_NO_WINDOW)`.
+  Engines are the exception (their stdio goes to `log_hub`).
+- **CI is tests only**; releases ship locally via `majestic` (bump → pack → ship). Ship runs both
+  suites before touching GitHub; pack stays ungated on purpose.
+- `cargo test` cannot build a clean checkout (gitignored resource dirs) — CI fabricates empty trees,
+  which is why no hosted runner can build the installer.
+- `CARGO_NET_GIT_FETCH_WITH_CLI` must be `true`, never `1`.
