@@ -314,6 +314,18 @@ export function useModelCatalog({
   const setSelectedSlotIdx = useCallback((v: number | null) => {
     setSelectedSlotIdxState(v);
   }, []);
+
+  // Agent harness: `automation ui --slot N` selects the running engine, which is what makes the
+  // fusion dashboard (and therefore its memory log / bench controls) render.
+  useTauriListen<{ command?: string; slot?: number | null }>(
+    "automation-ui",
+    (payload) => {
+      if (payload?.command !== "select-slot") return;
+      const slot = payload.slot;
+      setSelectedSlotIdxState(typeof slot === "number" && slot >= 0 ? slot : null);
+    },
+    [],
+  );
   const [sortField, setSortField] = useState<SortField>(() => {
     const v = readStorage(KEYS.sortField) as SortField | null;
     // NAME removed from UI (search covers it) — migrate legacy storage

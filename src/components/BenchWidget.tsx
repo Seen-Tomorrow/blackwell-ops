@@ -462,6 +462,24 @@ export default function BenchWidget({
     }
   };
 
+  // Agent harness: run and stop the benches the operator can click. The tray must be open for
+  // this component to be mounted, so `automation ui --bench-tray` comes first.
+  useTauriListen<{ command?: string }>("automation-ui", (payload) => {
+    switch (payload?.command) {
+      case "bench-run-tg":
+        void runBenchTg();
+        break;
+      case "bench-run-pp":
+        void runBenchPp();
+        break;
+      case "bench-stop":
+        void stopBench();
+        break;
+      default:
+        break;
+    }
+  });
+
   const runBenchTg = async () => {
     if (ps.tgRunning || ps.ppRunning || !port) return;
     benchAbortRef.current = false;

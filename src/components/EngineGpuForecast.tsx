@@ -23,6 +23,7 @@ import {
   computeFusionPhosphorHeightForTray,
 } from "../lib/benchPanelLayout";
 import { invoke } from "@tauri-apps/api/core";
+import { useTauriListen } from "../hooks/useTauriListen";
 import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
 
 /** Extra glass height while the NVRAM log is open (no fusion tray to borrow). */
@@ -254,7 +255,25 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
   ]);
 
   const displayRef = useRef<HTMLDivElement>(null);
-  const { open: benchTrayOpen } = useFusionBenchTray();
+  const { open: benchTrayOpen, setTray: setBenchTrayOpen } = useFusionBenchTray();
+
+  // Agent harness controls: memory log + bench tray are renderer state, so the automation job
+  // emits and this component acts. Anything the owner can click, the harness must reach.
+  useTauriListen<{ command?: string; open?: boolean }>("automation-ui", (payload) => {
+    switch (payload?.command) {
+      case "memory-log":
+        setSnapLogOpen(typeof payload.open === "boolean" ? payload.open : true);
+        break;
+      case "memory-log-toggle":
+        setSnapLogOpen((open) => !open);
+        break;
+      case "bench-tray":
+        setBenchTrayOpen(payload.open === false ? "stowed" : "open");
+        break;
+      default:
+        break;
+    }
+  });
   const forecastHeightPx = computeForecastPhosphorHeightPx(gpus.length, gpuPerRow);
   const fusionOverlayActive =
     selectedSlotIdx != null &&

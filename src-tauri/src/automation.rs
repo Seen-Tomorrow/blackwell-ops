@@ -163,6 +163,26 @@ async fn run_job(app: &AppHandle, job: &Job) -> Result<Value, String> {
                 Err(format!("engine did not reach RUNNING within {:?}: {result}", timeout))
             }
         }
+        "ui" => {
+            // Bridge for the agent harness: the UI state (selected engine, memory log, bench
+            // controls) lives in the renderer, so the job emits and the renderer acts.
+            use tauri::Emitter;
+            let params = job.params.clone().unwrap_or_else(|| json!({}));
+            let command = params
+                .get("command")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "ui needs params.command".to_string())?
+                .to_string();
+            let mut payload = params.clone();
+            if let Some(slot) = job.slot {
+                if let Some(map) = payload.as_object_mut() {
+                    map.insert("slot".into(), json!(slot));
+                }
+            }
+            app.emit("automation-ui", payload)
+                .map_err(|err| format!("emit: {err}"))?;
+            Ok(json!({ "emitted": command }))
+        }
         "snapshot" => {
             // DEV loop: capture, change a knob, capture, then diff on the CLI.
             let path = crate::nvram_snapshot::capture(app, None, "manual").await?;

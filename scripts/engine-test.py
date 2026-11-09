@@ -138,7 +138,7 @@ def print_result(payload: dict) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("action", choices=["launch", "cold", "status", "stop", "snapshot"])
+    ap.add_argument("action", choices=["launch", "cold", "status", "stop", "snapshot", "ui"])
     ap.add_argument("--app-root", default=DEFAULT_APP_ROOT)
     ap.add_argument("--hold", type=int, default=0, help="ms to hold after RUNNING, then stop (0 = leave running)")
     ap.add_argument("--timeout", type=float, default=240.0, help="seconds to wait for the result")
@@ -175,6 +175,9 @@ def main() -> int:
     ap.add_argument("--alias")
     ap.add_argument("--provider", default="ggml-master")
     ap.add_argument("--profile", default="edge")
+    ap.add_argument("--ui", dest="ui_command", help="ui action: select-slot|memory-log|memory-log-toggle|bench-tray|bench-run-tg|bench-run-pp|bench-stop")
+    ap.add_argument("--open", dest="ui_open", action="store_true", help="ui: open the target (default)");
+    ap.add_argument("--close", dest="ui_close", action="store_true", help="ui: close the target")
     ap.add_argument("--slot", type=int)
     ap.add_argument("--exclude-model", dest="exclude_model")
     ap.add_argument("--id")
@@ -208,6 +211,17 @@ def main() -> int:
         # Writes one NVRAM snapshot (NVML + engines + learned + glass) via the app; compare two
         # with: blackwell-ops.exe --nvram-diff a.json b.json
         pass
+    elif args.action == "ui":
+        if not args.ui_command:
+            print("ui needs --ui <command>", file=sys.stderr)
+            return 2
+        job["params"] = {"command": args.ui_command}
+        if args.ui_close:
+            job["params"]["open"] = False
+        elif args.ui_open:
+            job["params"]["open"] = True
+        if args.slot is not None:
+            job["slot"] = args.slot
     elif args.action == "stop":
         if args.slot is None:
             print("stop needs --slot", file=sys.stderr)
