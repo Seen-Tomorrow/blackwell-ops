@@ -258,6 +258,45 @@ pub(crate) async fn apply_foundry_vendor_patches(
             }
         };
 
+        // A patch that creates files cannot be applied if a previous run (or a manual patch
+        // session) left those files on disk, and --3way cannot help: it needs the post-image blobs
+        // in the object database. Remove exactly the files git complains about and retry once, so
+        // a stale clone heals instead of failing the build with "does not apply".
+        let mut check = check;
+        if !check.status.success() {
+            let stderr = String::from_utf8_lossy(&check.stderr).to_string();
+            let stale: Vec<String> = stderr
+                .lines()
+                .filter_map(|line| line.strip_prefix("error: "))
+                .filter_map(|rest| rest.strip_suffix(": already exists in working directory"))
+                .map(|path| path.trim().to_string())
+                .collect();
+            if !stale.is_empty() {
+                for rel in &stale {
+                    let _ = std::fs::remove_file(src_dir.join(rel));
+                }
+                log::info!(
+                    "[foundry] {}: removed {} stale patch target(s), retrying",
+                    name,
+                    stale.len()
+                );
+                if let Ok(retry) = git_hidden_output(
+                    git_exe.to_path_buf(),
+                    src_dir.to_path_buf(),
+                    vec![
+                        "apply".into(),
+                        "--check".into(),
+                        "--whitespace=nowarn".into(),
+                        patch_str.clone(),
+                    ],
+                )
+                .await
+                {
+                    check = retry;
+                }
+            }
+        }
+
         if !check.status.success() {
             // 3-way can still land on drifted upstream context.
             let check3 = match git_hidden_output(
