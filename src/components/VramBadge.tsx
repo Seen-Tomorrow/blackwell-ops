@@ -637,18 +637,8 @@ export default function VramBadge({
                   {displayVramNeedGb.toFixed(1)}
                 </span>
                 <span className="vram-fc-bar__unit">GB</span>
-                {layerPlan && planKvSource !== "geometry" && (
-                  <span
-                    className="vram-fc-bar__need-plan"
-                    title={`Layer plan: ${(layerPlan.sumMib / 1024).toFixed(1)} GB over both cards · ${layerPlan.boundary} / ${layerPlan.layerCount} layers at -ts ${formatTensorSplit(layerPlan.ts)}${
-                      layerPlan.boundary !== layerPlan.optimalBoundary
-                        ? ` · plan wants ${layerPlan.optimalBoundary} / ${layerPlan.layerCount} (-ts ${formatTensorSplit(layerPlan.applyTs)})`
-                        : ""
-                    }`}
-                  >
-                    {`plan ${(layerPlan.sumMib / 1024).toFixed(1)}`}
-                  </span>
-                )}
+                {/* The plan is a placement decision, not a second forecast: its total lives on
+                    the placement switch and the bars, never next to NEED. */}
               </span>
 
               {showRamBar ? (
