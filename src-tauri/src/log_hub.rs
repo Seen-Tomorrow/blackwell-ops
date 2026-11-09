@@ -905,10 +905,11 @@ impl LogHub {
         };
         let snapshot = match (core, parsed) {
             (Some(core), Some(parsed)) => {
-                crate::engine_memory_view::log_source_comparison(slot_idx, &core, &parsed);
+                let agrees = crate::engine_memory_view::log_source_comparison(slot_idx, &core, &parsed);
                 crate::engine_memory_view::emit_source(
                     slot_idx,
                     crate::engine_memory_view::MemorySource::Core,
+                    agrees,
                 );
                 core
             }
@@ -916,6 +917,7 @@ impl LogHub {
                 crate::engine_memory_view::emit_source(
                     slot_idx,
                     crate::engine_memory_view::MemorySource::Core,
+                    true,
                 );
                 core
             }
@@ -923,6 +925,7 @@ impl LogHub {
                 crate::engine_memory_view::emit_source(
                     slot_idx,
                     crate::engine_memory_view::MemorySource::Stderr,
+                    true,
                 );
                 parsed
             }

@@ -210,10 +210,13 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
   const [snapLogOpen, setSnapLogOpen] = useState(false);
   // Which measurement path the last ready engine used: the patched /memory ledger or the stderr
   // parse. Shown in the bezel so the numbers on screen have a visible provenance.
-  const [memorySource, setMemorySource] = useState<"core" | "stderr" | null>(null);
-  useTauriListen<{ source?: string }>("memory-source", (payload) => {
+  const [memorySource, setMemorySource] = useState<{
+    source: "core" | "stderr";
+    agrees: boolean;
+  } | null>(null);
+  useTauriListen<{ source?: string; agrees?: boolean }>("memory-source", (payload) => {
     if (payload?.source === "core" || payload?.source === "stderr") {
-      setMemorySource(payload.source);
+      setMemorySource({ source: payload.source, agrees: payload.agrees !== false });
     }
   }, []);
   const showTopChrome = showFitOrDeviceChrome || showStopAll || true;
@@ -395,18 +398,42 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                   manifest={manifest}
                 />
               )}
-              {showStopAll ? (
-                <button
-                  type="button"
-                  onClick={() => void onStopAllEngines()}
-                  title="Stop all running engines"
-                  className="display-bezel-stop-all font-mono uppercase tracking-wider ml-auto shrink-0"
-                >
-                  STOP ALL
-                </button>
-              ) : (
-                <span className="ml-auto shrink-0" aria-hidden />
-              )}
+              {/* Memory log first, STOP ALL always last: the destructive control sits at the edge. */}
+              <button
+                type="button"
+                onClick={() => setSnapLogOpen((open) => !open)}
+                title={
+                  snapLogOpen
+                    ? "Close the memory log (Esc)"
+                    : "Memory log - one launch as IDLE -> RUNNING -> STOPPED"
+                }
+                className="display-bezel-nvram-log font-mono uppercase tracking-wider shrink-0 ml-auto"
+                data-snap-log={snapLogOpen ? "open" : "closed"}
+              >
+                {memorySource ? (
+                  <span
+                    className={`display-bezel-memory-src${
+                      memorySource.source === "core" ? " display-bezel-memory-src--core" : ""
+                    }${memorySource.agrees ? "" : " display-bezel-memory-src--differ"}`}
+                    data-memory-src={memorySource.source}
+                    data-memory-agrees={memorySource.agrees ? "1" : "0"}
+                    title={
+                      memorySource.source !== "core"
+                        ? "Measured by parsing engine stderr - engine has no /memory endpoint"
+                        : memorySource.agrees
+                          ? "Measured by the patched engine: /memory ledger reports what it allocated, and it matched the stderr parse"
+                          : "Measured by the patched engine, but the ledger and the stderr parse disagree - see the app log for both numbers"
+                    }
+                  >
+                    {memorySource.source === "core"
+                      ? memorySource.agrees
+                        ? "CORE"
+                        : "CORE !"
+                      : "LOG"}
+                  </span>
+                ) : null}
+                MEMORY LOG
+              </button>
               {snapLogOpen ? (
                 <button
                   type="button"
@@ -420,30 +447,16 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                   CAPTURE
                 </button>
               ) : null}
-              {memorySource ? (
-                <span
-                  className={`display-bezel-memory-src font-mono uppercase tracking-wider shrink-0${
-                    memorySource === "core" ? " display-bezel-memory-src--core" : ""
-                  }`}
-                  data-memory-src={memorySource}
-                  title={
-                    memorySource === "core"
-                      ? "Measured by the patched engine: /memory ledger reports what it allocated, not a log parse"
-                      : "Measured by parsing engine stderr — engine has no /memory endpoint"
-                  }
+              {showStopAll ? (
+                <button
+                  type="button"
+                  onClick={() => void onStopAllEngines()}
+                  title="Stop all running engines"
+                  className="display-bezel-stop-all font-mono uppercase tracking-wider shrink-0"
                 >
-                  {memorySource === "core" ? "CORE" : "LOG"}
-                </span>
+                  STOP ALL
+                </button>
               ) : null}
-              <button
-                type="button"
-                onClick={() => setSnapLogOpen((open) => !open)}
-                title={snapLogOpen ? "Close the memory log (Esc)" : "Memory log — one launch as IDLE → RUNNING → STOPPED"}
-                className="display-bezel-nvram-log font-mono uppercase tracking-wider shrink-0"
-                data-snap-log={snapLogOpen ? "open" : "closed"}
-              >
-                MEMORY LOG
-              </button>
             </div>
           )}
           <div

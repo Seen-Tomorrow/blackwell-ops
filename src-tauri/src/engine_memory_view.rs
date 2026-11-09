@@ -267,7 +267,7 @@ pub fn log_source_comparison(
     slot: usize,
     core: &LaunchMemorySnapshot,
     parsed: &LaunchMemorySnapshot,
-) {
+) -> bool {
     let device_delta = (core.vram_mib - parsed.vram_mib).abs();
     let host_delta = (core.host_mib - parsed.host_mib).abs();
 
@@ -291,7 +291,7 @@ pub fn log_source_comparison(
             core.vram_mib,
             core.host_mib
         );
-        return;
+        return true;
     }
 
     log::warn!(
@@ -305,6 +305,7 @@ pub fn log_source_comparison(
         host_delta,
         component_delta
     );
+    false
 }
 
 /// Ask a loaded engine for its ledger and turn it into a launch snapshot.
@@ -329,14 +330,14 @@ pub async fn fetch_core_snapshot(port: u16) -> Option<LaunchMemorySnapshot> {
 }
 
 /// Tell the UI which measurement path this slot is on (`memory-source` event).
-pub fn emit_source(slot: usize, source: MemorySource) {
+pub fn emit_source(slot: usize, source: MemorySource, agrees: bool) {
     let Some(handle) = crate::nvram_snapshot::app_handle() else {
         return;
     };
     use tauri::Emitter;
     let _ = handle.emit(
         "memory-source",
-        serde_json::json!({ "slot": slot, "source": source.as_str() }),
+        serde_json::json!({ "slot": slot, "source": source.as_str(), "agrees": agrees }),
     );
 }
 
