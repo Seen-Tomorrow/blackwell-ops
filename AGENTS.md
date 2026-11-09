@@ -255,6 +255,40 @@ list, before blaming the performance timeline.
 
 ---
 
+## DEV automation — attach, never start another
+
+When the user says "use automation" (or asks for a UI check, a launch, a memory-log/bench action):
+**attach to the DEV instance that is already running. Do not start another one.**
+
+- **Check first:** `curl http://127.0.0.1:9222/json/list` (or `node scripts/ui-probe.mjs "1"`). DEV
+  builds expose CDP on 9222 by default (`main.rs`, debug-only); if it answers, that is your app.
+- **One owner for the port:** a second DEV window cannot bind 9222 and will talk to nothing. Two
+  instances also duplicate the automation queue, so both would run the same job.
+- **No port answering** = the running instance predates the default, or it is a REL build. Ask for
+  one restart (`npm run dev`); never launch a parallel instance to get a port.
+- **Closing DEV** (only when a rebuild is required, and after asking): `(Get-Process -Id <pid>).CloseMainWindow()`,
+  which exits 0. `Stop-Process -Force` leaves `0xffffffff` in the log and looks like a crash.
+
+The queue itself is DEV-only (`automation::spawn` returns immediately in release):
+
+```powershell
+python scripts/engine-test.py status                    # stack + slots
+python scripts/engine-test.py launch --model <gguf> --ctx 65536 --hold 8000
+python scripts/engine-test.py stop --slot 0
+python scripts/engine-test.py snapshot                  # writes config/cache/nvram/snap-*.json
+python scripts/engine-test.py ui --ui select-slot --slot 0   # fusion dashboard for that engine
+python scripts/engine-test.py ui --ui memory-log --open      # memory log (auto-refreshes on capture)
+python scripts/engine-test.py ui --ui bench-tray --open      # bench tray; bench-run-tg / bench-run-pp / bench-stop
+```
+
+Results land in `{app_root}/config/automation/results/<job>.json`; UI state in
+`config/automation/ui/vram-badge.json`; snapshots in `config/cache/nvram/` and compare with
+`blackwell-ops.exe --nvram-diff a.json b.json`. The `ui` commands drive renderer state through the
+`automation-ui` event; a command that needs a running slot (e.g. `select-slot`) is cleared by the UI
+when nothing is running, so launch first.
+
+---
+
 ## Agent harness
 
 **Supported harness = pi only** (`pi_code`). Product surface is the neutral agentic harness framework:
