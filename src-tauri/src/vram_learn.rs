@@ -2840,6 +2840,31 @@ mod compute_model_tests {
         assert!((near - 2_097.77).abs() / 2_097.77 < 0.02, "65K@1024 predicted {near}");
     }
 
+    /// Third run (2026-11-09 12:27): 65,536 @ ub 2048 with batch 4096 measured 4,111.6 / 7,328.2.
+    /// Compute is convex in ubatch (increments 977 then 2,014 on card0), which invites a `ub^2`
+    /// term — but with only three ubatch levels the highest one *is* the curvature, so holding it
+    /// out makes a quadratic term extrapolate wildly (predicts 5,699 and 1,768). The affine model
+    /// predicts it at +3.1% / -0.3%, so the quadratic term stays out until a fourth ubatch level
+    /// pins it.
+    #[test]
+    fn the_fit_holds_a_third_ubatch_level_it_never_saw() {
+        let fit = vec![
+            (65_536.0, 512.0, 1121.00),
+            (65_536.0, 1024.0, 2097.77),
+            (131_072.0, 1024.0, 3542.59),
+            (262_144.0, 512.0, 3637.50),
+            (262_144.0, 1024.0, 5985.34),
+            (409_600.0, 512.0, 5518.50),
+            (524_288.0, 512.0, 6981.50),
+        ];
+        let coeffs = fit_compute_coeffs(&fit).expect("seven points");
+        let predicted = predict_compute(&coeffs, 65_536.0, 2048.0);
+        assert!(
+            (predicted - 4_111.60).abs() / 4_111.60 < 0.05,
+            "65K@ub2048 predicted {predicted}, measured 4,111.6"
+        );
+    }
+
     #[test]
     fn a_family_needs_four_points_before_it_is_used() {
         let three = vec![
