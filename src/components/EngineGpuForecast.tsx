@@ -23,6 +23,9 @@ import {
   computeFusionPhosphorHeightForTray,
 } from "../lib/benchPanelLayout";
 import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
+
+/** Extra glass height while the NVRAM log is open (no fusion tray to borrow). */
+const SNAP_LOG_GLASS_EXTRA_PX = 300;
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { stopAllEngines } from "../lib/engineStack";
 import GpuAssignPanel from "./GpuAssignPanel";
@@ -272,7 +275,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
       display.removeAttribute("data-fusion-tray-stowed");
       display.removeAttribute("data-fusion-boot");
       display.removeAttribute("data-fusion-dual");
-      pin(forecastHeightPx);
+      // Same idea without fusion: the log needs more rows than the stowed glass shows.
+      pin(snapLogOpen ? forecastHeightPx + SNAP_LOG_GLASS_EXTRA_PX : forecastHeightPx);
       return;
     }
 
@@ -280,7 +284,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
       display.setAttribute("data-fusion-boot", "");
       display.removeAttribute("data-fusion-tray-stowed");
       display.removeAttribute("data-fusion-dual");
-      pin(forecastHeightPx);
+      // Same idea without fusion: the log needs more rows than the stowed glass shows.
+      pin(snapLogOpen ? forecastHeightPx + SNAP_LOG_GLASS_EXTRA_PX : forecastHeightPx);
       return;
     }
 
@@ -290,21 +295,24 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
       gpuMask: booterProps.gpuMask,
       inlineActions: true as const,
     };
-    // Dual stack: both panes own a bench tray (shared open/stow). Side = one pane height.
+    // The NVRAM log mirrors the bench tray: opening it extends the glass to the tall layout,
+    // because the default stowed height only shows a couple of rows.
+    const expanded = benchTrayOpen || snapLogOpen;
     const heightPx =
       dualActive && dualOrient === "stack"
-        ? computeDualStackPhosphorHeightForTray(benchTrayOpen, heightOpts)
-        : computeFusionPhosphorHeightForTray(benchTrayOpen, heightOpts);
+        ? computeDualStackPhosphorHeightForTray(expanded, heightOpts)
+        : computeFusionPhosphorHeightForTray(expanded, heightOpts);
 
     if (dualActive) display.setAttribute("data-fusion-dual", dualOrient);
     else display.removeAttribute("data-fusion-dual");
-    if (!benchTrayOpen) display.setAttribute("data-fusion-tray-stowed", "");
+    if (!expanded) display.setAttribute("data-fusion-tray-stowed", "");
     else display.removeAttribute("data-fusion-tray-stowed");
     pin(heightPx);
   }, [
     fusionOverlayActive,
     engineStatus,
     benchTrayOpen,
+    snapLogOpen,
     gpus,
     booterProps.gpuMask,
     dualActive,

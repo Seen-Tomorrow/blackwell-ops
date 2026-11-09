@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { NvramMatrixCell, NvramMatrixRow, NvramSnapshotMatrix } from "../lib/types";
 
@@ -92,6 +92,7 @@ export default function NvramSnapshotOverlay({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -102,6 +103,7 @@ export default function NvramSnapshotOverlay({
       setError(String(err));
     }
   }, []);
+
 
   useEffect(() => {
     if (!open) return;
@@ -133,6 +135,18 @@ export default function NvramSnapshotOverlay({
 
   const columns = matrix?.columns ?? [];
   const rows = matrix?.rows ?? [];
+  // On the fusion screen the engine identity rail (CONTEXT · alias · FULL · STOP) must stay on
+  // top and clickable: the log starts under it instead of covering it.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const badge = root?.parentElement;
+    if (!root || !badge) return;
+    const rail = badge.querySelector<HTMLElement>(".fusion-identity-rail");
+    const offset = rail
+      ? Math.max(0, rail.getBoundingClientRect().bottom - badge.getBoundingClientRect().top)
+      : 0;
+    root.style.top = `${offset}px`;
+  }, [open, columns.length]);
 
   // Drop rows that carry nothing in any column (a plan that does not exist yet, a slot that is
   // not loaded) so the table stays dense, then group by block in emission order.
@@ -158,38 +172,29 @@ export default function NvramSnapshotOverlay({
   if (!open) return null;
 
   return (
-    <div className="vram-snap-ov" role="dialog" aria-label="NVRAM snapshots">
-      <div className="vram-snap-ov__bar">
-        <span className="vram-snap-ov__title">NVRAM SNAPSHOTS</span>
-        <span className="vram-snap-ov__count">
-          {columns.length === 0
-            ? "none yet"
-            : `${columns.length} of last ${COLUMNS} · latest ${clock(columns[columns.length - 1].captured_at)}`}
-        </span>
-        <button
-          type="button"
-          className="vram-snap-ov__action"
-          onClick={() => void capture()}
-          disabled={busy}
-          title="Capture a snapshot of what the app can see right now"
-        >
-          {busy ? "CAPTURING…" : "CAPTURE"}
-        </button>
-        <button
-          type="button"
-          className="vram-snap-ov__action vram-snap-ov__action--close"
-          onClick={onClose}
-          title="Close (Esc)"
-        >
-          CLOSE
-        </button>
-      </div>
-
+    <div className="vram-snap-ov" role="dialog" aria-label="NVRAM snapshots" ref={rootRef}>
       {columns.length === 0 ? (
         <div className="vram-snap-ov__empty">
           No snapshots yet. CAPTURE records NVML per card, the engine stack with its launch
           inventory, the learned rows, the calibration and the glass state — then change a knob and
           CAPTURE again to see the flow.
+          <div className="vram-snap-ov__actions">
+            <button
+              type="button"
+              className="vram-snap-ov__action"
+              onClick={() => void capture()}
+              disabled={busy}
+            >
+              {busy ? "CAPTURING…" : "CAPTURE"}
+            </button>
+            <button
+              type="button"
+              className="vram-snap-ov__action vram-snap-ov__action--close"
+              onClick={onClose}
+            >
+              CLOSE
+            </button>
+          </div>
         </div>
       ) : (
         <div className="vram-snap-ov__scroll" ref={scrollRef}>
@@ -197,7 +202,26 @@ export default function NvramSnapshotOverlay({
             <thead>
               <tr>
                 <th className="vram-snap-ov__rowlab" scope="col">
-                  ENGINE STATE
+                  <span className="vram-snap-ov__headline">
+                    <span className="vram-snap-ov__headlabel">ENGINE STATE</span>
+                    <button
+                      type="button"
+                      className="vram-snap-ov__action"
+                      onClick={() => void capture()}
+                      disabled={busy}
+                      title="Capture a snapshot of what the app can see right now"
+                    >
+                      {busy ? "…" : "CAPTURE"}
+                    </button>
+                    <button
+                      type="button"
+                      className="vram-snap-ov__action vram-snap-ov__action--close"
+                      onClick={onClose}
+                      title="Close (Esc)"
+                    >
+                      CLOSE
+                    </button>
+                  </span>
                 </th>
                 {columns.map((column, i) => (
                   <th key={column.file} scope="col" className="vram-snap-ov__col">

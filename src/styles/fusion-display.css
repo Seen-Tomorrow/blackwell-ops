@@ -6041,24 +6041,16 @@ html[data-industrial-bezel="brush"] {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.vram-snap-ov__bar {
+/* Header row is the table's own: ENGINE STATE + per-state columns, with the actions inline. */
+.vram-snap-ov__headline {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid color-mix(in srgb, var(--display-face-text) 14%, transparent);
+  gap: 8px;
 }
 
-.vram-snap-ov__title {
-  font-size: calc(11px * var(--vram-fc-scale, 1.12));
+.vram-snap-ov__headlabel {
   font-weight: 800;
-  letter-spacing: 0.14em;
-}
-
-.vram-snap-ov__count {
-  margin-left: auto;
-  font-size: calc(9px * var(--vram-fc-scale, 1.12));
-  color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
+  letter-spacing: 0.16em;
 }
 
 .vram-snap-ov__action {
