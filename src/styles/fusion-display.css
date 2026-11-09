@@ -6168,15 +6168,17 @@ html[data-industrial-bezel="brush"] {
 
 .vram-snap-ov__cell {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .vram-snap-ov__val {
-  display: block;
+  display: inline;
 }
 
 .vram-snap-ov__delta {
-  display: block;
-  font-size: 0.86em;
+  display: inline;
+  margin-left: 6px;
+  font-size: 0.92em;
   color: color-mix(in srgb, var(--theme-tel-amber) 88%, var(--display-face-text));
 }
 

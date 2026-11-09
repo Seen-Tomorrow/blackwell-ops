@@ -240,6 +240,9 @@ export default function VramBadge({
         ) : (
           <FusionPane {...primaryPane} active />
         )}
+        {/* The fusion screen is its own tree (engine LOADING/RUNNING): the log has to be mounted
+            here too, or the bezel button does nothing exactly when the metrics are on screen. */}
+        <NvramSnapshotOverlay open={snapLogOpen} onClose={() => onCloseSnapLog?.()} />
       </div>
     );
   }
