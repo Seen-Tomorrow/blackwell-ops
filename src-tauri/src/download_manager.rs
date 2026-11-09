@@ -4,6 +4,7 @@
 //! by IPC commands and independently acquire the lock to update progress.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::path::{Path, PathBuf};
 use sha2::{Sha256, Digest};
@@ -2062,11 +2063,60 @@ async fn mark_completed_worker(
         } else {
             dest_path.to_string()
         };
+        let verify_total = std::fs::metadata(&verify_path).map(|m| m.len()).unwrap_or(0);
+        let hashed = Arc::new(AtomicU64::new(0));
+
+        // Hashing 10-20 GB is a real wait on a slow disk. Feed percent and
+        // throughput into the row instead of leaving "Verifying integrity…" opaque.
+        let watcher = (verify_total > 0).then(|| {
+            let manager = Arc::clone(manager);
+            let task_id = task_id.to_string();
+            let hashed = Arc::clone(&hashed);
+            tokio::spawn(async move {
+                let mut last_bytes = 0u64;
+                let mut last_at = std::time::Instant::now();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    let done = hashed.load(Ordering::Relaxed).min(verify_total);
+                    if done >= verify_total {
+                        break;
+                    }
+                    let now = std::time::Instant::now();
+                    let dt = now.duration_since(last_at).as_secs_f64().max(0.001);
+                    let bps = ((done.saturating_sub(last_bytes)) as f64 / dt) as u64;
+                    last_bytes = done;
+                    last_at = now;
+                    let pct = done.saturating_mul(100) / verify_total;
+                    let eta = if bps > 0 {
+                        (verify_total - done) / bps
+                    } else {
+                        0
+                    };
+                    let mut dm = manager.write().await;
+                    let Some(task) = dm.tasks.get_mut(&task_id) else {
+                        break;
+                    };
+                    // Paused/cancelled mid-hash: stop reporting, the row is no
+                    // longer verifying.
+                    if !matches!(task.status, DownloadStatus::Downloading) {
+                        break;
+                    }
+                    task.status_message = Some(format!("Verifying integrity… {pct}%"));
+                    task.speed_bps = bps;
+                    task.eta_seconds = eta;
+                }
+            })
+        });
+
         let expected_owned = expected.to_string();
+        let hashed_for_hash = Arc::clone(&hashed);
         let outcome = tokio::task::spawn_blocking(move || {
-            verify_file_integrity(&verify_path, &expected_owned)
+            verify_file_integrity(&verify_path, &expected_owned, &hashed_for_hash)
         })
         .await;
+        if let Some(watcher) = watcher {
+            watcher.abort();
+        }
 
         let failure = match outcome {
             Ok(Ok(())) => None,
@@ -2087,6 +2137,11 @@ async fn mark_completed_worker(
         let Some(task) = dm.tasks.get_mut(task_id) else {
             return;
         };
+        // Paused or cancelled while the hash was running: the row must not flip
+        // to Completed under the user's action.
+        if !matches!(task.status, DownloadStatus::Downloading) {
+            return;
+        }
         if !is_toolchain && !is_app {
             task.status = DownloadStatus::Completed;
             record_download_history(history_from_task(task, "completed"));
@@ -2094,6 +2149,7 @@ async fn mark_completed_worker(
         task.speed_bps = 0;
         task.eta_seconds = 0;
         task.pause_offset = 0;
+        task.status_message = None;
     }
 
     if !is_toolchain && !is_app {
@@ -2475,25 +2531,42 @@ fn expected_hex(raw: &str) -> Option<String> {
 /// `std::thread`, which never inherits the context) panics with "there is no
 /// reactor running". Under REL's `panic = "abort"` that turned a merely corrupt
 /// download — or Defender holding the file we just wrote — into a dead app.
-fn verify_file_integrity(file_path: &str, expected_hex: &str) -> Result<(), String> {
+fn verify_file_integrity(
+    file_path: &str,
+    expected_hex: &str,
+    hashed: &AtomicU64,
+) -> Result<(), String> {
     use std::io::Read;
 
+    let started = std::time::Instant::now();
     let mut hasher = Sha256::new();
     let mut file = std::fs::File::open(file_path)
         .map_err(|e| format!("Failed to open file for integrity check: {e}"))?;
 
     let mut buf = [0u8; 1024 * 1024]; // 1 MiB buffer for throughput
+    let mut total = 0u64;
     loop {
         match file.read(&mut buf) {
             Ok(0) => break,
-            Ok(n) => hasher.update(&buf[..n]),
+            Ok(n) => {
+                hasher.update(&buf[..n]);
+                total += n as u64;
+                hashed.store(total, Ordering::Relaxed);
+            }
             Err(e) => return Err(format!("Read error during integrity check: {e}")),
         }
     }
 
+    let secs = started.elapsed().as_secs_f64().max(0.001);
     let actual_hex = hex::encode(hasher.finalize());
     if actual_hex.eq_ignore_ascii_case(expected_hex) {
-        log::info!("[download] Integrity OK: {} matches expected digest", file_path);
+        log::info!(
+            "[download] Integrity OK: {} ({} in {:.1}s, {:.0} MB/s)",
+            file_path,
+            crate::model_catalog::calc_size_str_from_bytes(total),
+            secs,
+            total as f64 / 1_048_576.0 / secs,
+        );
         return Ok(());
     }
 
@@ -2534,6 +2607,7 @@ async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, erro
             task.error = Some(error_msg);
             task.speed_bps = 0;
             task.eta_seconds = 0;
+            task.status_message = None;
             if keep_manifest {
                 persist_task_to_manifest(task);
             }
@@ -2990,13 +3064,15 @@ mod tests {
         let good = dir.join("good.bin");
         std::fs::write(&good, b"payload").expect("write");
         let good_str = good.to_string_lossy().to_string();
-        assert!(verify_file_integrity(&good_str, &good_hex).is_ok());
-        assert!(verify_file_integrity(&good_str, &good_hex.to_ascii_uppercase()).is_ok());
+        let hashed = AtomicU64::new(0);
+        assert!(verify_file_integrity(&good_str, &good_hex, &hashed).is_ok());
+        assert_eq!(hashed.load(Ordering::Relaxed), 7);
+        assert!(verify_file_integrity(&good_str, &good_hex.to_ascii_uppercase(), &hashed).is_ok());
 
         let bad = dir.join("bad.bin");
         std::fs::write(&bad, b"payload").expect("write");
         let bad_str = bad.to_string_lossy().to_string();
-        assert!(verify_file_integrity(&bad_str, &"00".repeat(32)).is_err());
+        assert!(verify_file_integrity(&bad_str, &"00".repeat(32), &hashed).is_err());
         assert!(!bad.exists(), "mismatched bytes must be deleted");
 
         let _ = std::fs::remove_dir_all(&dir);
