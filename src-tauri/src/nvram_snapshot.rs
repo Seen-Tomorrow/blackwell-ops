@@ -499,17 +499,12 @@ fn snapshot_cells(snap: &NvramSnapshot) -> Vec<(String, String, &'static str, Ma
             }
         }
     }
+    // One row per measured ctx (vram + host): the per-component split is what made this block
+    // run to eight rows per point, and the components are still in the store for the planner.
     for row in &snap.learned {
         let scope = format!("learned {}", learned_identity(row));
         number!(scope.clone(), "vram".into(), "MiB", Some(row.vram_mib));
         number!(scope.clone(), "host".into(), "MiB", row.host_mib);
-        if let Some(components) = row.components.as_ref() {
-            for (i, comp) in components.iter().enumerate() {
-                number!(scope.clone(), format!("gpu{i}.model"), "MiB", Some(comp.model_mib));
-                number!(scope.clone(), format!("gpu{i}.kv"), "MiB", Some(comp.ctx_mib));
-                number!(scope.clone(), format!("gpu{i}.compute"), "MiB", Some(comp.compute_mib));
-            }
-        }
     }
     let ui = &snap.ui;
     number!("ui".into(), "need".into(), "GB", ui_num(ui, &["state", "vramNeedGb"]));

@@ -6041,14 +6041,8 @@ html[data-industrial-bezel="brush"] {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* Header row is the table's own: ENGINE STATE + per-state columns, with the actions inline. */
-.vram-snap-ov__headline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.vram-snap-ov__headlabel {
+/* Header row is the table's own: ENGINE STATE + per-state columns. */
+.vram-snap-ov__table thead th.vram-snap-ov__rowlab {
   font-weight: 800;
   letter-spacing: 0.16em;
 }

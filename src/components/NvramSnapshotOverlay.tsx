@@ -22,6 +22,7 @@ function deltaText(prev: NvramMatrixCell | undefined, cur: NvramMatrixCell | und
   return `${delta > 0 ? "+" : ""}${text}`;
 }
 
+/** `pre_launch` is the card before the model loads, so the column reads IDLE → RUNNING → STOPPED. */
 function stateLabel(phase: string): string {
   switch (phase) {
     case "pre_launch":
@@ -59,7 +60,7 @@ function groupOf(scope: string): { key: string; label: string } {
   return { key: "other", label: "OTHER" };
 }
 
-/** `gpu0` → `GPU 0`; `learned ctx=262144 kv=… split=…` → `ctx 262144`. */
+/** `gpu0` → `GPU 0`; `learned ctx=262144 kv=…` → `CTX 262,144`. */
 function rowLabel(scope: string, field: string): { primary: string; secondary: string | null } {
   const gpu = /^gpu(\d+)$/.exec(scope);
   if (gpu) return { primary: field, secondary: `GPU ${gpu[1]}` };
@@ -67,19 +68,25 @@ function rowLabel(scope: string, field: string): { primary: string; secondary: s
   if (slot) return { primary: field, secondary: `ENGINE ${slot[1]}` };
   if (scope.startsWith("learned")) {
     const ctx = /ctx=(\d+)/.exec(scope);
-    return {
-      primary: field,
-      secondary: ctx ? `CTX ${Number(ctx[1]).toLocaleString("en-US")}` : "LEARNED",
-    };
+    const kv = /kv=([a-z0-9_]+)/i.exec(scope);
+    // Two rows can share a ctx (different kv/split measurement): name the kv so they do not read
+    // as a duplicate row.
+    const parts = [
+      ctx ? `CTX ${Number(ctx[1]).toLocaleString("en-US")}` : "LEARNED",
+      kv ? kv[1] : null,
+    ].filter(Boolean);
+    return { primary: field, secondary: parts.join(" · ") };
   }
-  if (scope === "ui") return { primary: field, secondary: null };
   return { primary: field, secondary: null };
 }
 
 /**
- * Full-glass NVRAM snapshot overlay: the newest snapshots side by side, grouped into GPU /
- * ENGINE / MEASURED LAUNCHES / FORECAST blocks so a launch reads as a flow rather than a table of
- * rows. Opened from the bezel control; CAPTURE and CLOSE live in the bar.
+ * Memory log: the newest launch as a flow — IDLE → RUNNING → STOPPED — grouped into GPU /
+ * ENGINE / MEASURED LAUNCHES / FORECAST blocks.
+ *
+ * Opens from the bezel control (which also carries CAPTURE) and refreshes itself: the Rust side
+ * writes a snapshot at each lifecycle boundary, so a stop/relaunch must appear without reopening.
+ * On the fusion screen it starts just under the engine identity rail so STOP stays reachable.
  */
 export default function NvramSnapshotOverlay({
   open,
@@ -89,7 +96,6 @@ export default function NvramSnapshotOverlay({
   onClose: () => void;
 }) {
   const [matrix, setMatrix] = useState<NvramSnapshotMatrix | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -104,13 +110,10 @@ export default function NvramSnapshotOverlay({
     }
   }, []);
 
+  const columns = matrix?.columns ?? [];
+  const rows = matrix?.rows ?? [];
 
-  useEffect(() => {
-    if (!open) return;
-    scrollRef.current?.scrollTo({ top: 0 });
-    void refresh();
-  }, [open, refresh]);
-
+  // The bezel control keeps its own state; Esc is the keyboard way out.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -120,36 +123,34 @@ export default function NvramSnapshotOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const capture = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await invoke<string>("capture_nvram_snapshot", { path: null, phase: "manual" });
-      await refresh();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, refresh]);
+  // Live log: the lifecycle captures are written by Rust, not by this component, so poll while
+  // open — a stop or a relaunch must land in the columns without closing and reopening.
+  useEffect(() => {
+    if (!open) return;
+    void refresh();
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [open, refresh]);
 
-  const columns = matrix?.columns ?? [];
-  const rows = matrix?.rows ?? [];
-  // On the fusion screen the engine identity rail (CONTEXT · alias · FULL · STOP) must stay on
-  // top and clickable: the log starts under it instead of covering it.
+  useEffect(() => {
+    if (open) scrollRef.current?.scrollTo({ top: 0 });
+  }, [open]);
+
+  // The fusion identity rail (CONTEXT · alias · FULL · STOP) stays on top and clickable; the log
+  // starts just under it. Two pixels of overlap hide the rail's own bottom border.
   useLayoutEffect(() => {
     const root = rootRef.current;
     const badge = root?.parentElement;
-    if (!root || !badge) return;
+    if (!open || !root || !badge) return;
     const rail = badge.querySelector<HTMLElement>(".fusion-identity-rail");
     const offset = rail
-      ? Math.max(0, rail.getBoundingClientRect().bottom - badge.getBoundingClientRect().top)
+      ? Math.max(0, rail.getBoundingClientRect().bottom - badge.getBoundingClientRect().top - 3)
       : 0;
     root.style.top = `${offset}px`;
-  }, [open, columns.length]);
+  }, [open, columns.length, rows.length]);
 
-  // Drop rows that carry nothing in any column (a plan that does not exist yet, a slot that is
-  // not loaded) so the table stays dense, then group by block in emission order.
   const groups = useMemo(() => {
     const visible = rows.filter((row) => row.cells.some((cell) => !isEmptyCell(cell)));
     // Group by block id, not by runs of adjacent rows: the matrix is the union of the columns'
@@ -172,29 +173,12 @@ export default function NvramSnapshotOverlay({
   if (!open) return null;
 
   return (
-    <div className="vram-snap-ov" role="dialog" aria-label="NVRAM snapshots" ref={rootRef}>
+    <div className="vram-snap-ov" role="dialog" aria-label="Memory log" ref={rootRef}>
       {columns.length === 0 ? (
         <div className="vram-snap-ov__empty">
-          No snapshots yet. CAPTURE records NVML per card, the engine stack with its launch
-          inventory, the learned rows, the calibration and the glass state — then change a knob and
-          CAPTURE again to see the flow.
-          <div className="vram-snap-ov__actions">
-            <button
-              type="button"
-              className="vram-snap-ov__action"
-              onClick={() => void capture()}
-              disabled={busy}
-            >
-              {busy ? "CAPTURING…" : "CAPTURE"}
-            </button>
-            <button
-              type="button"
-              className="vram-snap-ov__action vram-snap-ov__action--close"
-              onClick={onClose}
-            >
-              CLOSE
-            </button>
-          </div>
+          No snapshots yet. CAPTURE on the bezel records NVML per card, the engine stack with its
+          launch inventory, the learned rows, the calibration and the glass state — then change a
+          knob and CAPTURE again to see the flow.
         </div>
       ) : (
         <div className="vram-snap-ov__scroll" ref={scrollRef}>
@@ -202,26 +186,7 @@ export default function NvramSnapshotOverlay({
             <thead>
               <tr>
                 <th className="vram-snap-ov__rowlab" scope="col">
-                  <span className="vram-snap-ov__headline">
-                    <span className="vram-snap-ov__headlabel">ENGINE STATE</span>
-                    <button
-                      type="button"
-                      className="vram-snap-ov__action"
-                      onClick={() => void capture()}
-                      disabled={busy}
-                      title="Capture a snapshot of what the app can see right now"
-                    >
-                      {busy ? "…" : "CAPTURE"}
-                    </button>
-                    <button
-                      type="button"
-                      className="vram-snap-ov__action vram-snap-ov__action--close"
-                      onClick={onClose}
-                      title="Close (Esc)"
-                    >
-                      CLOSE
-                    </button>
-                  </span>
+                  ENGINE STATE
                 </th>
                 {columns.map((column, i) => (
                   <th key={column.file} scope="col" className="vram-snap-ov__col">

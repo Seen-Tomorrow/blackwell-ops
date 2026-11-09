@@ -22,6 +22,7 @@ import {
   computeDualStackPhosphorHeightForTray,
   computeFusionPhosphorHeightForTray,
 } from "../lib/benchPanelLayout";
+import { invoke } from "@tauri-apps/api/core";
 import { computeForecastPhosphorHeightPx } from "../lib/onboardingDisplay";
 
 /** Extra glass height while the NVRAM log is open (no fusion tray to borrow). */
@@ -379,14 +380,27 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               ) : (
                 <span className="ml-auto shrink-0" aria-hidden />
               )}
+              {snapLogOpen ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void invoke("capture_nvram_snapshot", { path: null, phase: "manual" });
+                  }}
+                  title="Capture a snapshot of what the app can see right now"
+                  className="display-bezel-nvram-log font-mono uppercase tracking-wider shrink-0"
+                  data-snap-capture="1"
+                >
+                  CAPTURE
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setSnapLogOpen((open) => !open)}
-                title="NVRAM snapshots — the newest three side by side"
+                title={snapLogOpen ? "Close the memory log (Esc)" : "Memory log — one launch as IDLE → RUNNING → STOPPED"}
                 className="display-bezel-nvram-log font-mono uppercase tracking-wider shrink-0"
                 data-snap-log={snapLogOpen ? "open" : "closed"}
               >
-                NVRAM LOG
+                MEMORY LOG
               </button>
             </div>
           )}
