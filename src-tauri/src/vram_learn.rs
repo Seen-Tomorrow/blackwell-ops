@@ -2566,7 +2566,12 @@ pub fn snapshot_rows(model_paths: &[String]) -> Vec<LearnedRowView> {
             ctx: ctx_from_learn_key(key),
             kv: learn_key_token(key, "kv="),
             split: learn_key_token(key, "split="),
-            ubatch: learn_key_token(key, "ubatch="),
+            // ubatch left the key (it is an operating point, not identity) and lives on the row
+            // as the reference the components were measured at.
+            ubatch: entry
+                .reference_ubatch
+                .filter(|u| *u > 0)
+                .map(|u| u.to_string()),
             parallel: learn_key_parallel(key),
             vram_mib: entry.paint_vram_mib(),
             host_mib: entry.paint_host_mib(),

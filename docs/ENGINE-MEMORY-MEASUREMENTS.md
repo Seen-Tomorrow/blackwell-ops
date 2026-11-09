@@ -71,6 +71,36 @@ ctx 32768, KV q8_0, parallel 1:
   one that belongs in the identity. (Earlier "batch 2048 vs 8192 differ by 43 %" was an ubatch
   difference: 512 vs 1536.)
 
+### The compute term is affine in ctx and ubatch — fitted per family
+
+The 27B dense model gave an almost exactly proportional law for ubatch in its operating range
+(4K → 8K doubled every buffer, x1.9999). DSV4.1 IQ2_XXS (MoE, 40 layers, boundary 22) does not:
+
+| ctx | ub 512 | ub 1024 | ub 2048 |
+|---|---|---|---|
+| 65,536 | 1,121 / 1,892 | 2,098 / 3,688 | 4,112 / 7,328 |
+| 131,072 | — | 3,543 / 6,349 | — |
+| 262,144 | 3,638 / 5,938 | 5,985 / 11,609 | — |
+| 524,288 | 6,982 / 11,331 | — | — |
+
+(card0 / card1 compute MiB, batch 1024-4096 — batch moves nothing.)
+
+- Doubling ubatch is **not** doubling compute: 1.87x at 65,536, 1.65x at 262,144. There is an
+  ubatch-independent part, so a proportional factor over-predicts.
+- The ubatch slope itself grows with ctx (card0: 1.91 MiB per ubatch token at 65,536, 4.59 at
+  262,144), and compute is convex in ubatch (steps 977 then 2,014 at 65,536).
+- The model is `compute_i = c0 + c1*ctx + c2*ubatch + c3*ctx*ubatch`, least squares over every
+  measured point of the **family** (`model | provider | kv | topo | split | offload | cache_ram`,
+  ctx and ubatch excluded). Fitted on seven of the eight points it predicts the eighth
+  (65,536 @ ub 2048) at +3.1 % / -0.3 %; proportional scaling would have said 2,242 instead of
+  2,098 at 65,536 @ ub 1024.
+- **A `ubatch^2` term is deliberately absent.** Holding out the 2048 row, a quadratic fit
+  predicts 5,699 / 1,768 — with three ubatch levels the top one *is* the curvature. Add it when a
+  fourth level exists.
+- **The law is per family, not global.** DSV4.1's affine plane is not Qwen3.8-27B's proportional
+  line, and Qwen3.8-Flash will have its own. Families with fewer than four measured points keep
+  the proportional fallback, so a new model starts simple and earns its coefficients.
+
 ## KV quantisation
 
 ctx 32768, batch 2048/512, parallel 1:

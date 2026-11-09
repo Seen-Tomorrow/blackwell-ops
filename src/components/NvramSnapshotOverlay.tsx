@@ -81,11 +81,13 @@ function rowLabel(scope: string, field: string): { primary: string; secondary: s
   if (scope.startsWith("learned")) {
     const ctx = /ctx=(\d+)/.exec(scope);
     const kv = /kv=([a-z0-9_]+)/i.exec(scope);
-    // Two rows can share a ctx (different kv/split measurement): name the kv so they do not read
-    // as a duplicate row.
+    const ub = /ubatch=(\d+)/.exec(scope);
+    // The label names what the row was *measured at*: the ubatch matters because the compute term
+    // is fitted from the family and a row's own operating point anchors it.
     const parts = [
       ctx ? `CTX ${Number(ctx[1]).toLocaleString("en-US")}` : "LEARNED",
       kv ? kv[1] : null,
+      ub ? `ub ${Number(ub[1]).toLocaleString("en-US")}` : null,
     ].filter(Boolean);
     return { primary: field, secondary: parts.join(" · ") };
   }
