@@ -248,6 +248,40 @@ nvidia-smi --query-gpu=index,driver_model.current,memory.total,memory.reserved,m
 - **Per-process VRAM is `N/A` on WDDM** (`gpu_process_mem`), which is why the residual has to be
   measured as a device delta around the launch rather than read from the process counter.
 
+## `/memory` — what the engine reports (patched build)
+
+`foundry/patches/ggml-master-memory-ledger.patch` turns the engine's own allocation accounting into
+data: a `llama_memory_record_cb` fired next to every `buffer size = ...` log line, plus the effective
+launch params after `--fit`. Live payload for the 27B config (Qwen3.8-27B IQ3_XXS, ctx 262144,
+batch 16384, ubatch 8192, kv bf16, cache-ram 16384, fit on, single card):
+
+| field | value |
+|---|---|
+| device CUDA0 | total 97,859.44 / free 61,625.00 / **self 32,747.15** / unaccounted 3,487.28 |
+| ledger CUDA0 | model 9,685.21, kv 16,384.00, rs 149.62, compute 6,528.31 |
+| ledger host | model 397.85, output 0.95, compute 4,736.38 |
+| params | n_ctx 262144, n_batch 16384, n_ubatch 8192, n_parallel 1, n_gpu_layers -1, split layer, cache_ram 16384, fit true, fit_target [1655.99, 768, ...] |
+
+Against the graceful-exit table from the same config run externally
+(`97859 = 66097 + (28274 = 9685 + 16533 + 2056) + 3487`):
+
+| category | exit table | live `/memory` | verdict |
+|---|---|---|---|
+| model | 9,685 | 9,685.21 | exact |
+| context (kv + rs) | 16,533 | 16,533.62 | exact |
+| unaccounted | 3,487 | 3,487.28 | exact |
+| compute | 2,056 | 6,528.31 | **+4,472** |
+
+The three matching categories say the capture is right. `compute` does not match, and the live
+number is the self-consistent one: `total 97,859 = free 61,625 + self 32,747 + 3,487`, so the 6,528
+MiB reservation is genuinely held on the card at query time, while the exit table reports 2,056 for
+the same field. The exit table is printed during cleanup, so it may report a reduced reservation (or
+attribute part of the graph buffers elsewhere) — treat its `compute` column as unreliable at exit,
+and prefer the live capture once wired.
+
+Note: `unaccounted` is `total - free - self`, so it also absorbs other processes' VRAM when engines
+share a card. On a clean card it is the driver/allocator residual (~3.4 GiB for this config).
+
 ## Open questions
 
 - Why the graph at 1 slot / 1M request is 3.4× the 256K graph (it looks sized by the requested ctx,

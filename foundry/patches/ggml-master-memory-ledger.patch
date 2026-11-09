@@ -1,0 +1,390 @@
+diff --git a/include/llama.h b/include/llama.h
+index 428f51f8d..f4927e86d 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -1745,6 +1745,11 @@ extern "C" {
+             ggml_opt_epoch_callback   callback_train,
+             ggml_opt_epoch_callback   callback_eval);
+ 
++    // Blackwell OPS: called for every backend buffer allocation, so the host can report what
++    // the engine actually allocated instead of parsing log lines.
++    typedef void (*llama_memory_record_cb)(const char * device, const char * tag, const char * kind, double mib);
++    LLAMA_API void llama_set_memory_record_cb(llama_memory_record_cb cb);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 426c48741..53e8a2933 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -28,6 +28,7 @@ set(LLAMA_CORE_SOURCES
+     llama-kv-cache-msa.cpp
+     llama-kv-cache-dsv4.cpp
+     llama-memory.cpp
++    llama-memory-record.cpp
+     llama-moe-cache.cpp
+     llama-memory-hybrid.cpp
+     llama-memory-hybrid-iswa.cpp
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 394e39d85..17b0766ad 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1,4 +1,5 @@
+ #include "llama-context.h"
++#include "llama-memory-record.h"
+ 
+ #include "ggml.h"
+ #include "llama-arch.h"
+@@ -530,6 +531,7 @@ llama_context::llama_context(
+                 throw std::runtime_error("failed to reserve initial output buffer");
+             }
+ 
++            llama_memory_record(ggml_backend_buffer_name(buf_output.get()), __func__, "output", ggml_backend_buffer_get_size(buf_output.get()) / 1024.0 / 1024.0);
+             LLAMA_LOG_INFO("%s: %10s  output buffer size = %8.2f MiB\n", __func__,
+                     ggml_backend_buffer_name    (buf_output.get()),
+                     ggml_backend_buffer_get_size(buf_output.get()) / 1024.0 / 1024.0);
+@@ -918,6 +920,7 @@ void llama_context::sched_reserve() {
+             backend_buf_exp_size[i] = ggml_backend_sched_get_buffer_size(sched.get(), backend);
+         }
+         if (backend_buf_exp_size[i] > 1) {
++            llama_memory_record(ggml_backend_buft_name(buft), __func__, "compute", backend_buf_exp_size[i] / 1024.0 / 1024.0);
+             LLAMA_LOG_INFO("%s: %10s compute buffer size = %8.2f MiB\n", __func__,
+                     ggml_backend_buft_name(buft),
+                     backend_buf_exp_size[i] / 1024.0 / 1024.0);
+@@ -1532,6 +1535,7 @@ void llama_context::layer_inp_dev_alloc() {
+         return;
+     }
+ 
++    llama_memory_record(ggml_backend_buffer_name(buf_layer_inp_dev.get()), __func__, "layer_input", ggml_backend_buffer_get_size(buf_layer_inp_dev.get())/1024.0/1024.0);
+     LLAMA_LOG_INFO("%s: %10s layer input buffer size = %8.2f MiB (%d layers)\n", __func__,
+             ggml_backend_buffer_name(buf_layer_inp_dev.get()), ggml_backend_buffer_get_size(buf_layer_inp_dev.get())/1024.0/1024.0, (int) n_layer_inp);
+ 
+@@ -1600,6 +1604,7 @@ bool llama_context::h_nextn_dev_alloc() {
+         return fail("the device has no events");
+     }
+ 
++    llama_memory_record(ggml_backend_buffer_name(buf_h_nextn_dev.get()), __func__, "h_nextn", ggml_backend_buffer_get_size(buf_h_nextn_dev.get())/1024.0/1024.0);
+     LLAMA_LOG_INFO("%s: %10s h_nextn buffer size = %8.2f MiB\n", __func__,
+             ggml_backend_buffer_name(buf_h_nextn_dev.get()), ggml_backend_buffer_get_size(buf_h_nextn_dev.get())/1024.0/1024.0);
+ 
+diff --git a/src/llama-kv-cache-dsv4.cpp b/src/llama-kv-cache-dsv4.cpp
+index ef1be94a2..a2c403cc1 100644
+--- a/src/llama-kv-cache-dsv4.cpp
++++ b/src/llama-kv-cache-dsv4.cpp
+@@ -1,4 +1,5 @@
+ #include "llama-kv-cache-dsv4.h"
++#include "llama-memory-record.h"
+ 
+ #include "ggml-backend.h"
+ #include "llama-impl.h"
+@@ -1007,6 +1008,7 @@ llama_dsv4_comp_state::llama_dsv4_comp_state(
+     for (auto & [buft, ctx] : ctx_map) {
+         ggml_backend_buffer_t buf = ctxs_bufs.emplace(std::move(ctx), buft, "DSV4 compressor state");
+ 
++        llama_memory_record(ggml_backend_buffer_name(buf), __func__, "dsv4_state", ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+         LLAMA_LOG_INFO("%s: %10s DSV4 %s state buffer size = %8.2f MiB\n",
+                 __func__, ggml_backend_buffer_name(buf), name, ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+     }
+diff --git a/src/llama-kv-cache.cpp b/src/llama-kv-cache.cpp
+index a1ec67e26..24abf3ca9 100644
+--- a/src/llama-kv-cache.cpp
++++ b/src/llama-kv-cache.cpp
+@@ -1,4 +1,5 @@
+ #include "llama-kv-cache.h"
++#include "llama-memory-record.h"
+ 
+ #include "llama-impl.h"
+ #include "llama-io.h"
+@@ -277,6 +278,7 @@ llama_kv_cache::llama_kv_cache(
+     for (auto & [buft, ctx] : ctx_map) {
+         ggml_backend_buffer_t buf = ctxs_bufs.emplace(std::move(ctx), buft, "kv cache");
+ 
++        llama_memory_record(ggml_backend_buffer_name(buf), __func__, "kv", ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+         LLAMA_LOG_INFO("%s: %10s KV buffer size = %8.2f MiB\n", __func__, ggml_backend_buffer_name(buf), ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+     }
+ 
+@@ -409,6 +411,7 @@ void llama_kv_cache::init_rotation(const char * name_tag) {
+     for (auto & [buft, ctx] : ctx_map) {
+         auto * buf = attn_rot_bufs.emplace(std::move(ctx), buft, "rotation matrices");
+         ggml_backend_buffer_set_usage(buf, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
++        llama_memory_record(ggml_backend_buffer_name(buf), __func__, "rotation", ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+         LLAMA_LOG_INFO("%s: %10s rotation buffer size = %8.2f MiB\n", __func__,
+                 ggml_backend_buffer_name(buf), ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+     }
+diff --git a/src/llama-memory-record.cpp b/src/llama-memory-record.cpp
+new file mode 100644
+index 000000000..aea50d328
+--- /dev/null
++++ b/src/llama-memory-record.cpp
+@@ -0,0 +1,15 @@
++#include "llama-memory-record.h"
++
++#include "llama.h"
++
++static llama_memory_record_cb g_memory_record_cb = nullptr;
++
++void llama_set_memory_record_cb(llama_memory_record_cb cb) {
++    g_memory_record_cb = cb;
++}
++
++void llama_memory_record(const char * device, const char * tag, const char * kind, double mib) {
++    if (g_memory_record_cb != nullptr) {
++        g_memory_record_cb(device, tag, kind, mib);
++    }
++}
+diff --git a/src/llama-memory-record.h b/src/llama-memory-record.h
+new file mode 100644
+index 000000000..f5f8d8645
+--- /dev/null
++++ b/src/llama-memory-record.h
+@@ -0,0 +1,4 @@
++#pragma once
++
++// Host hook for backend buffer allocations (see llama_set_memory_record_cb).
++void llama_memory_record(const char * device, const char * tag, const char * kind, double mib);
+diff --git a/src/llama-memory-recurrent.cpp b/src/llama-memory-recurrent.cpp
+index 9213ac1dc..a97f7d510 100644
+--- a/src/llama-memory-recurrent.cpp
++++ b/src/llama-memory-recurrent.cpp
+@@ -1,4 +1,5 @@
+ #include "llama-memory-recurrent.h"
++#include "llama-memory-record.h"
+ 
+ #include "ggml-backend.h"
+ #include "llama-impl.h"
+@@ -119,6 +120,7 @@ llama_memory_recurrent::llama_memory_recurrent(
+     for (auto & [buft, ctx] : ctx_map) {
+         ggml_backend_buffer_t buf = ctxs_bufs.emplace(std::move(ctx), buft, "rs cache");
+ 
++        llama_memory_record(ggml_backend_buffer_name(buf), __func__, "rs", ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+         LLAMA_LOG_INFO("%s: %10s RS buffer size = %8.2f MiB\n", __func__, ggml_backend_buffer_name(buf), ggml_backend_buffer_get_size(buf)/1024.0/1024.0);
+     }
+ 
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 72639b155..f91e7a9c4 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -20,6 +20,7 @@
+ #include "llama-memory-recurrent.h"
+ 
+ #include "llama.h"
++#include "llama-memory-record.h"
+ #include "models/models.h"
+ 
+ #include "ggml.h"
+@@ -2114,6 +2115,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+     // print memory requirements per buffer type
+     for (auto & [_, bufs] : pimpl->ctxs_bufs) {
+         for (auto & buf: bufs) {
++            llama_memory_record(ggml_backend_buffer_name(buf.get()), __func__, "model", ggml_backend_buffer_get_size(buf.get()) / 1024.0 / 1024.0);
+             LLAMA_LOG_INFO("%s: %12s model buffer size = %8.2f MiB\n",
+                 __func__, ggml_backend_buffer_name(buf.get()), ggml_backend_buffer_get_size(buf.get()) / 1024.0 / 1024.0);
+         }
+diff --git a/tools/server/CMakeLists.txt b/tools/server/CMakeLists.txt
+index 4f3fa2458..1b55895ae 100644
+--- a/tools/server/CMakeLists.txt
++++ b/tools/server/CMakeLists.txt
+@@ -16,6 +16,7 @@ add_library(${TARGET} STATIC
+     server-decision.cpp
+     server-decision.h
+     server-context.cpp
++    server-memory-ledger.cpp
+     server-context.h
+     server-realtime.cpp
+     server-realtime.h
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 57bcd402c..c8448132b 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -1,4 +1,5 @@
+ #include "server-context.h"
++#include "server-memory-ledger.h"
+ #include <atomic>
+ #include <thread>
+ #include "base64.hpp"
+@@ -5996,11 +5997,33 @@ void server_routes::init_routes() {
+         return res;
+     };
+ 
+-    // Device memory as the engine sees it. On Windows/WDDM the CUDA free number is a budget
+-    // (VRAM + shared system memory), so --fit can plan against a card other models already hold.
++    // Device memory as the engine sees it: per-device free/total, every buffer the engine
++    // reported while allocating, and the effective launch params after --fit had its say. On
++    // Windows/WDDM the CUDA free number is a budget (VRAM + shared system memory), so --fit can
++    // plan against a card other models already hold.
+     this->get_memory = [this](const server_http_req &) {
+         auto res = create_response(true);
+ 
++        const std::vector<server_memory_ledger_entry> entries = server_memory_ledger_entries();
++
++        json ledger = json::array();
++        std::map<std::string, double> self_mib;
++        double host_self_mib = 0.0;
++        for (const auto & item : entries) {
++            if (item.device == "CUDA_Host" || item.device == "CPU" || item.device == "Host") {
++                host_self_mib += item.mib;
++            } else {
++                self_mib[item.device] += item.mib;
++            }
++
++            ledger.push_back({
++                {"device", item.device},
++                {"tag",    item.tag},
++                {"kind",   item.kind},
++                {"mib",    item.mib},
++            });
++        }
++
+         json devices = json::array();
+         for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+             ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+@@ -6011,19 +6034,50 @@ void server_routes::init_routes() {
+             const char * type_name = type == GGML_BACKEND_DEVICE_TYPE_GPU
+                 ? "GPU"
+                 : (type == GGML_BACKEND_DEVICE_TYPE_ACCEL ? "ACCEL" : "CPU");
++            const std::string name = ggml_backend_dev_name(dev);
++            const double total_mib = total_bytes / (1024.0 * 1024.0);
++            const double free_mib  = free_bytes  / (1024.0 * 1024.0);
++            const double self      = self_mib.count(name) > 0 ? self_mib[name] : 0.0;
+             devices.push_back({
+-                {"index",       i},
+-                {"name",        ggml_backend_dev_name(dev)},
+-                {"description", ggml_backend_dev_description(dev)},
+-                {"type",        type_name},
+-                {"total_mib",   total_bytes / (1024 * 1024)},
+-                {"free_mib",    free_bytes  / (1024 * 1024)},
++                {"index",           i},
++                {"name",            name},
++                {"description",     ggml_backend_dev_description(dev)},
++                {"type",            type_name},
++                {"total_mib",       total_mib},
++                {"free_mib",        free_mib},
++                {"self_mib",        self},
++                {"unaccounted_mib", total_mib - free_mib - self},
+             });
+         }
+ 
++        json tensor_split = json::array();
++        for (int i = 0; i < 8; ++i) {
++            tensor_split.push_back(static_cast<double>(params.tensor_split[i]));
++        }
++
++        json fit_target = json::array();
++        for (size_t i = 0; i < params.fit_params_target.size(); ++i) {
++            fit_target.push_back(static_cast<double>(params.fit_params_target[i]) / (1024.0 * 1024.0));
++        }
++
+         res->ok({
+-            {"devices",    devices},
+-            {"slot_n_ctx", meta->slot_n_ctx},
++            {"devices",       devices},
++            {"host_self_mib", host_self_mib},
++            {"ledger",        ledger},
++            {"slot_n_ctx",    meta->slot_n_ctx},
++            {"params", {
++                {"n_ctx",          params.n_ctx},
++                {"n_batch",        params.n_batch},
++                {"n_ubatch",       params.n_ubatch},
++                {"n_parallel",     params.n_parallel},
++                {"n_gpu_layers",   params.n_gpu_layers},
++                {"split_mode",     (int) params.split_mode},
++                {"tensor_split",   tensor_split},
++                {"cache_ram_mib",  params.cache_ram_mib},
++                {"flash_attn",     (int) params.flash_attn_type},
++                {"fit",            params.fit_params},
++                {"fit_target_mib", fit_target},
++            }},
+             {"model", {
+                 {"name",        meta->model_name},
+                 {"size_mib",    meta->model_size / (1024 * 1024)},
+diff --git a/tools/server/server-memory-ledger.cpp b/tools/server/server-memory-ledger.cpp
+new file mode 100644
+index 000000000..031674b59
+--- /dev/null
++++ b/tools/server/server-memory-ledger.cpp
+@@ -0,0 +1,32 @@
++#include "server-memory-ledger.h"
++
++#include <mutex>
++
++namespace {
++
++std::mutex g_mutex;
++std::vector<server_memory_ledger_entry> g_entries;
++
++}
++
++void server_memory_ledger_record(const char * device, const char * tag, const char * kind, double mib) {
++    if (device == nullptr || kind == nullptr) {
++        return;
++    }
++
++    std::lock_guard<std::mutex> lock(g_mutex);
++
++    for (auto & e : g_entries) {
++        if (e.device == device && e.kind == kind && e.tag == (tag ? tag : "")) {
++            e.mib = mib;
++            return;
++        }
++    }
++
++    g_entries.push_back({ device, tag ? tag : "", kind, mib });
++}
++
++std::vector<server_memory_ledger_entry> server_memory_ledger_entries() {
++    std::lock_guard<std::mutex> lock(g_mutex);
++    return g_entries;
++}
+diff --git a/tools/server/server-memory-ledger.h b/tools/server/server-memory-ledger.h
+new file mode 100644
+index 000000000..b0cddf7a2
+--- /dev/null
++++ b/tools/server/server-memory-ledger.h
+@@ -0,0 +1,16 @@
++#pragma once
++
++#include <string>
++#include <vector>
++
++// Blackwell OPS: every backend buffer the engine reported while allocating.
++struct server_memory_ledger_entry {
++    std::string device;
++    std::string tag;
++    std::string kind;
++    double mib = 0.0;
++};
++
++void server_memory_ledger_record(const char * device, const char * tag, const char * kind, double mib);
++
++std::vector<server_memory_ledger_entry> server_memory_ledger_entries();
+diff --git a/tools/server/server.cpp b/tools/server/server.cpp
+index 6226429cc..c83fe7b52 100644
+--- a/tools/server/server.cpp
++++ b/tools/server/server.cpp
+@@ -1,6 +1,7 @@
+ #include "server-connect.h"
+ #include "server-context.h"
+ #include "server-http.h"
++#include "server-memory-ledger.h"
+ #include "server-models.h"
+ #include "server-cors-proxy.h"
+ #include "server-stream.h"
+@@ -749,6 +750,8 @@ static int server_run_router(common_params & params, int argc, char ** argv, con
+     server_routes  routes(params, ctx_server);
+     server_tools   tools;
+ 
++    llama_set_memory_record_cb(server_memory_ledger_record);
++
+     server_http_context ctx_http;
+     if (!ctx_http.init(params)) {
+         SRV_ERR("%s", "failed to initialize HTTP server\n");
+@@ -899,6 +902,8 @@ static int server_run_instance(common_params & params, server_role & role, commo
+     server_routes  routes(params, ctx_server);
+     server_tools   tools;
+ 
++    llama_set_memory_record_cb(server_memory_ledger_record);
++
+     server_http_context ctx_http;
+     if (!ctx_http.init(params)) {
+         SRV_ERR("%s", "failed to initialize HTTP server\n");
