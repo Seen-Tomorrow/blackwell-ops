@@ -103,7 +103,12 @@ The 27B dense model gave an almost exactly proportional law for ubatch in its op
   the slope *falls* (0.70, 0.70, 0.60 MiB/ub) where DSV4.1's *rises* (1.91 then 3.93 at 65,536).
   A proportional factor over-predicts Flash by **+56 %** at ub 4096; the affine ubatch fit lands
   within ~5 %. One ctx cannot identify the plane, so that family falls through to
-  `compute = c0 + c1*ub` instead.- **The law is per family, not global.** DSV4.1's affine plane is not Qwen3.8-27B's proportional
+  `compute = c0 + c1*ub` instead.- **One launch is enough — nobody has to sweep.** The forecast is exact at the measured point and
+  scales from it: KV by ctx (measured slope), compute by whatever shape the evidence supports, in
+  this order: the family's own fit (two points) → the affine single-ctx fit → the response share
+  measured across *all* families so far (median `(c2-c1)/(c1*(u2-u1)/u1)`, currently ~0.8) →
+  proportional. The share exists so a first launch already answers "what if I raise ubatch"; a
+  sweep only sharpens the answer, it is never a prerequisite.- **The law is per family, not global.** DSV4.1's affine plane is not Qwen3.8-27B's proportional
   line, and Qwen3.8-Flash will have its own. Families with fewer than four measured points keep
   the proportional fallback, so a new model starts simple and earns its coefficients.
 

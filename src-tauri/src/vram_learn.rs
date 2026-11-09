@@ -163,6 +163,55 @@ impl LearnedVramEntry {
         true
     }
 
+    /// Scale the compute term by a measured proportional *share* rather than by the raw ubatch
+    /// ratio. `share` = the fraction of the term that moves with ubatch (1.0 = fully proportional,
+    /// 0.65 = what the MoE families measured). Clamped positive.
+    fn scale_compute_by_response(&mut self, ubatch: Option<u32>, share: f64) {
+        let Some(now) = ubatch.filter(|b| *b > 0) else {
+            return;
+        };
+        let Some(reference) = self.reference_ubatch.filter(|b| *b > 0) else {
+            return;
+        };
+        if now == reference {
+            return;
+        }
+        let growth = now as f64 / reference as f64;
+        let factor = (1.0 + share.clamp(0.0, 1.5) * (growth - 1.0)).max(0.05);
+        let mut scaled = false;
+        if let Some(components) = self.gpu_components_mib.as_mut() {
+            for component in components.iter_mut() {
+                component.compute_mib *= factor;
+            }
+            let totals: Vec<f64> = components
+                .iter()
+                .map(|c| c.model_mib + c.ctx_mib + c.compute_mib)
+                .collect();
+            self.vram_mib = totals.iter().sum();
+            self.gpu_breakdown_mib = Some(totals);
+            scaled = true;
+        }
+        if let Some(host) = self.host_components_mib.as_mut() {
+            host.compute_mib *= factor;
+            let total = host.model_mib + host.ctx_mib + host.compute_mib;
+            if total > 0.0 {
+                self.host_mib = Some(total);
+            }
+            scaled = true;
+        }
+        if scaled {
+            if let Some(snap) = self.launch_snapshot.as_mut() {
+                snap.vram_mib = self.vram_mib;
+                if let Some(host) = self.host_mib {
+                    snap.host_mib = host;
+                }
+                if let Some(breakdown) = self.gpu_breakdown_mib.as_ref() {
+                    snap.gpu_breakdown_mib = breakdown.clone();
+                }
+            }
+        }
+    }
+
     pub fn scale_compute_to_ubatch(&mut self, ubatch: Option<u32>) {
         let Some(now) = ubatch.filter(|b| *b > 0) else {
             return;
@@ -1980,6 +2029,67 @@ impl ComputeFit {
     }
 }
 
+/// How much of a family's compute term moves proportionally with ubatch — learned from every
+/// family that has been measured at two ubatch levels.
+///
+/// One measured launch is all a user should ever need: this number exists so a *single* point can
+/// still answer "what if I raise ubatch", without asking them to run a sweep first. It is the
+/// median proportional share across families, so it is the honest middle of what the hardware has
+/// shown: dense Qwen3.8-27B doubled exactly (share 1.0), DSV4.1 gave 0.87 at the low end, Flash
+/// 0.65 — the median of the measured `(c2-c1) / (c1 * (u2-u1)/u1)` ratios.
+///
+/// Two points of the *same* family still beat it and take precedence.
+fn measured_ub_response(store: &LearnedVramStore) -> Option<f64> {
+    use std::collections::BTreeMap;
+    let mut families: BTreeMap<String, BTreeMap<usize, Vec<(u32, f64)>>> = BTreeMap::new();
+    for (key, entry) in &store.entries {
+        let (Some(ctx), Some(ub), Some(components)) = (
+            ctx_from_learn_key(key),
+            entry.reference_ubatch.filter(|u| *u > 0),
+            entry.gpu_components_mib.as_ref(),
+        ) else {
+            continue;
+        };
+        let Some(first) = components.first() else { continue };
+        families
+            .entry(compute_family_key(key))
+            .or_default()
+            .entry(ctx)
+            .or_default()
+            .push((ub, first.compute_mib));
+    }
+    let mut shares: Vec<f64> = Vec::new();
+    for ctxs in families.values() {
+        for points in ctxs.values() {
+            if points.len() < 2 {
+                continue;
+            }
+            let mut sorted = points.clone();
+            sorted.sort_by_key(|(ub, _)| *ub);
+            let (u_lo, c_lo) = sorted[0];
+            let (u_hi, c_hi) = sorted[sorted.len() - 1];
+            if u_hi == u_lo || c_lo <= 0.0 {
+                continue;
+            }
+            let proportional = c_lo * (f64::from(u_hi - u_lo) / f64::from(u_lo));
+            if proportional <= 0.0 {
+                continue;
+            }
+            shares.push(((c_hi - c_lo) / proportional).clamp(0.0, 1.5));
+        }
+    }
+    if shares.is_empty() {
+        return None;
+    }
+    shares.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = shares.len() / 2;
+    Some(if shares.len() % 2 == 0 {
+        (shares[mid - 1] + shares[mid]) / 2.0
+    } else {
+        shares[mid]
+    })
+}
+
 /// Least squares `y = c0 + c1*ub`; needs two distinct ubatch levels.
 fn fit_ub_only(samples: &[(f64, f64, f64)]) -> Option<[f64; 2]> {
     let distinct: Vec<f64> = {
@@ -2290,7 +2400,13 @@ pub fn get_learned_vram(
         }
     }
     if !from_model {
-        entry.scale_compute_to_ubatch(ubatch);
+        // No two-point fit for this family yet. Use the response measured across every family
+        // that has one, so a first launch already answers "what if I raise ubatch" — the user is
+        // never asked to sweep to make the forecast work.
+        match measured_ub_response(&load_store()) {
+            Some(response) => entry.scale_compute_by_response(ubatch, response),
+            None => entry.scale_compute_to_ubatch(ubatch),
+        }
     }
     let painted_v = entry.paint_vram_mib();
     let painted_h = entry.paint_host_mib();
@@ -2959,6 +3075,40 @@ mod compute_model_tests {
         // The proportional guess the old code would have made, for contrast.
         let proportional = 555.9 * 8.0;
         assert!(proportional > 4_000.0 && at_4096 < proportional);
+    }
+
+    /// A user with one measured launch must still get a sane answer to "what if I raise ubatch".
+    /// With the measured share (0.65-0.87 across the MoE families) the answer lands within a few
+    /// percent; the old raw ratio would have said 8x for a 8x ubatch rise.
+    #[test]
+    fn a_single_measured_point_scales_compute_by_the_measured_share() {
+        let mut entry = LearnedVramEntry {
+            vram_mib: 0.0,
+            reference_batch: Some(2048),
+            reference_ubatch: Some(512),
+            reference_spec_key: None,
+            batch_deltas: std::collections::HashMap::new(),
+            spec_deltas: std::collections::HashMap::new(),
+            joint_deltas: std::collections::HashMap::new(),
+            gpu_breakdown_mib: None,
+            host_mib: None,
+            gpu_components_mib: Some(vec![GpuComponentMib {
+                model_mib: 30_000.0,
+                ctx_mib: 5_000.0,
+                compute_mib: 555.9,
+            }]),
+            host_components_mib: None,
+            launch_snapshot: None,
+            fit_attempts: Vec::new(),
+            measured_at: String::new(),
+        };
+        // Flash measured 2,856.5 at ub 4096 from 555.9 at ub 512: share ~0.65.
+        entry.scale_compute_by_response(Some(4096), 0.65);
+        let compute = entry.gpu_components_mib.as_ref().unwrap()[0].compute_mib;
+        let expected = 555.9 * (1.0 + 0.65 * (4096.0 / 512.0 - 1.0));
+        assert!((compute - expected).abs() < 0.5, "compute {compute} vs {expected}");
+        // Far from the proportional guess (4,447) and near the measurement (2,857).
+        assert!(compute < 3_200.0 && compute > 2_500.0);
     }
 
     #[test]
