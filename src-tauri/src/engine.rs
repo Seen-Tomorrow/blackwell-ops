@@ -698,9 +698,12 @@ pub async fn launch_engine(
         stack: Arc<tokio::sync::Mutex<EngineStack>>,
         slot_idx: usize,
         reservation: u64,
+        port: u16,
+        gpu_mask: String,
     ) -> Arc<dyn Fn() + Send + Sync> {
         Arc::new(move || {
             let s_clone = stack.clone();
+            let mask = gpu_mask.clone();
             let si = slot_idx;
             tokio::spawn(async move {
                 let should_emit = {
@@ -725,6 +728,8 @@ pub async fn launch_engine(
                 if should_emit {
                     // Readiness fact for the stream-only fusion brain (no HTTP path to ask).
                     crate::engine_stack::mark_slot_ready(si);
+                    // What the engine believes about free memory, next to what NVML measures.
+                    crate::engine_memory_view::spawn_probe(port, &mask);
                     EngineStack::emit_stack_changed_unlocked(&s_clone).await;
                 }
             });
@@ -748,7 +753,13 @@ pub async fn launch_engine(
             provider_display_name.clone(), backend_type.clone(), supports_fusion, fusion_adapter,
             &app.stack,
             app.log_hub.clone(),
-            make_on_ready(stack_for_ready.clone(), slot_for_ready, reservation),
+            make_on_ready(
+                stack_for_ready.clone(),
+                slot_for_ready,
+                reservation,
+                slot_port,
+                gpu_mask.clone(),
+            ),
         ).await;
 
         match result {

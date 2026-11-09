@@ -16,6 +16,7 @@ mod telemetry;
 mod config;
 mod engine_stack;
 mod engine_load_progress;
+mod engine_memory_view;
 mod engine_events;
 
 mod log_hub;

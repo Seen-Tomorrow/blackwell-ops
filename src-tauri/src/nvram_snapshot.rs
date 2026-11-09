@@ -102,6 +102,11 @@ pub struct NvramSnapshot {
 /// The same pattern as `output_console`: registered once during setup, never cleared.
 static NVRAM_APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
 
+/// The app handle registered at startup, for background tasks that need the console or a command.
+pub fn app_handle() -> Option<AppHandle> {
+    NVRAM_APP.get().cloned()
+}
+
 pub fn register_app_handle(handle: AppHandle) {
     let _ = NVRAM_APP.set(handle);
 }
