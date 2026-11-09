@@ -6097,7 +6097,7 @@ html[data-industrial-bezel="brush"] {
 
 .vram-snap-ov__table th,
 .vram-snap-ov__table td {
-  padding: 2px 6px;
+  padding: 1px 8px;
   vertical-align: top;
   text-align: right;
   font-weight: 400;
@@ -6119,10 +6119,6 @@ html[data-industrial-bezel="brush"] {
   text-overflow: ellipsis;
 }
 
-.vram-snap-ov__scope {
-  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
-  margin-right: 6px;
-}
 
 .vram-snap-ov__field {
   font-weight: 700;
@@ -6133,26 +6129,42 @@ html[data-industrial-bezel="brush"] {
   color: color-mix(in srgb, var(--display-face-text-muted) 72%, transparent);
 }
 
+/* Section blocks: the table reads GPU → ENGINE → MEASURED LAUNCHES → FORECAST → PLAN. */
+.vram-snap-ov__group-row th {
+  padding: 9px 8px 3px;
+  border-bottom: 1px solid color-mix(in srgb, var(--display-face-text) 14%, transparent);
+  text-align: left;
+}
+
+.vram-snap-ov__group {
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: color-mix(in srgb, var(--display-face-text-muted) 88%, transparent);
+  text-transform: uppercase;
+}
+
+.vram-snap-ov__scope {
+  color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
+  margin-right: 7px;
+  font-weight: 600;
+}
+
 .vram-snap-ov__col {
   min-width: 88px;
 }
 
 .vram-snap-ov__phase {
-  display: block;
   font-weight: 700;
   letter-spacing: 0.1em;
+  margin-right: 8px;
 }
 
 .vram-snap-ov__when {
-  display: block;
   color: color-mix(in srgb, var(--display-face-text-muted) 82%, transparent);
+  font-weight: 500;
 }
 
-.vram-snap-ov__ord {
-  display: block;
-  color: color-mix(in srgb, var(--display-face-text-muted) 55%, transparent);
-  font-size: 0.85em;
-}
 
 .vram-snap-ov__cell {
   font-variant-numeric: tabular-nums;

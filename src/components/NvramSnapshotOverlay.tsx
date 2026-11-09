@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { NvramSnapshotMatrix, NvramMatrixCell } from "../lib/types";
+import type { NvramMatrixCell, NvramMatrixRow, NvramSnapshotMatrix } from "../lib/types";
 
 /** How many snapshots sit side by side. */
 const COLUMNS = 3;
@@ -28,13 +28,43 @@ function clock(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function isEmptyCell(cell: NvramMatrixCell | undefined): boolean {
+  if (!cell) return true;
+  return cell.number == null && (cell.text == null || cell.text === "");
+}
+
+/** Which block a matrix row belongs to. Order follows the backend's emission order. */
+function groupOf(scope: string): { key: string; label: string } {
+  if (scope.startsWith("gpu")) return { key: "gpu", label: "GPU" };
+  if (scope.startsWith("slot")) return { key: "engine", label: "ENGINE" };
+  if (scope.startsWith("learned")) return { key: "learned", label: "MEASURED LAUNCHES" };
+  if (scope.startsWith("ui.bars")) return { key: "bars", label: "FORECAST · BARS" };
+  if (scope.startsWith("ui.plan")) return { key: "plan", label: "FORECAST · PLAN" };
+  if (scope.startsWith("ui")) return { key: "forecast", label: "FORECAST" };
+  return { key: "other", label: "OTHER" };
+}
+
+/** `gpu0` → `GPU 0`; `learned ctx=262144 kv=… split=…` → `ctx 262144`. */
+function rowLabel(scope: string, field: string): { primary: string; secondary: string | null } {
+  const gpu = /^gpu(\d+)$/.exec(scope);
+  if (gpu) return { primary: field, secondary: `GPU ${gpu[1]}` };
+  const slot = /^slot(\d+)$/.exec(scope);
+  if (slot) return { primary: field, secondary: `ENGINE ${slot[1]}` };
+  if (scope.startsWith("learned")) {
+    const ctx = /ctx=(\d+)/.exec(scope);
+    return {
+      primary: field,
+      secondary: ctx ? `CTX ${Number(ctx[1]).toLocaleString("en-US")}` : "LEARNED",
+    };
+  }
+  if (scope === "ui") return { primary: field, secondary: null };
+  return { primary: field, secondary: null };
+}
+
 /**
- * Full-glass NVRAM snapshot overlay: the newest snapshots side by side, so a launch (or a knob
- * change) reads as a flow — what it was, what it became, by how much.
- *
- * Opened from the bezel control; captured in place (CAPTURE) so the overlay is the workspace.
- * Files live under `{app_root}/config/cache/nvram/` and print with
- * `blackwell-ops --nvram-diff before.json after.json`.
+ * Full-glass NVRAM snapshot overlay: the newest snapshots side by side, grouped into GPU /
+ * ENGINE / MEASURED LAUNCHES / FORECAST blocks so a launch reads as a flow rather than a table of
+ * rows. Opened from the bezel control; CAPTURE and CLOSE live in the bar.
  */
 export default function NvramSnapshotOverlay({
   open,
@@ -46,6 +76,7 @@ export default function NvramSnapshotOverlay({
   const [matrix, setMatrix] = useState<NvramSnapshotMatrix | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -58,7 +89,9 @@ export default function NvramSnapshotOverlay({
   }, []);
 
   useEffect(() => {
-    if (open) void refresh();
+    if (!open) return;
+    scrollRef.current?.scrollTo({ top: 0 });
+    void refresh();
   }, [open, refresh]);
 
   useEffect(() => {
@@ -83,10 +116,31 @@ export default function NvramSnapshotOverlay({
     }
   }, [busy, refresh]);
 
-  if (!open) return null;
-
   const columns = matrix?.columns ?? [];
   const rows = matrix?.rows ?? [];
+
+  // Drop rows that carry nothing in any column (a plan that does not exist yet, a slot that is
+  // not loaded) so the table stays dense, then group by block in emission order.
+  const groups = useMemo(() => {
+    const visible = rows.filter((row) => row.cells.some((cell) => !isEmptyCell(cell)));
+    // Group by block id, not by runs of adjacent rows: the matrix is the union of the columns'
+    // keys, so a row that only exists in the newest snapshot can appear after a later block.
+    const out: Array<{ key: string; label: string; rows: NvramMatrixRow[] }> = [];
+    const byKey = new Map<string, { key: string; label: string; rows: NvramMatrixRow[] }>();
+    for (const row of visible) {
+      const group = groupOf(row.scope);
+      let bucket = byKey.get(group.key);
+      if (!bucket) {
+        bucket = { ...group, rows: [] };
+        byKey.set(group.key, bucket);
+        out.push(bucket);
+      }
+      bucket.rows.push(row);
+    }
+    return out;
+  }, [rows]);
+
+  if (!open) return null;
 
   return (
     <div className="vram-snap-ov" role="dialog" aria-label="NVRAM snapshots">
@@ -95,7 +149,7 @@ export default function NvramSnapshotOverlay({
         <span className="vram-snap-ov__count">
           {columns.length === 0
             ? "none yet"
-            : `${columns.length} of last ${COLUMNS} · ${clock(columns[columns.length - 1].captured_at)}`}
+            : `${columns.length} of last ${COLUMNS} · latest ${clock(columns[columns.length - 1].captured_at)}`}
         </span>
         <button
           type="button"
@@ -123,53 +177,64 @@ export default function NvramSnapshotOverlay({
           CAPTURE again to see the flow.
         </div>
       ) : (
-        <div className="vram-snap-ov__scroll">
+        <div className="vram-snap-ov__scroll" ref={scrollRef}>
           <table className="vram-snap-ov__table">
             <thead>
               <tr>
                 <th className="vram-snap-ov__rowlab" scope="col">
                   MEASUREMENT
                 </th>
-                {columns.map((column, i) => (
+                {columns.map((column) => (
                   <th key={column.file} scope="col" className="vram-snap-ov__col">
-                    <span className="vram-snap-ov__phase">{column.phase.toUpperCase()}</span>
+                    <span className="vram-snap-ov__phase">{column.phase.replace(/_/g, " ").toUpperCase()}</span>
                     <span className="vram-snap-ov__when">{clock(column.captured_at)}</span>
-                    <span className="vram-snap-ov__ord">{i + 1}</span>
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={`${row.scope}-${row.field}`}>
-                  <th scope="row" className="vram-snap-ov__rowlab" title={`${row.scope} ${row.field}`}>
-                    <span className="vram-snap-ov__scope">{row.scope}</span>
-                    <span className="vram-snap-ov__field">{row.field}</span>
-                    {row.unit ? <span className="vram-snap-ov__unit">{row.unit}</span> : null}
+            {groups.map((group) => (
+              <tbody key={group.key}>
+                <tr className="vram-snap-ov__group-row">
+                  <th className="vram-snap-ov__group" scope="colgroup" colSpan={1 + columns.length}>
+                    {group.label}
                   </th>
-                  {row.cells.map((cell, i) => {
-                    const delta = i > 0 ? deltaText(row.cells[i - 1], cell) : null;
-                    return (
-                      <td key={i} className="vram-snap-ov__cell">
-                        <span className="vram-snap-ov__val">{cellText(cell)}</span>
-                        {delta ? (
-                          <span
-                            className="vram-snap-ov__delta"
-                            data-dir={delta.startsWith("+") ? "up" : "down"}
-                          >
-                            {delta}
-                          </span>
-                        ) : null}
-                      </td>
-                    );
-                  })}
                 </tr>
-              ))}
-            </tbody>
+                {group.rows.map((row) => {
+                  const label = rowLabel(row.scope, row.field);
+                  return (
+                    <tr key={`${row.scope}-${row.field}`}>
+                      <th scope="row" className="vram-snap-ov__rowlab" title={`${row.scope} ${row.field}`}>
+                        {label.secondary ? (
+                          <span className="vram-snap-ov__scope">{label.secondary}</span>
+                        ) : null}
+                        <span className="vram-snap-ov__field">{label.primary}</span>
+                        {row.unit ? <span className="vram-snap-ov__unit">{row.unit}</span> : null}
+                      </th>
+                      {row.cells.map((cell, i) => {
+                        const delta = i > 0 ? deltaText(row.cells[i - 1], cell) : null;
+                        return (
+                          <td key={i} className="vram-snap-ov__cell">
+                            <span className="vram-snap-ov__val">{cellText(cell)}</span>
+                            {delta ? (
+                              <span
+                                className="vram-snap-ov__delta"
+                                data-dir={delta.startsWith("+") ? "up" : "down"}
+                              >
+                                {delta}
+                              </span>
+                            ) : null}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            ))}
           </table>
           <div className="vram-snap-ov__foot">
-            Δ is against the column to its left · files in <code>config/cache/nvram/</code> · full
-            table: <code>blackwell-ops --nvram-diff a.json b.json</code>
+            Δ against the column to its left · files in <code>config/cache/nvram/</code> · full table:
+            <code> blackwell-ops --nvram-diff a.json b.json</code>
           </div>
         </div>
       )}
@@ -178,4 +243,3 @@ export default function NvramSnapshotOverlay({
     </div>
   );
 }
-

@@ -354,6 +354,8 @@ export default function VramBadge({
             </span>
           </div>
         </div>
+      {/* Same surface in the fusion branch: during LOADING/RUNNING this is the only tree mounted. */}
+      <NvramSnapshotOverlay open={snapLogOpen} onClose={() => onCloseSnapLog?.()} />
       </div>
     );
   }

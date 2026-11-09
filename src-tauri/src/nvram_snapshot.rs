@@ -478,7 +478,6 @@ fn snapshot_cells(snap: &NvramSnapshot) -> Vec<(String, String, &'static str, Ma
         let scope = format!("gpu{}", gpu.index);
         number!(scope.clone(), "used".into(), "MiB", Some(gpu.used_mib as f64));
         number!(scope.clone(), "free".into(), "MiB", Some(gpu.free_mib as f64));
-        number!(scope, "util".into(), "%", Some(gpu.utilization_gpu as f64));
     }
     for engine in &snap.engines {
         let scope = format!("slot{}", engine.slot);
