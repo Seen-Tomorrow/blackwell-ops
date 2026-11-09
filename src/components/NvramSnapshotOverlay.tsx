@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTauriListen } from "../hooks/useTauriListen";
 import type { NvramMatrixCell, NvramMatrixRow, NvramSnapshotMatrix } from "../lib/types";
 
 /** How many snapshots sit side by side. */
@@ -61,6 +62,17 @@ function groupOf(scope: string): { key: string; label: string } {
 }
 
 /** `gpu0` → `GPU 0`; `learned ctx=262144 kv=…` → `CTX 262,144`. */
+/** Block order: the live states first, the measured archive last. */
+const GROUP_RANK: Record<string, number> = {
+  gpu: 0,
+  engine: 1,
+  forecast: 2,
+  bars: 3,
+  plan: 4,
+  learned: 5,
+  other: 6,
+};
+
 function rowLabel(scope: string, field: string): { primary: string; secondary: string | null } {
   const gpu = /^gpu(\d+)$/.exec(scope);
   if (gpu) return { primary: field, secondary: `GPU ${gpu[1]}` };
@@ -123,16 +135,19 @@ export default function NvramSnapshotOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Live log: the lifecycle captures are written by Rust, not by this component, so poll while
-  // open — a stop or a relaunch must land in the columns without closing and reopening.
+  // Live log: every capture emits `nvram-snapshot-changed` (lifecycle hooks, bezel button,
+  // automation), so a stop or relaunch lands in the columns immediately — no polling.
   useEffect(() => {
-    if (!open) return;
-    void refresh();
-    const timer = window.setInterval(() => {
-      void refresh();
-    }, 1500);
-    return () => window.clearInterval(timer);
+    if (open) void refresh();
   }, [open, refresh]);
+
+  useTauriListen<{ phase?: string }>(
+    "nvram-snapshot-changed",
+    () => {
+      void refresh();
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     if (open) scrollRef.current?.scrollTo({ top: 0 });
@@ -167,7 +182,7 @@ export default function NvramSnapshotOverlay({
       }
       bucket.rows.push(row);
     }
-    return out;
+    return out.sort((a, b) => (GROUP_RANK[a.key] ?? 9) - (GROUP_RANK[b.key] ?? 9));
   }, [rows]);
 
   if (!open) return null;

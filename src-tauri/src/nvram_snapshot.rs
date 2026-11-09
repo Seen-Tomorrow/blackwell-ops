@@ -383,6 +383,17 @@ pub async fn capture(app: &AppHandle, path: Option<PathBuf>, phase: &str) -> Res
         snapshot.engines.len(),
         snapshot.learned.len()
     );
+    // The log is a live view: subscribers refresh on the event instead of polling. Every capture
+    // path (lifecycle hooks, the bezel button, automation) goes through here.
+    use tauri::Emitter;
+    let _ = app.emit(
+        "nvram-snapshot-changed",
+        serde_json::json!({
+            "phase": phase,
+            "captured_at": snapshot.captured_at,
+            "file": out_path.file_name().map(|n| n.to_string_lossy().to_string()),
+        }),
+    );
     Ok(out_path)
 }
 
