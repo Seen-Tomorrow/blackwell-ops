@@ -74,6 +74,10 @@ pub struct LearnedVramEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launch_snapshot: Option<LaunchMemorySnapshot>,
     pub measured_at: String,
+    /// Measured (ubatch -> compute) points at this ctx. A ubatch sweep accumulates here instead of
+    /// overwriting the row, which is what lets a family learn its own shape from normal use.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ub_points: Vec<LearnedUbPoint>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fit_attempts: Vec<LearnedVramFitAttempt>,
 }
@@ -209,6 +213,33 @@ impl LearnedVramEntry {
                     snap.gpu_breakdown_mib = breakdown.clone();
                 }
             }
+        }
+    }
+
+    /// Record a measured (ubatch -> compute) operating point.
+    ///
+    /// A row is per ctx, and ubatch is not identity, so a sweep at one ctx would otherwise
+    /// overwrite itself and the family could never learn its own ubatch shape — every change
+    /// would fall back to the cross-family prior and over/under-predict forever.
+    fn remember_ub_point(&mut self, ubatch: u32, measured_at: &str) {
+        if ubatch == 0 {
+            return;
+        }
+        let Some(components) = self.gpu_components_mib.as_ref() else {
+            return;
+        };
+        let point = LearnedUbPoint {
+            ubatch,
+            gpu_compute_mib: components.iter().map(|c| c.compute_mib).collect(),
+            host_compute_mib: self.host_components_mib.as_ref().map(|c| c.compute_mib),
+            measured_at: measured_at.to_string(),
+        };
+        self.ub_points.retain(|p| p.ubatch != ubatch);
+        self.ub_points.push(point);
+        // Keep the newest handful: enough for the plane, bounded on disk.
+        if self.ub_points.len() > 6 {
+            let drop = self.ub_points.len() - 6;
+            self.ub_points.drain(0..drop);
         }
     }
 
@@ -854,6 +885,7 @@ pub fn record_learned_vram(
             gpu_components_mib: None,
             host_components_mib: None,
             launch_snapshot: None,
+            ub_points: Vec::new(),
             measured_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             fit_attempts: Vec::new(),
         },
@@ -1046,12 +1078,22 @@ pub fn append_fit_breakdown_tables(
         gpu_components_mib: None,
         host_components_mib: None,
         launch_snapshot: None,
+        ub_points: Vec::new(),
         measured_at: String::new(),
         fit_attempts: Vec::new(),
     });
 
     // A different batch/ubatch or spec/draft is a delta against the reference
     // curve; never replace the base measurement.
+    // llama clamps ubatch to batch, so a launch asking for ubatch > batch actually ran at batch.
+    // Recording the requested value would poison the fit with a point that belongs to a lower
+    // ubatch (observed: ub 4096 with batch 2048 measured exactly the ub 2048 compute).
+    let ubatch = if batch > 0 { ubatch.min(batch) } else { ubatch };
+    // Keep the operating point the row is leaving, so a ubatch change teaches the family rather
+    // than overwriting what it knew.
+    if entry.reference_ubatch.map_or(false, |prev| prev != ubatch) {
+        entry.remember_ub_point(entry.reference_ubatch.unwrap_or(0), &entry.measured_at.clone());
+    }
     let batch_matches = batch_reference_matches(entry, batch, ubatch);
     let spec_matches = spec_reference_matches(entry, spec_key);
     if !batch_matches || !spec_matches {
@@ -1270,6 +1312,7 @@ mod dedup_tests {
                     gpu_components_mib: None,
                     host_components_mib: None,
                     launch_snapshot: None,
+                    ub_points: Vec::new(),
                     measured_at: "old".into(),
                     fit_attempts: vec![],
                 },
@@ -1350,6 +1393,7 @@ mod dedup_tests {
                     gpu_components_mib: None,
                     host_components_mib: None,
                     launch_snapshot: None,
+                    ub_points: Vec::new(),
                     measured_at: "full".into(),
                     fit_attempts: vec![],
                 },
@@ -1420,12 +1464,22 @@ pub fn record_launch_memory_snapshot(
         gpu_components_mib: None,
         host_components_mib: None,
         launch_snapshot: None,
+        ub_points: Vec::new(),
         measured_at: String::new(),
         fit_attempts: Vec::new(),
     });
 
     // A different batch/ubatch pair is a delta against the reference curve;
     // never replace the base measurement.
+    // llama clamps ubatch to batch, so a launch asking for ubatch > batch actually ran at batch.
+    // Recording the requested value would poison the fit with a point that belongs to a lower
+    // ubatch (observed: ub 4096 with batch 2048 measured exactly the ub 2048 compute).
+    let ubatch = if batch > 0 { ubatch.min(batch) } else { ubatch };
+    // Keep the operating point the row is leaving, so a ubatch change teaches the family rather
+    // than overwriting what it knew.
+    if entry.reference_ubatch.map_or(false, |prev| prev != ubatch) {
+        entry.remember_ub_point(entry.reference_ubatch.unwrap_or(0), &entry.measured_at.clone());
+    }
     let batch_matches = batch_reference_matches(entry, batch, ubatch);
     let spec_matches = spec_reference_matches(entry, spec_key);
     if !batch_matches || !spec_matches {
@@ -1982,6 +2036,19 @@ fn compute_family_key(key: &str) -> String {
 
 
 
+/// A measured (ubatch -> per-card compute) point remembered on a row, so a later ubatch change can
+/// be predicted from this model's own behaviour instead of a cross-family prior.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearnedUbPoint {
+    pub ubatch: u32,
+    #[serde(default)]
+    pub gpu_compute_mib: Vec<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_compute_mib: Option<f64>,
+    #[serde(default)]
+    pub measured_at: String,
+}
+
 /// One measured compute operating point of a family: (ctx, ubatch) -> per-card compute MiB.
 #[derive(Debug, Clone)]
 struct ComputeSample {
@@ -2251,6 +2318,18 @@ fn compute_model_for(store: &LearnedVramStore, family: &str) -> Option<ComputeMo
             gpu: components.iter().map(|c| c.compute_mib).collect(),
             host: entry.host_components_mib.as_ref().map(|c| c.compute_mib),
         });
+        // Points the row remembered from earlier ubatch changes at this same ctx.
+        for point in &entry.ub_points {
+            if point.ubatch == 0 || point.gpu_compute_mib.is_empty() {
+                continue;
+            }
+            samples.push(ComputeSample {
+                ctx: ctx as f64,
+                ubatch: f64::from(point.ubatch),
+                gpu: point.gpu_compute_mib.clone(),
+                host: point.host_compute_mib,
+            });
+        }
     }
     fit_compute_model(&samples)
 }
@@ -2380,7 +2459,9 @@ pub fn get_learned_vram(
         .map_or(false, |u| Some(u) != entry.reference_ubatch);
     if ubatch_changed {
         if let (Ok(ctx_now), Some(ub)) = (normalize_ctx_key(&ctx).parse::<f64>(), ubatch) {
-            let family = learned_vram_key_with_draft(
+            // Compare family-to-family: the stored keys are stripped of their ctx token, so the
+            // request side must be stripped the same way (a raw string never matches).
+            let family = compute_family_key(&learned_vram_key_with_draft(
                 &model_path,
                 &provider_id,
                 "",
@@ -2392,7 +2473,7 @@ pub fn get_learned_vram(
                 spec,
                 cache,
                 &draft,
-            );
+            ));
             let model = compute_model_for(&load_store(), &family);
             if let Some(model) = model {
                 from_model = entry.apply_compute_model(ctx_now, f64::from(ub), &model);
@@ -3099,6 +3180,7 @@ mod compute_model_tests {
             }]),
             host_components_mib: None,
             launch_snapshot: None,
+            ub_points: Vec::new(),
             fit_attempts: Vec::new(),
             measured_at: String::new(),
         };
