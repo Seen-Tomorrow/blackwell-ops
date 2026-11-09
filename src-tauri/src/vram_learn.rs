@@ -2085,7 +2085,7 @@ enum ComputeFit {
 impl ComputeFit {
     fn predict(&self, ctx: f64, ub: f64) -> f64 {
         let value = match self {
-            Self::Plane(c) => c[0] + c[1] * ctx + c[2] * ub + c[3] * ctx * ub,
+            Self::Plane(c) => return predict_compute(c, ctx, ub),
             Self::UbOnly(c) => c[0] + c[1] * ub,
         };
         if value.is_finite() {

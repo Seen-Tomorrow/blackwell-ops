@@ -142,6 +142,52 @@ pub fn compute_gpu_mask_from_params(device: &str, split_mode: &str, gpu_count: u
     }
 }
 
+/// Physical VRAM in use on the devices a launch will target, from NVML.
+///
+/// The engine's own `--fit` reads CUDA's free-memory query, which on WDDM reports a *budget*
+/// (physical + shared system memory) rather than physical occupancy: measured 2026-11-09 with two
+/// engines resident, NVML said 3,518 MiB free while a fresh llama-server on the same card reported
+/// 36,549 MiB free. So fit cannot see neighbours, ours or anyone else's, and will happily plan
+/// against a card that is already full.
+pub fn occupied_target_devices(gpu_mask: &str, threshold_mib: u64) -> Vec<(u32, u64)> {
+    let targets: Vec<u32> = if gpu_mask.trim().is_empty() {
+        return Vec::new();
+    } else {
+        gpu_mask
+            .split(',')
+            .filter_map(|part| part.trim().parse::<u32>().ok())
+            .collect()
+    };
+    let Some(samples) = crate::nvml_metrics::scan() else {
+        return Vec::new();
+    };
+    targets
+        .into_iter()
+        .filter_map(|index| {
+            let sample = samples.iter().find(|s| s.index == index)?;
+            (sample.memory_used_mib > threshold_mib).then_some((index, sample.memory_used_mib))
+        })
+        .collect()
+}
+
+/// Replace the fit switch with `off` (adding it when the template does not carry one).
+///
+/// Used when the target device already hosts another process: with fit off the engine either
+/// allocates its buffers on the card or fails loudly, instead of silently planning against a
+/// budget number and spilling into shared memory.
+pub fn force_fit_off(args: &mut Vec<String>) {
+    for i in 0..args.len().saturating_sub(1) {
+        if args[i] == "--fit" || args[i] == "-fit" {
+            if !args[i + 1].eq_ignore_ascii_case("off") {
+                args[i + 1] = "off".to_string();
+            }
+            return;
+        }
+    }
+    args.push("--fit".into());
+    args.push("off".into());
+}
+
 /// Resolve the nvidia-smi executable in a Windows-friendly way.
 /// Prefers the driver-installed copy in System32 (bypasses PATH hijacks / CWD lookup).
 /// Falls back to `where` result (if it exists), then bare "nvidia-smi" (PATH).
@@ -593,4 +639,27 @@ pub fn strip_ansi(s: &str) -> String {
             Some(ch)
         }
     }).collect()
+}
+
+#[cfg(test)]
+mod occupancy_tests {
+    use super::*;
+
+    #[test]
+    fn force_fit_off_replaces_the_switch_or_adds_it() {
+        let mut on: Vec<String> = ["--fit", "on", "--ctx-size", "4096"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        force_fit_off(&mut on);
+        assert_eq!(on[1], "off");
+        assert_eq!(on.iter().filter(|a| *a == "--fit").count(), 1);
+
+        let mut absent: Vec<String> = ["--ctx-size", "4096"].iter().map(|s| s.to_string()).collect();
+        force_fit_off(&mut absent);
+        assert_eq!(
+            absent[absent.len() - 2..].to_vec(),
+            vec!["--fit".to_string(), "off".to_string()]
+        );
+    }
 }

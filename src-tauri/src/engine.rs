@@ -631,6 +631,19 @@ pub async fn launch_engine(
     );
     let mut cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     crate::fit_low_vram::apply_default_fit_target(&mut cmd_args);
+    // A device that already hosts another process cannot be planned by `--fit` (it reads CUDA's
+    // budget, not physical free — see `occupied_target_devices`). Turn fit off so the engine
+    // either allocates on the card or fails visibly, and say why in the console.
+    let occupied = crate::engine_utils::occupied_target_devices(&gpu_mask, 4_096);
+    if !occupied.is_empty() {
+        let detail = occupied
+            .iter()
+            .map(|(index, used)| format!("GPU-{index} {:.1} GiB", *used as f64 / 1024.0))
+            .collect::<Vec<_>>()
+            .join(", ");
+        log::warn!("[GPU_MASK] target device busy ({detail}) — forcing --fit off; CUDA free-memory is a WDDM budget, not physical occupancy");
+        crate::engine_utils::force_fit_off(&mut cmd_args);
+    }
     // Quoted for console + session logs when install/model dirs contain spaces.
     let launch_cmd = engine_utils::format_cmd_line(&binary_path, &cmd_args);
 
@@ -1245,6 +1258,19 @@ pub(crate) fn assemble_launch_command(
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path, &config);
     let mut cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     crate::fit_low_vram::apply_default_fit_target(&mut cmd_args);
+    // A device that already hosts another process cannot be planned by `--fit` (it reads CUDA's
+    // budget, not physical free — see `occupied_target_devices`). Turn fit off so the engine
+    // either allocates on the card or fails visibly, and say why in the console.
+    let occupied = crate::engine_utils::occupied_target_devices(&gpu_mask, 4_096);
+    if !occupied.is_empty() {
+        let detail = occupied
+            .iter()
+            .map(|(index, used)| format!("GPU-{index} {:.1} GiB", *used as f64 / 1024.0))
+            .collect::<Vec<_>>()
+            .join(", ");
+        log::warn!("[GPU_MASK] target device busy ({detail}) — forcing --fit off; CUDA free-memory is a WDDM budget, not physical occupancy");
+        crate::engine_utils::force_fit_off(&mut cmd_args);
+    }
     // Must be cmd-safe: NoBSproof runs this string inside a .cmd with spaces possible.
     let launch_cmd = engine_utils::format_cmd_line(&binary_path, &cmd_args);
 
