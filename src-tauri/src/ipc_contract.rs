@@ -216,6 +216,8 @@ ipc_registry! {
     "FoundryWorkCacheStatus" => crate::reactor_foundry::FoundryWorkCacheStatus,
     "FoundryFlagDefaults" => crate::reactor_foundry::FoundryFlagDefaults,
     "FoundryFlagMode" => crate::reactor_foundry::FoundryFlagMode,
+    "DenialsView" => crate::engine_denials::DenialsView,
+    "DenialRuleView" => crate::engine_denials::DenialRuleView,
     "FoundryChangelog" => crate::github_releases::RepoReleaseNotes,
     "GpuControlDeviceInfo" => crate::gpu_control::GpuControlDeviceInfo,
     "GpuControlStepResult" => crate::gpu_control::GpuControlStepResult,

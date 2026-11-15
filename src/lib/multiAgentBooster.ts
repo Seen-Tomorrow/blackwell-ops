@@ -79,6 +79,7 @@ const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
 
 export const BRAINS_OPTIONS: BrainsOption[] = [
   { id: "light", label: "Light", kvQuant: "q4_0", blurb: "Smaller KV — more room for agents / context" },
+  { id: "crisp", label: "Crisp", kvQuant: "f8_e4m3", blurb: "FP8 KV — near-Solid quality for less memory, needs an engine that supports it" },
   { id: "solid", label: "Solid", kvQuant: "q8_0", blurb: "Balanced quality vs memory" },
   { id: "sharp", label: "Sharp", kvQuant: "f16", blurb: "Highest KV quality — hungriest VRAM" },
   { id: "bf16", label: "BF16", kvQuant: "bf16", blurb: "BF16 KV — max quality when the binary supports it" },
@@ -173,6 +174,13 @@ export function brainsFromKvQuant(kv: string | undefined): BrainsId {
   return `kv:${s}`;
 }
 
+/** Slider label for a kv_quant value ("Crisp"), or the raw value when unmapped. */
+export function memoryLabelForKvQuant(kv: string | undefined): string {
+  const s = (kv ?? "").trim();
+  if (!s) return "";
+  return KNOWN_KV_BY_NORM.get(s.toLowerCase())?.label ?? s;
+}
+
 function pickKvQuantForBrains(
   brains: BrainsId,
   available: (string | number)[],
@@ -188,12 +196,14 @@ function pickKvQuantForBrains(
   // Fallbacks along the quality ladder
   const ladder =
     brains === "light"
-      ? ["q4_0", "q8_0", "f16", "bf16"]
-      : brains === "solid"
-        ? ["q8_0", "q4_0", "f16", "bf16"]
-        : brains === "bf16"
-          ? ["bf16", "f16", "q8_0", "q4_0"]
-          : ["f16", "bf16", "q8_0", "q4_0"];
+      ? ["q4_0", "f8_e4m3", "q8_0", "f16", "bf16"]
+      : brains === "crisp"
+        ? ["f8_e4m3", "q8_0", "q4_0", "f16", "bf16"]
+        : brains === "solid"
+          ? ["q8_0", "f8_e4m3", "q4_0", "f16", "bf16"]
+          : brains === "bf16"
+            ? ["bf16", "f16", "q8_0", "q4_0"]
+            : ["f16", "bf16", "q8_0", "q4_0"];
   for (const c of ladder) {
     const hit = strs.find((v) => v.toLowerCase() === c);
     if (hit) return hit;
@@ -233,7 +243,7 @@ export function buildMemoryOptions(
     });
   }
   // Prefer quality ladder order when possible
-  const order = ["q4_0", "q8_0", "f16", "bf16"];
+  const order = ["q4_0", "f8_e4m3", "q8_0", "f16", "bf16"];
   out.sort((a, b) => {
     const ia = order.indexOf(a.kvQuant.toLowerCase());
     const ib = order.indexOf(b.kvQuant.toLowerCase());

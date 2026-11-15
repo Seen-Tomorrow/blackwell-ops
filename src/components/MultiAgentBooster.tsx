@@ -808,16 +808,11 @@ export default function MultiAgentBooster({
                 label: o.label,
                 blurb: o.blurb,
                 custom: o.custom,
+                // The real value lives above the name, tiny and faint: a right-hand badge
+                // re-flowed the whole track every time the value changed length.
+                aboveLabel: o.kvQuant,
+                aboveRaw: true,
               }))}
-              valueBadge={
-                memoryOptions.find((o) => o.id === brains)?.kvQuant
-                ?? BRAINS_OPTIONS.find((o) => o.id === brains)?.kvQuant
-                ?? (typeof brains === "string" && brains.startsWith("kv:")
-                  ? brains.slice(3)
-                  : undefined)
-              }
-              badgeWidth="3rem"
-              heroBadge
             />
           </div>
           )}
@@ -830,12 +825,13 @@ export default function MultiAgentBooster({
               options={agentOptions.map((o) => ({
                 id: o.id,
                 label: o.label,
-                blurb: `${o.blurb} (x${o.parallel})`,
+                blurb: o.blurb,
                 custom: o.custom,
+                // Parallel count above the name, same as MEMORY's kv value: a right-hand
+                // badge re-flowed the track when the number gained a digit.
+                aboveLabel: `x${o.parallel}`,
+                aboveRaw: true,
               }))}
-              valueBadge={`x${parallelForCodingMode(codingMode)}`}
-              badgeWidth="3rem"
-              heroBadge
             />
           </div>
           )}

@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "denials": [
+    {
+      "id": "fp8-kv-arch",
+      "knob": "kv_quant",
+      "values": ["f8_e4m3"],
+      "architectures": [
+        "deepseek32",
+        "deepseek4",
+        "deepseek41",
+        "glm-dsa",
+        "glm5-next",
+        "dots3note",
+        "mistral-large4",
+        "hy_v4",
+        "minimax-m3",
+        "qwen4exp",
+        "dflash"
+      ],
+      "reason": "llama.cpp v1.0 implements the FP8 KV cache only for a subset of architectures; this one returns null from llama_init_from_model after the weights load, so the engine dies at context creation"
+    },
+    {
+      "id": "tensor-split-laguna",
+      "knob": "split",
+      "values": ["tensor"],
+      "architectures": ["laguna"],
+      "reason": "llama.cpp denies -sm tensor on amax-rescaled MoE architectures"
+    }
+  ]
+}

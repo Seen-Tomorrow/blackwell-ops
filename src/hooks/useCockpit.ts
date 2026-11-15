@@ -252,6 +252,10 @@ export function useCockpit({
     const def = allParamsResolved.find((p) => p.key === "kv_quant");
     if (!def) return [];
     const base = fullAutoFixed ? kvQuantFactoryValues : kvQuantValues;
+    // Every value stays selectable, including ones the engine denies: hiding the current
+    // selection leaves the config pointing at a value the UI no longer shows, and the
+    // launch/probe then refuses with nothing on screen explaining why. The denial is
+    // printed on the forecast glass instead (`VramBadge`), where the operator acts on it.
     return filterParamValuesForConfigView(def, base, cockpitValueView);
   }, [allParamsResolved, fullAutoFixed, cockpitValueView, kvQuantFactoryValues, kvQuantValues]);
 

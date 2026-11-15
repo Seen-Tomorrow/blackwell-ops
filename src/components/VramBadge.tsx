@@ -16,6 +16,8 @@ import MemorySourcePanel, {
 } from "./MemorySourcePanel";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { FusionDualOrient } from "../lib/storage";
+import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
+import { memoryLabelForKvQuant } from "../lib/multiAgentBooster";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -187,6 +189,8 @@ export default function VramBadge({
   ]);
 
   const [takeoverState, setTakeoverState] = useState<"idle" | "busy">("idle");
+  // Same denial table the engine config and the launch guard obey; the glass only reports it.
+  const denials = useEngineDenials();
   // A mode switch must be visible even when the numbers land in the same place: the topo runs
   // a short re-scan and the bars ease to their new widths.
   const [placementFlash, setPlacementFlash] = useState(false);
@@ -295,6 +299,42 @@ export default function VramBadge({
             <span className="vram-forecast-draft__flank-readout">SKIP</span>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // A denied knob value never reaches the engine, so there is nothing to measure: the
+  // radar would spin on a launch the guard already refuses, and any learned manifest for
+  // this model describes a different configuration. Say it here, where the operator is
+  // looking — a toast is gone before they switch model.
+  const deniedKnob = deniedKnobRule(
+    denials,
+    "kv_quant",
+    kvQuant ?? "",
+    modelMeta?.architecture ?? "",
+  );
+  if (deniedKnob) {
+    const isKv = deniedKnob.knob === "kv_quant";
+    const what = isKv ? memoryLabelForKvQuant(kvQuant) || "this MEMORY value" : `this ${deniedKnob.knob.replace(/_/g, " ")} setting`;
+    const core = isKv ? "KV" : "CFG";
+    return (
+      <div
+        className={`vram-badge-forecast vram-denial relative flex flex-col min-h-0 overflow-hidden items-center justify-center gap-3 ${className || ""}`}
+        role="alert"
+        data-forecast-denied={deniedKnob.id}
+      >
+        <div className="vram-denial__scope" aria-hidden>
+          <span className="vram-forecast-measuring__ring" />
+          <span className="vram-forecast-measuring__ring vram-forecast-measuring__ring--delay" />
+          <span className="vram-forecast-measuring__beam" />
+          <span className="vram-forecast-measuring__core font-mono">{core}</span>
+        </div>
+        <span className="vram-denial__title font-mono">CANNOT USE {what}</span>
+        <span className="vram-denial__sub">
+          {isKv
+            ? "This engine build does not support it — move the MEMORY slider to a different value."
+            : "This engine build does not support this combination — pick a different value."}
+        </span>
       </div>
     );
   }

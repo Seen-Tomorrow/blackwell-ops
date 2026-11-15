@@ -481,24 +481,33 @@ pub async fn launch_engine(
     crate::config::validate_model_path(&config.model_path)
         .map_err(|message| BlackwellError::EngineSpawnFailed { message })?;
 
-    // Arch capabilities are a data file, not a hardcoded match: upstream may deny
-    // flags for an architecture (currently `-sm tensor` on laguna/amax rescaling).
-    if config
-        .get_param_str("split")
-        .is_some_and(|split| split.eq_ignore_ascii_case("tensor"))
-    {
-        let shape = crate::model_cache::get_cached_with_shape(&config.model_path)
-            .1
-            .or_else(|| crate::gguf_shape::read_shape_for_path(&config.model_path).ok());
-        if let Some(shape) = shape {
-            if let Some(reason) = crate::arch_capabilities::tensor_split_denial(&shape.architecture) {
-                return Err(BlackwellError::EngineSpawnFailed {
-                    message: format!(
-                        "TENSOR split is not supported for architecture '{}' — {reason}",
-                        shape.architecture
-                    ),
-                });
-            }
+    // One table, one evaluator (`engine_denials`): a rule denies a knob **value** for a
+    // model family, and everything else keeps working. Any denial that fires is
+    // announced in BOC, so a rule that outlived its engine is visible rather than a knob
+    // that mysteriously refuses to apply.
+    let mut arch: Option<String> = None;
+    for knob in ["split", "kv_quant"] {
+        let Some(value) = config.get_param_str(knob) else {
+            continue;
+        };
+        if !crate::engine_denials::knob_has_rules(knob) {
+            continue;
+        }
+        let arch = arch.get_or_insert_with(|| {
+            crate::model_cache::get_cached_with_shape(&config.model_path)
+                .1
+                .or_else(|| crate::gguf_shape::read_shape_for_path(&config.model_path).ok())
+                .map(|shape| shape.architecture)
+                .unwrap_or_default()
+        });
+        if let Some(denial) = crate::engine_denials::evaluate(knob, &value, arch) {
+            let message = denial.message();
+            app.log_hub.emit_console_line(
+                BlackwellOutputConsoleCategory::Engines,
+                &format!("[denial] {message}"),
+                BlackwellOutputConsoleLineStyle::Warning,
+            );
+            return Err(BlackwellError::EngineSpawnFailed { message });
         }
     }
 

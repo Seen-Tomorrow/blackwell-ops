@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useArchCapabilities } from "../hooks/useArchCapabilities";
+import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import type { ConfigViewMode, ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID, isProfileBuilt, profileEnvLookup } from "../lib/types";
 import {
@@ -748,12 +748,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     spawnProfile,
   });
   // Custom / empty profile: always allow tensor/row if present in template values.
-  const archCaps = useArchCapabilities();
+  const denials = useEngineDenials();
   const modelArch = (model?.metadata?.architecture ?? "").trim().toLowerCase();
-  const archRule = modelArch ? archCaps?.arches[modelArch] : undefined;
   const tensorSplitSupported =
     (isCustomProvider || spawnProfile?.tensor_split !== false)
-    && archRule?.tensor_split !== false;
+    && !deniedKnobRule(denials, "split", "tensor", modelArch);
 
   const isProfileBuilding = useCallback((profile: EnvProfile): boolean => {
     if (!buildProgress) return false;

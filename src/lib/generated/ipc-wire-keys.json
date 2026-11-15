@@ -6,6 +6,8 @@
   "CatalogScanReport": ["models", "paths"],
   "CatalogUpdateEntry": ["path", "hfModelId", "quant", "hasUpdate", "kind", "remoteUrl", "remoteTotalSize", "reason", "noRemote"],
   "CpuInfo": ["name", "cores", "threads", "max_clock_mhz", "current_clock_mhz", "avg_usage_percent", "core_usages"],
+  "DenialRuleView": ["id", "knob", "values", "architectures", "reason"],
+  "DenialsView": ["version", "denials"],
   "DiskCheckResult": ["quantType", "pathInRepo", "matchType", "diskFileSize", "diskAuthor"],
   "DownloadHistoryEntry": ["id", "hfModelId", "file_name", "quantType", "kind", "status", "bytes", "finishedAt"],
   "DownloadTargetCheck": ["exists", "sameModel", "lfsMatch", "cachedLfsOid"],

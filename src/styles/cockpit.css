@@ -1767,17 +1767,25 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .cockpit-slider-mark-label {
+  /* Same voice as the GREEDY/PROBAB chips: caps, tight tracking, chip text colour. */
   font-size: var(--type-tiny);
-  color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--theme-chip-text);
   transition: color 0.15s ease, text-shadow 0.15s ease;
 }
 
 .cockpit-slider-mark-label--selected {
-  color: var(--theme-accent-bright);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent);
+  /* Fused with the thumb: same fill as the thumb, so mark + label read as one T-shaped
+     selection in every theme, and the text inverts to stay legible on it. */
+  background: var(--theme-accent-bright);
+  border: 1px solid var(--theme-accent-bright);
+  border-radius: 0.125rem;
+  padding: 0 0.25rem;
+  color: var(--theme-chip-solid-text);
   font-weight: 700;
-  font-size: var(--type-sm);
-  letter-spacing: 0.04em;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
 }
 
 /* Hover behavior removed — labels always visible */
@@ -1811,16 +1819,21 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-shadow: 0 0 8px var(--cockpit-mtp-dim, var(--fixed-green-400-a4));
 }
 .cockpit-slider-mark-label--green.cockpit-slider-mark-label--selected {
-  color: var(--cockpit-mtp);
-  text-shadow: 0 0 10px var(--cockpit-mtp-dim, var(--fixed-green-400-a55));
+  /* Badge keeps the semantic fill; text inverts to stay readable on it. */
+  background: var(--cockpit-mtp);
+  border-color: var(--cockpit-mtp);
+  color: var(--theme-chip-solid-text);
+  text-shadow: none;
 }
 .cockpit-slider-mark-label--violet {
   color: var(--cockpit-dflash);
   text-shadow: 0 0 8px var(--cockpit-dflash-dim, var(--fixed-violet-400-a4));
 }
 .cockpit-slider-mark-label--violet.cockpit-slider-mark-label--selected {
-  color: var(--cockpit-dflash);
-  text-shadow: 0 0 10px var(--cockpit-dflash-dim, var(--fixed-violet-400-a55));
+  background: var(--cockpit-dflash);
+  border-color: var(--cockpit-dflash);
+  color: var(--theme-chip-solid-text);
+  text-shadow: none;
 }
 
 .cockpit-slider-mark-label--muted {
@@ -1835,8 +1848,25 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .cockpit-slider-mark-label--custom.cockpit-slider-mark-label--selected {
-  color: var(--fixed-amber-300);
+  background: var(--fixed-amber-300);
+  border-color: var(--fixed-amber-300);
+  color: var(--theme-chip-solid-text);
   opacity: 1;
+}
+
+/* E-ink faces force `color: inherit` into every cockpit descendant
+   (`.eink-panel .full-auto-cockpit *` in config.css, which is imported after this partial),
+   so a filled badge printed in its parent's ink — invisible on its own fill. These rules
+   scope above that one (three classes) and pick ink per fill, not per theme. */
+.cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--selected {
+  color: var(--theme-chip-solid-text);
+}
+
+/* Green/violet/amber fills are mid-light in every theme, so they always take dark ink. */
+.cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--green.cockpit-slider-mark-label--selected,
+.cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--violet.cockpit-slider-mark-label--selected,
+.cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--custom.cockpit-slider-mark-label--selected {
+  color: var(--fixed-black-a75);
 }
 
 .cockpit-slider-mark-wrap--custom .cockpit-slider-mark {
@@ -1889,6 +1919,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .cockpit-slider-above-label--selected {
   font-weight: 700;
   opacity: 1;
+}
+
+/* Literal values (kv_quant) above a MEMORY mark: keep their case, the engine value is
+   lowercase and a shouted F8_E4M3 reads like a different token. */
+.cockpit-slider-above-label--raw {
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 

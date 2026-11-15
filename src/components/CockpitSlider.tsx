@@ -25,6 +25,8 @@ interface CockpitSliderOption {
   emphasize?: boolean;
   /** Tiny status above the mark (e.g. "draft ready"). */
   aboveLabel?: string;
+  /** `aboveLabel` is a literal value (kv_quant, …), not a word: keep its case. */
+  aboveRaw?: boolean;
   /** User-added / non-preset factory value — slightly different mark style. */
   custom?: boolean;
 }
@@ -240,7 +242,7 @@ export default function CockpitSlider({
                   <span
                     className={`cockpit-slider-above-label absolute left-1/2 -translate-x-1/2 text-center font-mono whitespace-nowrap${
                       isSelected ? " cockpit-slider-above-label--selected" : ""
-                    }`}
+                    }${opt.aboveRaw ? " cockpit-slider-above-label--raw" : ""}`}
                     style={{ top: `${Math.max(0, trackTop - 12)}px` }}
                     // Family word (draft/ngram) stays neutral — color only mark + under-label
                   >

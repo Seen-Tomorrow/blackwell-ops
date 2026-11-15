@@ -212,6 +212,23 @@ export interface FoundryFlagDefaults {
   modes: FoundryFlagMode[];
 }
 
+/** One engine denial rule: a knob value the engine cannot honour for these models. */
+export interface DenialRuleView {
+  id: string;
+  knob: string;
+  /** Empty = every value of the knob is denied. */
+  values: string[];
+  /** Empty = applies to every architecture. */
+  architectures: string[];
+  reason: string;
+}
+
+/** The whole denial table — same file the backend guards with. */
+export interface DenialsView {
+  version: number;
+  denials: DenialRuleView[];
+}
+
 export interface ProviderConfig {
   id: string;
   display_name: string;

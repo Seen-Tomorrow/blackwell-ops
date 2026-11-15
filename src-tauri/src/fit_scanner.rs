@@ -788,6 +788,39 @@ pub async fn scan_single_anchor(
         .map(String::as_str)
         .unwrap_or("unknown");
 
+    // The same denial table the launch guard uses. A denied knob value must never reach
+    // the engine: llama aborts inside context creation (0xC0000409) *after* the weights
+    // load, which reads as a silent death with nothing on the console. Refuse first and
+    // hand back the rule's reason instead.
+    {
+        let candidates = [
+            ("kv_quant", ["--cache-type-k", "--cache-type-v", "-ctk", "-ctv"].as_slice()),
+            ("split", ["--split-mode", "-sm"].as_slice()),
+        ];
+        let requested: Vec<(&str, String)> = candidates
+            .iter()
+            .filter(|(knob, _)| crate::engine_denials::knob_has_rules(knob))
+            .filter_map(|(knob, flags)| {
+                args.windows(2)
+                    .find_map(|pair| flags.contains(&pair[0].as_str()).then(|| pair[1].clone()))
+                    .map(|value| (*knob, value))
+            })
+            .collect();
+        if !requested.is_empty() {
+            let arch = crate::model_cache::get_cached_with_shape(model_path)
+                .1
+                .or_else(|| crate::gguf_shape::read_shape_for_path(model_path).ok())
+                .map(|shape| shape.architecture)
+                .unwrap_or_default();
+            for (knob, value) in requested {
+                if let Some(denial) = crate::engine_denials::evaluate(knob, &value, &arch) {
+                    log::warn!("[denial] {}", denial.message());
+                    return Err(denial.message());
+                }
+            }
+        }
+    }
+
     let fit_binary = fit_binary.to_string();
     let fit_binary_log = fit_binary.clone();
     let args = args.to_vec();
