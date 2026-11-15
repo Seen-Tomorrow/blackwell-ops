@@ -168,14 +168,21 @@ function probeScenarioFields(
   ) {
     return {};
   }
+  // A probe taken under another placement (device / split / tensor split) is not a measurement of
+  // this one: its total describes a different arrangement of the same weights. Reusing the total
+  // while dropping only the per-card breakdown is what let a split-layer view inherit a split-none
+  // number and spread it across two cards.
   const placementMatches = session.placementKey === placementKey;
+  if (!placementMatches) {
+    return {};
+  }
   return {
     fitProbeVramMib: session.validatedVramMib,
     fitProbeHostMib: session.validatedHostMib,
     fitProbeHostModelMib: session.validatedHostModelMib,
     fitProbeEngramMib: session.validatedEngramMib,
-    fitProbeGpuBreakdownMib: placementMatches ? session.validatedGpuBreakdownMib : undefined,
-    fitProbeComponentsMib: placementMatches ? session.validatedComponentsMib : undefined,
+    fitProbeGpuBreakdownMib: session.validatedGpuBreakdownMib,
+    fitProbeComponentsMib: session.validatedComponentsMib,
     fitProbeCurve: session.curve,
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
