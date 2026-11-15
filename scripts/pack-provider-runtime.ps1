@@ -102,6 +102,17 @@ function Pack-OneProfile {
         return $null
     }
 
+    # A pack that ships must run on CPUs other than the build machine. `GGML_NATIVE=ON`
+    # auto-detects the build host (MSVC: FindSIMD try_compile) and produces a single
+    # `/arch:` backend — fine locally, fatal in a catalog: an AVX-512 build dies with
+    # 0xC000001D on every Intel client CPU since 12th gen, before printing a line.
+    # Portable packs carry one `ggml-cpu-<isa>.dll` per ISA instead of `ggml-cpu.dll`.
+    $cpu_variants = @(Get-ChildItem -LiteralPath $src -Filter 'ggml-cpu-*.dll' -File -ErrorAction SilentlyContinue)
+    if ($cpu_variants.Count -eq 0) {
+        throw ("[engine-pack] $Prov/$Prof is a NATIVE single-ISA build (no ggml-cpu-*.dll in $src). " +
+            "Rebuild this profile with -DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON -DGGML_BACKEND_DL=ON before packing it for distribution.")
+    }
+
     $cuda = Get-ProfileCuda -Profile $Prof
     $identity = Get-EngineIdentity -Exe (Join-Path $src 'llama-server.exe') -CudaVersion $cuda
     $build_id = [string]$identity.Build

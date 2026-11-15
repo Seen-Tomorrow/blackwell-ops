@@ -14,7 +14,7 @@
 
 mod artifacts;
 mod batch;
-mod cmake;
+pub(crate) mod cmake;
 mod fstree;
 mod git;
 mod progress;
@@ -2360,6 +2360,45 @@ pub async fn foundry_preview_source(
     })
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundryFlagMode {
+    pub id: String,
+    pub label: String,
+    pub profile: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundryFlagDefaults {
+    pub default_profile: String,
+    pub mandatory: String,
+    pub modes: Vec<FoundryFlagMode>,
+}
+
+/// Everything the BUILD FLAGS panel needs, so the default exists in exactly one place.
+///
+/// The panel used to carry its own copy of the default (and a placeholder literal), which
+/// is how a dead `-DGGML_AVX512=ON` survived in the UI long after the backend changed.
+#[tauri::command]
+pub fn foundry_flag_defaults(provider_id: String) -> FoundryFlagDefaults {
+    FoundryFlagDefaults {
+        default_profile: crate::templates::default_build_profile_for_provider(&provider_id),
+        mandatory: cmake::FOUNDRY_MANDATORY_CMAKE_FLAGS.trim().to_string(),
+        modes: cmake::BUILD_FLAG_MODES
+            .iter()
+            // DEV-only modes (the portable/shipping shape) exist for the maintainer; a
+            // shipped app has nowhere to publish an engine, so it never offers them.
+            .filter(|mode| !mode.dev_only || cfg!(debug_assertions))
+            .map(|mode| FoundryFlagMode {
+                id: mode.id.to_string(),
+                label: mode.label.to_string(),
+                profile: mode.profile.to_string(),
+            })
+            .collect(),
+    }
+}
+
 #[tauri::command]
 pub async fn foundry_status() -> Result<Option<BuildProgress>, String> {
     let current = CURRENT_BUILD.lock().await;
@@ -3045,7 +3084,16 @@ pub async fn foundry_work_cache_status(
         sccache_path: sccache_path.map(|path| path.to_string_lossy().to_string()),
         sccache_version,
         sccache_size_bytes,
-        sccache_size_label: format_bytes_label(sccache_size_bytes),
+        // An unmeasured size is not a zero size. The summary variant skips the cache walk
+        // (a 1500-file directory scan on every mount), and formatting that skip as "0 B"
+        // made the form claim an empty object cache while the CACHE tab showed ~500 MB.
+        // Empty label = "not measured"; the UI omits it instead of printing a number it
+        // never read.
+        sccache_size_label: if scan_sccache_size {
+            format_bytes_label(sccache_size_bytes)
+        } else {
+            String::new()
+        },
     })
 }
 

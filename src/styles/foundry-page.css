@@ -1205,12 +1205,15 @@
   padding-left: 0.55rem;
   border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-  font-size: var(--type-micro);
+  /* Same type scale as __state: both halves of CACHING are one status line, and
+     micro-vs-label made the second check read as a lesser claim. */
+  font-size: var(--type-label);
   letter-spacing: 0.08em;
 }
 
 .fnd-cache-summary__sccache--on {
-  color: var(--theme-text-muted);
+  /* Matches __state--warm: "on" is the accent, not a muted note. */
+  color: var(--theme-accent);
 }
 
 .fnd-cache-summary__manage {

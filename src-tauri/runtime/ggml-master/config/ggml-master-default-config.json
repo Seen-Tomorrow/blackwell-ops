@@ -1,7 +1,7 @@
 {
   "binary_name": "llama-server.exe",
   "branch": "master",
-  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=OFF",
+  "build_profile": "-DGGML_CUDA=ON\n-DGGML_NATIVE=ON",
   "description": "Official llama.cpp master build",
   "display_name": "GGML Master",
   "git_url": "https://github.com/ggml-org/llama.cpp",
@@ -358,7 +358,8 @@
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "mmap",
-        "mlock"
+        "mlock",
+        "none"
       ]
     },
     {
@@ -836,6 +837,6 @@
       "4"
     ]
   },
-  "templateVersion": 58,
+  "templateVersion": 59,
   "template_type": "ggml-llama"
 }

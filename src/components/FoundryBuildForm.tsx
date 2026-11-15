@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { FoundryChangelog, FoundrySourcePreview, ProviderConfig } from "../lib/types";
+import type { FoundryChangelog, FoundryFlagDefaults, FoundrySourcePreview, ProviderConfig } from "../lib/types";
 import { profileEnvLookup } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
 import { ENV_META, type Env } from "../lib/foundry_constants";
@@ -14,7 +14,6 @@ import FoundryEnginePicker from "./FoundryEnginePicker";
 import {
   CUDA_ARCH_BUILD_OPTIONS,
   DEFAULT_CUDA_ARCH_CODES,
-  DEFAULT_FOUNDRY_CMAKE_BASE,
   formatCudaArchitecturesCmakeLine,
   mergeBuildProfileWithArchitectures,
   orderCudaArchCodes,
@@ -51,7 +50,7 @@ interface Verdict {
 function splitProfile(raw: string): { base: string; archCodes: string[] } {
   const trimmed = raw.trim();
   return {
-    base: stripCudaArchitecturesFromCmake(trimmed) || DEFAULT_FOUNDRY_CMAKE_BASE,
+    base: stripCudaArchitecturesFromCmake(trimmed),
     archCodes: resolveSelectedCudaArchitectures(trimmed),
   };
 }
@@ -153,6 +152,16 @@ export default function FoundryBuildForm({
   const [includeExtraTools, setIncludeExtraTools] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showFlags, setShowFlags] = useState(false);
+  const [flagDefaults, setFlagDefaults] = useState<FoundryFlagDefaults | null>(null);
+
+  // One source of truth for the default, the mode presets and the enforced flags.
+  useEffect(() => {
+    let cancelled = false;
+    void invoke<FoundryFlagDefaults>("foundry_flag_defaults", { providerId: provider.id })
+      .then((defaults) => { if (!cancelled) setFlagDefaults(defaults); })
+      .catch(() => { if (!cancelled) setFlagDefaults(null); });
+    return () => { cancelled = true; };
+  }, [provider.id]);
 
   const [sourcePreview, setSourcePreview] = useState<FoundrySourcePreview | null>(null);
   const [sourceLoading, setSourceLoading] = useState(true);
@@ -212,15 +221,24 @@ export default function FoundryBuildForm({
 
   const orderedArchs = orderCudaArchCodes(selectedArchs);
   const archCmakePreview = formatCudaArchitecturesCmakeLine(orderedArchs);
-  const mergedProfile = mergeBuildProfileWithArchitectures(buildProfile, selectedArchs);
   const savedProfile = provider.build_profile?.trim() ?? "";
-  const defaultMerged = mergeBuildProfileWithArchitectures(initial.base, initial.archCodes);
-  const flagsSummary =
-    savedProfile && mergedProfile === savedProfile
-      ? "SAVED"
-      : mergedProfile === defaultMerged
-        ? "DEFAULT"
-        : "MODIFIED";
+  const mergedProfile = mergeBuildProfileWithArchitectures(buildProfile, selectedArchs);
+  const defaultBase = flagDefaults?.defaultProfile ?? "";
+  // DEFAULT compares against the canonical default (plus the selected archs), not against
+  // whatever was last saved — that comparison is what made a reset look like a custom edit.
+  const factoryMerged = defaultBase ? mergeBuildProfileWithArchitectures(defaultBase, selectedArchs) : "";
+  const flagsSummary = factoryMerged && mergedProfile === factoryMerged ? "DEFAULT" : "MODIFIED";
+  const normaliseFlags = (value: string) => value.split(/\s+/).filter(Boolean).sort().join(" ");
+  const activeModeId =
+    flagDefaults?.modes.find((mode) => normaliseFlags(mode.profile) === normaliseFlags(buildProfile))?.id ??
+    null;
+  const resetBuildFlags = useCallback(() => setBuildProfile(defaultBase), [defaultBase]);
+
+  // A provider with no saved profile starts on the canonical default rather than an empty box.
+  useEffect(() => {
+    if (!flagDefaults) return;
+    setBuildProfile((current) => (current.trim() ? current : flagDefaults.defaultProfile));
+  }, [flagDefaults]);
 
   const verdict = sourceVerdict(sourcePreview, sourceLoading, environment);
   const summaryLine = [
@@ -519,30 +537,59 @@ export default function FoundryBuildForm({
             {flagsSummary}
           </span>
           <p className="fnd-form__hint">
-            {flagsSummary === "DEFAULT"
-              ? "Default flags — nothing custom."
-              : flagsSummary === "SAVED"
-                ? "Same as the last saved build."
-                : "Custom flags changed for this build."}
+            {flagsSummary === "DEFAULT" ? "Canonical default flags." : "Flags differ from the canonical default."}
           </p>
         </div>
-        <button
-          type="button"
-          className="fnd-form__btn"
-          onClick={() => setShowFlags(open => !open)}
-        >
-          {showFlags ? "CLOSE" : "EDIT"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="fnd-form__btn"
+            onClick={resetBuildFlags}
+            disabled={!defaultBase || mergedProfile === factoryMerged}
+            title="Restore the canonical default build flags"
+          >
+            RESET
+          </button>
+          <button
+            type="button"
+            className="fnd-form__btn"
+            onClick={() => setShowFlags(open => !open)}
+          >
+            {showFlags ? "CLOSE" : "EDIT"}
+          </button>
+        </div>
       </section>
       {showFlags && (
-        <textarea
-          rows={7}
-          className="fnd-form__textarea"
-          value={buildProfile}
-          onChange={(event) => setBuildProfile(event.target.value)}
-          spellCheck={false}
-          placeholder={"-DGGML_CUDA=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=OFF"}
-        />
+        <div className="flex flex-col gap-2">
+          {flagDefaults && flagDefaults.modes.length > 0 && (
+            <div className="flex items-center gap-2">
+              {flagDefaults.modes.map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  className={`fnd-form__btn${activeModeId === mode.id ? " fnd-form__btn--primary" : ""}`}
+                  onClick={() => setBuildProfile(mode.profile)}
+                  aria-pressed={activeModeId === mode.id}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <textarea
+            rows={7}
+            className="fnd-form__textarea"
+            value={buildProfile}
+            onChange={(event) => setBuildProfile(event.target.value)}
+            spellCheck={false}
+            placeholder={defaultBase}
+          />
+          {flagDefaults && (
+            <p className="fnd-form__hint">
+              ALWAYS APPLIED — {flagDefaults.mandatory}
+            </p>
+          )}
+        </div>
       )}
 
       <button

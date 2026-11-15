@@ -106,33 +106,28 @@ export default function FoundryCachePanel({
   }, [clearKind, clearBusy, providerId, profile, refreshWorkCache]);
 
   if (variant === "summary") {
-    const tree = !workCache
-      ? "CHECKING…"
-      : workCache.cmakeCachePresent
-        ? `TREE ${workCache.sizeLabel}`
-        : "COLD TREE";
-    const sccache = !workCache
-      ? ""
-      : workCache.sccacheAvailable
-        ? `SCCACHE ON${workCache.sccacheSizeLabel ? ` · ${workCache.sccacheSizeLabel}` : ""}`
-        : "SCCACHE OFF";
+    // Sizes live on the CACHE tab. This row only asserts that both caches are usable —
+    // same language as the TOOLCHAIN strip (✓ READY). Printing numbers here meant
+    // showing a size the form deliberately never measured.
+    const treeOn = Boolean(workCache?.cmakeCachePresent);
+    const sccacheOn = Boolean(workCache?.sccacheAvailable);
     return (
       <div className="fnd-cache-summary">
         <span className="fnd-cache-summary__label">CACHING</span>
         <span
           className={`fnd-cache-summary__state${
-            workCache?.cmakeCachePresent ? " fnd-cache-summary__state--warm" : ""
+            treeOn ? " fnd-cache-summary__state--warm" : ""
           }`}
         >
-          {tree}
+          {workCache ? `${treeOn ? "✓" : "✕"} TREE` : "CHECKING…"}
         </span>
-        {sccache && (
+        {workCache && (
           <span
             className={`fnd-cache-summary__sccache${
-              workCache?.sccacheAvailable ? " fnd-cache-summary__sccache--on" : ""
+              sccacheOn ? " fnd-cache-summary__sccache--on" : ""
             }`}
           >
-            {sccache}
+            {`${sccacheOn ? "✓" : "✕"} SCCACHE`}
           </span>
         )}
         <button

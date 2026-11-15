@@ -13,9 +13,15 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
         concat!(
             "-DLLAMA_CURL=OFF ",
             "-DGGML_CUDA=ON ",
-            "-DGGML_AVX512=ON ",
+            // Default is a **local** build: NATIVE makes MSVC run FindSIMD try_compile
+            // probes and target this machine (`/arch:AVX2` or `/arch:AVX512`), at 1×
+            // build cost. That is what a user building an engine for themselves wants.
+            // A pack that leaves this machine must instead be built with
+            // `-DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON -DGGML_BACKEND_DL=ON`
+            // (one CPU backend per ISA, picked at load time); the pack scripts refuse
+            // a single-ISA artifact, so native can never ship by accident.
+            "-DGGML_NATIVE=ON ",
             // Portable CPU + CUDA (not host-only); GPU SMs still set via CMAKE_CUDA_ARCHITECTURES.
-            "-DGGML_NATIVE=OFF ",
             // Ship llama-server (HTTP API engine) — not a separate "web UI" product.
             "-DLLAMA_BUILD_SERVER=ON ",
             // llama-bench lives under tools/ (not examples/).
@@ -33,17 +39,57 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
 
 /// Always merge these into configure so provider build_profile cannot re-enable tests/examples,
 /// drop the server/tools targets, or leave host-native CPU/CUDA defaults that break ship portability.
-const FOUNDRY_MANDATORY_CMAKE_FLAGS: &str = concat!(
+///
+/// CPU instruction set is deliberately **not** in this list. `GGML_NATIVE=ON` auto-detects the
+/// build machine (MSVC runs `FindSIMD.cmake` try_compile probes) and is correct — and fast — for
+/// a pack that never leaves that machine. `GGML_CPU_ALL_VARIANTS=ON` + `GGML_BACKEND_DL=ON` builds
+/// one backend per ISA and is required for a pack that ships. Pinning either here was wrong in
+/// both directions: forcing native shipped an `/arch:AVX512` pack that died with 0xC000001D on
+/// every Intel client CPU since 12th gen, and forcing variants multiplies every local build by
+/// nine. The shipping boundary enforces it instead — `scripts/pack-provider-runtime.ps1` and
+/// `prepare-release-runtime.ps1` refuse an artifact with no `ggml-cpu-*.dll`.
+pub(crate) const FOUNDRY_MANDATORY_CMAKE_FLAGS: &str = concat!(
     // Release is selected at compile time via `cmake --build --config Release`
     // (mod.rs stage_compile). CMAKE_BUILD_TYPE is ignored by multi-config generators
     // (Ninja Multi-Config), so it is deliberately NOT forced here.
-    "-DGGML_NATIVE=OFF ",
     "-DLLAMA_BUILD_SERVER=ON ",
     "-DLLAMA_BUILD_TOOLS=ON ",
     "-DLLAMA_BUILD_TESTS=OFF ",
     "-DLLAMA_BUILD_EXAMPLES=OFF ",
     "-DGGML_CUDA_NCCL=OFF",
 );
+
+/// One selectable BUILD FLAGS shape. `dev_only` modes exist for the maintainer's release
+/// builds and are not offered in a shipped app — a user has no catalog to publish to, and
+/// the 9× multi-ISA build is not something to hand them by accident.
+pub(crate) struct BuildFlagMode {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub profile: &'static str,
+    pub dev_only: bool,
+}
+
+/// Build modes offered instead of free-text flags.
+///
+/// `native` is the default and what a user building for their own machine wants — MSVC
+/// `FindSIMD` probes detect this CPU at configure time and compile for it, at 1× cost.
+/// `portable` builds one CPU backend per ISA and is the only shape that may be
+/// distributed; it is a DEV-only mode because only the maintainer ships engines. Neither
+/// pins AVX-512: that is the detector's job.
+pub(crate) const BUILD_FLAG_MODES: &[BuildFlagMode] = &[
+    BuildFlagMode {
+        id: "native",
+        label: "NATIVE — this PC",
+        profile: "-DGGML_CUDA=ON\n-DGGML_NATIVE=ON",
+        dev_only: false,
+    },
+    BuildFlagMode {
+        id: "portable",
+        label: "PORTABLE — ship",
+        profile: "-DGGML_CUDA=ON\n-DGGML_NATIVE=OFF\n-DGGML_CPU_ALL_VARIANTS=ON\n-DGGML_BACKEND_DL=ON",
+        dev_only: true,
+    },
+];
 
 pub(crate) fn get_default_cmake_flags(template_type: &str) -> &'static str {
     DEFAULT_CMAKE_FLAGS
@@ -231,20 +277,32 @@ pub(crate) fn foundry_cmake_build_target_args(include_extra_tools: bool) -> Stri
 
 /// Ensure mandatory -D flags are present (provider build_profile may omit them).
 pub(crate) fn merge_mandatory_cmake_flags(extra: &str) -> String {
-    let mut out = extra.trim().to_string();
+    let mut tokens: Vec<String> = extra.split_whitespace().map(str::to_string).collect();
     for flag in FOUNDRY_MANDATORY_CMAKE_FLAGS.split_whitespace() {
         let key = flag.split('=').next().unwrap_or(flag);
-        let already = out
-            .split_whitespace()
-            .any(|t| t == flag || t.starts_with(&format!("{key}=")));
-        if !already {
-            if !out.is_empty() {
-                out.push(' ');
+        let prefix = format!("{key}=");
+        // Mandatory WINS. Appending only when the key was absent let a provider
+        // template re-enable exactly what this list exists to forbid: a build profile
+        // pinning `-DGGML_AVX512=ON -DGGML_NATIVE=ON` shipped an AVX-512-only pack that
+        // dies on most retail CPUs. An existing token with the same key is replaced.
+        let mut present = false;
+        tokens.retain_mut(|token| {
+            if token == flag {
+                present = true;
+                true
+            } else if token.starts_with(&prefix) {
+                *token = flag.to_string();
+                present = true;
+                true
+            } else {
+                true
             }
-            out.push_str(flag);
+        });
+        if !present {
+            tokens.push(flag.to_string());
         }
     }
-    out
+    tokens.join(" ")
 }
 
 /// CMake `-D` flags that route C, C++ and CUDA compilation through a launcher.
@@ -350,6 +408,57 @@ mod tests {
     use super::*;
 
     #[test]
+    fn build_modes_are_mutually_exclusive_shapes() {
+        let mode = |id: &str| {
+            BUILD_FLAG_MODES
+                .iter()
+                .find(|m| m.id == id)
+                .map(|m| m.profile)
+                .unwrap_or_else(|| panic!("missing mode {id}"))
+        };
+        let native = mode("native");
+        let portable = mode("portable");
+
+        assert!(native.contains("-DGGML_NATIVE=ON"), "got: {native}");
+        assert!(
+            !native.contains("GGML_CPU_ALL_VARIANTS"),
+            "native must not build variants: {native}"
+        );
+        assert!(portable.contains("-DGGML_NATIVE=OFF"), "got: {portable}");
+        assert!(portable.contains("-DGGML_CPU_ALL_VARIANTS=ON"), "got: {portable}");
+        assert!(portable.contains("-DGGML_BACKEND_DL=ON"), "got: {portable}");
+        for profile in [native, portable] {
+            assert!(
+                !profile.contains("GGML_AVX512"),
+                "never pin AVX-512 in a mode: {profile}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_shipping_mode_is_dev_only() {
+        // The portable shape is the maintainer's; users get native only, so a shipped app
+        // never offers a 9× build that has nowhere to publish.
+        let dev_only: Vec<&str> = BUILD_FLAG_MODES
+            .iter()
+            .filter(|m| m.dev_only)
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(dev_only, vec!["portable"]);
+
+        let default = get_default_cmake_flags("ggml-llama");
+        let native = BUILD_FLAG_MODES.iter().find(|m| m.id == "native").unwrap();
+        assert!(
+            !native.dev_only && native.profile.contains("-DGGML_NATIVE=ON"),
+            "the user-facing default must be the native shape"
+        );
+        assert!(
+            default.contains("-DGGML_NATIVE=ON") && !default.contains("GGML_CPU_ALL_VARIANTS"),
+            "compiled fallback must match the user-facing default: {default}"
+        );
+    }
+
+    #[test]
     fn merge_mandatory_empty_extra_gets_all_mandatory() {
         let out = merge_mandatory_cmake_flags("");
         for flag in FOUNDRY_MANDATORY_CMAKE_FLAGS.split_whitespace() {
@@ -378,14 +487,44 @@ mod tests {
     }
 
     #[test]
-    fn merge_mandatory_same_key_different_value_not_appended() {
-        // -DGGML_NATIVE=ON already present (different value than mandatory OFF) → not appended again
-        let out = merge_mandatory_cmake_flags("-DGGML_NATIVE=ON");
-        let count = out
+    fn mandatory_never_pins_the_cpu_instruction_set() {
+        // Both mistakes this guards against shipped: `-DGGML_AVX512=ON` here, then
+        // `-DGGML_NATIVE=OFF ... -DGGML_CPU_ALL_VARIANTS=ON` forced on every build.
+        // The profile chooses the mode; the packer decides what may ship.
+        for token in [
+            "GGML_NATIVE=",
+            "GGML_AVX512=",
+            "GGML_CPU_ALL_VARIANTS=",
+            "GGML_BACKEND_DL=",
+        ] {
+            assert!(
+                !FOUNDRY_MANDATORY_CMAKE_FLAGS.contains(token),
+                "mandatory must not pin {token}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_profile_cpu_isa_choice_survives_the_merge() {
+        let native = merge_mandatory_cmake_flags("-DGGML_NATIVE=ON -DGGML_AVX512=ON");
+        assert!(native.contains("-DGGML_NATIVE=ON"), "native dropped: {native}");
+        assert!(native.contains("-DGGML_AVX512=ON"), "explicit ISA dropped: {native}");
+
+        let portable = merge_mandatory_cmake_flags("-DGGML_CPU_ALL_VARIANTS=ON -DGGML_BACKEND_DL=ON");
+        assert!(portable.contains("-DGGML_CPU_ALL_VARIANTS=ON"), "got: {portable}");
+        assert!(portable.contains("-DGGML_BACKEND_DL=ON"), "got: {portable}");
+    }
+
+    #[test]
+    fn merge_mandatory_overrides_a_provider_value_for_the_same_key() {
+        // Mandatory still wins for the keys it does pin — the point of the list is
+        // that a profile cannot re-enable tests or drop the server target.
+        let out = merge_mandatory_cmake_flags("-DLLAMA_BUILD_TESTS=ON");
+        let values: Vec<&str> = out
             .split_whitespace()
-            .filter(|t| t.starts_with("-DGGML_NATIVE="))
-            .count();
-        assert_eq!(count, 1, "expected exactly one GGML_NATIVE, got: {out}");
+            .filter(|t| t.starts_with("-DLLAMA_BUILD_TESTS="))
+            .collect();
+        assert_eq!(values, vec!["-DLLAMA_BUILD_TESTS=OFF"], "got: {out}");
     }
 
     #[test]

@@ -52,6 +52,7 @@ mod download_manager;
 mod model_catalog;
 mod spec_draft;
 mod engine_utils;
+mod engine_deps;
 mod engine_job;
 mod app_lifecycle;
 mod trash_util;
@@ -609,6 +610,7 @@ async fn main() {
             reactor_foundry::foundry_build,
             reactor_foundry::foundry_cancel,
             reactor_foundry::foundry_preview_source,
+            reactor_foundry::foundry_flag_defaults,
             reactor_foundry::foundry_status,
             reactor_foundry::foundry_confirm_build,
             reactor_foundry::foundry_resume_backup,

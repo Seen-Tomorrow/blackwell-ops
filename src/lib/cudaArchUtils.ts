@@ -10,13 +10,6 @@ export const CUDA_ARCH_BUILD_OPTIONS = [
 /** Default when factory build_profile omits CMAKE_CUDA_ARCHITECTURES (full ship matrix). */
 export const DEFAULT_CUDA_ARCH_CODES = CUDA_ARCH_BUILD_OPTIONS.map((o) => o.code);
 
-/** Provider cmake base — no CMAKE_CUDA_ARCHITECTURES (selected in Foundry modal). */
-export const DEFAULT_FOUNDRY_CMAKE_BASE = [
-  "-DGGML_CUDA=ON",
-  "-DGGML_AVX512=ON",
-  "-DGGML_NATIVE=OFF",
-].join("\n");
-
 /** NVIDIA GPU generation labels for CMAKE_CUDA_ARCHITECTURES codes. */
 const CUDA_ARCH_FAMILY: Record<string, string> = {
   "70": "TURING",

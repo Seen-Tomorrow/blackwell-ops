@@ -17,6 +17,8 @@
   "FitScanFull": ["model_path", "points", "error", "skip_reason", "skipped_points"],
   "FitScanProgress": ["model_path", "model_name", "status", "skip_reason", "args", "vram_mib", "label", "provider_id", "total_models", "scan_points_total"],
   "FoundryChangelog": ["repo", "tag", "name", "htmlUrl", "body", "publishedAt"],
+  "FoundryFlagDefaults": ["defaultProfile", "mandatory", "modes"],
+  "FoundryFlagMode": ["id", "label", "profile"],
   "FoundrySourcePreview": ["status", "branch", "local_commit", "remote_commit", "installed_version", "installed_commit", "message", "banner_tone"],
   "FoundryWorkCacheStatus": ["cacheEnabled", "profileId", "buildDirExists", "cmakeCachePresent", "sizeBytes", "sizeLabel", "workTotalBytes", "workTotalLabel", "sccacheAvailable", "sccachePath", "sccacheVersion", "sccacheSizeBytes", "sccacheSizeLabel"],
   "FusionUpdate": ["alias", "slotIdx", "port", "telemetrySource", "engine_state", "phase", "prefillTpsMetrics", "prefillTpsSession", "prefillTpsInstant", "prefillProgress", "prefillTokens", "prefillTokensTotal", "genTps", "genTpsSession", "genTpsInstant", "genTokensPerRequestSlots", "genTokensPerSession", "ctxUsedSession", "ctxFillPct", "ctxTotal", "ctxPerSlot", "requestElapsedMs", "ttftMs", "prefillMs", "decodeTtftMs", "slotCtx", "parallel", "unified_kv", "logPrefillProgress", "logPrefillTps", "logPromptTokens", "logGenTps", "logPhase", "specDraftAcceptRate", "specDraftAccepted", "specDraftGenerated", "specDraftAcceptRateLast", "specDraftAcceptedLast", "specDraftGeneratedLast", "specMode", "phaseResetSource", "requestClosed", "meterLane", "busySlotCount", "concurrentSlots", "genTpsPerSlot", "genTpsPerSlotInstant", "meterSeq"],

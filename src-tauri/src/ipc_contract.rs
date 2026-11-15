@@ -214,6 +214,8 @@ ipc_registry! {
     // ── foundry / gpu control / secrets ───────────────────────────────
     "FoundrySourcePreview" => crate::reactor_foundry::FoundrySourcePreview,
     "FoundryWorkCacheStatus" => crate::reactor_foundry::FoundryWorkCacheStatus,
+    "FoundryFlagDefaults" => crate::reactor_foundry::FoundryFlagDefaults,
+    "FoundryFlagMode" => crate::reactor_foundry::FoundryFlagMode,
     "FoundryChangelog" => crate::github_releases::RepoReleaseNotes,
     "GpuControlDeviceInfo" => crate::gpu_control::GpuControlDeviceInfo,
     "GpuControlStepResult" => crate::gpu_control::GpuControlStepResult,

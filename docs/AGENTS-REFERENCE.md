@@ -407,6 +407,25 @@ copy step — it is what made the panel show an old build while Foundry had a ne
 
 **Foundry batch spawn** — Configure/build write `_build_cfg_*.bat` / `_build_run_*.bat` under `work/` then run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail). Do not spawn those batches with plain `cmd /c path` — install dirs with spaces fail before cmake starts (see **Windows paths with spaces** above).
 
+**A pack that ships must be ISA-portable.** CPU mode is the profile's choice, not a mandatory
+flag: `GGML_NATIVE=ON` auto-detects the build host (MSVC runs `FindSIMD.cmake` try_compile probes)
+and is correct — and 1× — for a build that stays on that machine; `GGML_CPU_ALL_VARIANTS=ON` +
+`GGML_BACKEND_DL=ON` builds one `ggml-cpu-<isa>.dll` per instruction set (MSVC: x64 … icelake) and
+is required for anything distributed. The two are mutually exclusive (`GGML_NATIVE` +
+`GGML_BACKEND_DL` is a CMake `FATAL_ERROR`). Do **not** re-pin either in
+`FOUNDRY_MANDATORY_CMAKE_FLAGS`: forcing `-DGGML_AVX512=ON` once shipped a pack that died with
+`0xC000001D` on every Intel client CPU since 12th gen, and forcing variants multiplies every local
+build by nine. The gate lives at the shipping boundary — `scripts/pack-provider-runtime.ps1` and
+`prepare-release-runtime.ps1` throw on an artifact with no `ggml-cpu-*.dll`.
+
+**One default, one resolver.** The BUILD FLAGS panel gets its default, its mode presets
+(`NATIVE — this PC` / `PORTABLE — ship`) and the enforced-flag list from a single command,
+`foundry_flag_defaults`, backed by `templates::default_build_profile_for_provider` (factory
+template JSON, compiled constant as last resort). Do **not** reintroduce a frontend copy of the
+default string — the old `DEFAULT_FOUNDRY_CMAKE_BASE`, the textarea placeholder and the seeded
+config each carried one, which is how a dead `-DGGML_AVX512=ON` stayed visible in the UI after the
+backend had moved on.
+
 **Vendor patches track upstream HEAD.** Check origin for the feature before adding or rebasing
 a patch — upstream may already provide it (it has the router `/models/sse`; the single-model
 `/models/sse` and `/events/sse` are ours). After a server entrypoint refactor, re-port
@@ -417,9 +436,21 @@ the telemetry HTTP hunk builds on it). The obsolete `cuda-graph-instance` patch 
 
 `npm run check:patches` checks each vendor patch in a throwaway `origin/master` worktree
 (PASS / FAIL / UPSTREAM marker) without touching the build clone — the local clone is normally
-dirty after a build, so checking it in place lies. Foundry's configure stage now **aborts** on a
-patch failure instead of silently building unpatched; only `BLACKWELL_FOUNDRY_ALLOW_UNPATCHED=1`
-opts into the old fallback (SSE fusion then falls back to polling).
+dirty after a build, so checking it in place lies. It runs the same loop Foundry configure runs:
+plain `git apply` first, `--3way` only as a fallback.
+
+That distinction is the failure mode to know: configure applies all four patches to **one dirty
+worktree**, and a plain apply leaves the index behind. The `--3way` fallback merges against the
+index, so on a file an earlier patch already touched it dies with `does not match index` — it can
+never rescue a later patch that stopped applying. A patch therefore has to apply **plainly** after
+a rebase, or the build fails with `[PATCH FAIL]` even though a 3-way check on a clean tree passes.
+The script marks the fragile case `PASS 3WAY` and aborts the remaining patches after a `FAIL` (the
+build stops there too). Foundry's plain-apply path passes `--index`, so the index stays level with
+the worktree and the fallback remains usable.
+
+Foundry's configure stage **aborts** on a patch failure instead of silently building unpatched;
+only `BLACKWELL_FOUNDRY_ALLOW_UNPATCHED=1` opts into the old fallback (SSE fusion then falls back
+to polling).
 
 ---
 ## APP/engine logs

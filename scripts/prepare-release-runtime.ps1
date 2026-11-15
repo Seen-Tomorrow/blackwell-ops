@@ -96,6 +96,16 @@ foreach ($provider in $providers) {
             continue
         }
 
+        # Shipped engines must be portable: `GGML_CPU_ALL_VARIANTS=ON` leaves one
+        # `ggml-cpu-<isa>.dll` per instruction set, a NATIVE build leaves a single
+        # `ggml-cpu.dll` tuned to the machine that built it. Shipping that is how a
+        # pack ends up dying with 0xC000001D on other CPUs.
+        $cpu_variants = @($dist_files | Where-Object { $_.Name -like 'ggml-cpu-*.dll' })
+        if ($cpu_variants.Count -eq 0) {
+            $missing_required += ('{0}/{1} (NATIVE single-ISA build - rebuild with GGML_CPU_ALL_VARIANTS=ON + GGML_BACKEND_DL=ON)' -f $provider_id, $profile_id)
+            continue
+        }
+
         $dest = Join-Path $bundle_root "$provider_id\$profile_id"
         New-Item -ItemType Directory -Path $dest -Force | Out-Null
 

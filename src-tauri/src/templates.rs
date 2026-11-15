@@ -212,6 +212,41 @@ pub fn get_template_version_for_provider(provider_id: &str) -> u32 {
     serde_json::from_str::<TvOnly>(&content).ok().map(|o| o.tv).unwrap_or(1)
 }
 
+/// Canonical `build_profile` for a provider — the **one** place the UI's default comes
+/// from (RESET, empty-box fallback, badge comparison, and the configure fallback).
+///
+/// Factory template first; the compiled-in default is the last resort so a provider
+/// without a template cannot end up flag-less (which would silently build without CUDA).
+pub fn default_build_profile_for_provider(provider_id: &str) -> String {
+    let app_root = crate::config::app_root_dir();
+    let config_path = app_root
+        .join("runtime")
+        .join(provider_id)
+        .join("config")
+        .join(format!("{}-default-config.json", provider_id));
+
+    if let Ok(content) = std::fs::read_to_string(&config_path) {
+        #[derive(Deserialize)]
+        struct ProfileOnly {
+            #[serde(default, rename = "build_profile")]
+            build_profile: String,
+        }
+        if let Ok(parsed) = serde_json::from_str::<ProfileOnly>(&content) {
+            let trimmed = parsed.build_profile.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    log::debug!(
+        "[template] no build_profile template for '{}' — using compiled default",
+        provider_id
+    );
+    crate::reactor_foundry::cmake::get_default_cmake_flags("ggml-llama")
+        .trim()
+        .to_string()
+}
+
 /// Load provider default config from disk: runtime/{id}/config/{id}-default-config.json
 pub fn load_provider_defaults(provider_id: &str) -> Option<ProviderTemplate> {
     let app_root = crate::config::app_root_dir();

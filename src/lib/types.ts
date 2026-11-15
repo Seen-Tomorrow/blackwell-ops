@@ -198,6 +198,20 @@ export interface UserEditedTemplateParam {
   essential?: boolean;
 }
 
+/** One selectable BUILD FLAGS shape (native / portable), resolved by the backend. */
+export interface FoundryFlagMode {
+  id: string;
+  label: string;
+  profile: string;
+}
+
+/** Canonical build-flag defaults: one default, the enforced set, and the mode presets. */
+export interface FoundryFlagDefaults {
+  defaultProfile: string;
+  mandatory: string;
+  modes: FoundryFlagMode[];
+}
+
 export interface ProviderConfig {
   id: string;
   display_name: string;
