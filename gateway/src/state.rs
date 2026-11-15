@@ -765,7 +765,24 @@ impl GatewayState {
         }
     }
 
-    pub async fn on_hello(&self, device_id: &str, message: ClientMessage) {
+    /// True when `connection_id` is still the socket the gateway has attached for
+    /// this device.
+    ///
+    /// A replaced socket can still deliver frames that were already in flight when
+    /// the new connection attached. Those frames come from the *previous* process,
+    /// so letting them write device metadata makes the operator view flap between
+    /// two contexts — a SYSTEM service session reading as Medium because a stale
+    /// user-mode socket reported last.
+    async fn is_current_connection(&self, device_id: &str, connection_id: u64) -> bool {
+        let inner = self.inner.read().await;
+        inner
+            .connections
+            .get(device_id)
+            .map(|connection| connection.id == connection_id)
+            .unwrap_or(false)
+    }
+
+    pub async fn on_hello(&self, device_id: &str, connection_id: u64, message: ClientMessage) {
         let ClientMessage::Hello {
             device_name,
             os,
@@ -777,6 +794,9 @@ impl GatewayState {
         else {
             return;
         };
+        if !self.is_current_connection(device_id, connection_id).await {
+            return;
+        }
         let view = {
             let mut inner = self.inner.write().await;
             let base = {
@@ -892,7 +912,9 @@ impl GatewayState {
                     return Err("a session is already active on this device".into());
                 }
             }
-            if inner.routes.is_empty() {
+            // The test shell is not a model session: it must open on a box with no
+            // engine running locally. Every other profile still needs routes.
+            if inner.routes.is_empty() && profile != crate::protocol::SHELL_PROFILE {
                 return Err("no running model routes available".into());
             }
             let routes: Vec<ModelRoute> = inner
@@ -1055,10 +1077,14 @@ impl GatewayState {
     pub async fn session_ready(
         &self,
         device_id: &str,
+        connection_id: u64,
         pid: Option<u32>,
         pi_version: Option<String>,
         integrity: Option<String>,
     ) {
+        if !self.is_current_connection(device_id, connection_id).await {
+            return;
+        }
         let view = {
             let mut inner = self.inner.write().await;
             if let Some(session) = inner.sessions.get_mut(device_id) {

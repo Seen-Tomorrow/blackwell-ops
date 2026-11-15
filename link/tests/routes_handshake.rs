@@ -313,9 +313,48 @@ async fn empty_route_table_returns_an_empty_list() {
     }
 }
 
-/// Local Power Mode writes one provider model per route, and Pi selects a route
-/// by model name. Two running engines must therefore stay two distinct engines:
-/// a request for one route must never be answered by the other.
+/// The test shell runs no model, so it must open on a device with no engine
+/// running. Every other profile keeps the routes requirement — that requirement
+/// is what stops a Pi session from starting with no model to answer it.
+#[tokio::test]
+async fn shell_profile_opens_without_model_routes() {
+    let gateway = start_gateway(Vec::new()).await;
+    let mut socket = connect(&gateway, "").await;
+    assert!(matches!(recv(&mut socket).await, ServerMessage::Ready { .. }));
+
+    let refused = gateway
+        .state
+        .start_session(&gateway.device_id, "pi-maintenance", 120, 32)
+        .await
+        .expect_err("a model session must not open without routes");
+    assert!(
+        refused.contains("routes"),
+        "unexpected refusal: {refused}"
+    );
+
+    gateway
+        .state
+        .start_session(
+            &gateway.device_id,
+            oym_gateway::protocol::SHELL_PROFILE,
+            120,
+            32,
+        )
+        .await
+        .expect("the shell profile must not need model routes");
+
+    match recv(&mut socket).await {
+        ServerMessage::SessionOpen(session) => {
+            assert_eq!(session.profile, oym_gateway::protocol::SHELL_PROFILE);
+            assert!(
+                session.routes.is_empty(),
+                "the shell profile must not ship model routes"
+            );
+        }
+        other => panic!("expected session open, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn each_route_reaches_its_own_engine() {
     let (port_one, engine_one) = fake_engine_with_reply("pong-one").await;
@@ -389,4 +428,58 @@ async fn each_route_reaches_its_own_engine() {
             "route {route_id} was answered by the wrong engine: {body}"
         );
     }
+}
+
+/// Device metadata belongs to the socket that is currently attached. A replaced
+/// socket can still deliver frames that were in flight when the new connection
+/// took over; letting those write `integrity` makes the operator view flap between
+/// two processes — a SYSTEM service session reading as Medium because a stale
+/// user-mode socket reported last.
+#[tokio::test]
+async fn a_replaced_socket_cannot_rewrite_device_integrity() {
+    let gateway = start_gateway(vec![route("route_1", "ENGINE_1", 8888)]).await;
+    let mut socket = connect(&gateway, "").await;
+    assert!(matches!(recv(&mut socket).await, ServerMessage::Ready { .. }));
+
+    send(
+        &mut socket,
+        ClientMessage::Hello {
+            device_name: Some("live".into()),
+            os: Some("Windows".into()),
+            user: Some("svc".into()),
+            integrity: Some("System".into()),
+            client_version: Some("0.1.0".into()),
+            pi_version: Some("1.4.0".into()),
+        },
+    )
+    .await;
+    // Round-trip so the Hello is applied before the state is read.
+    send(&mut socket, ClientMessage::Ping).await;
+    assert!(matches!(recv(&mut socket).await, ServerMessage::Pong));
+    assert_eq!(
+        gateway.state.device_views().await[0].integrity.as_deref(),
+        Some("System")
+    );
+
+    gateway
+        .state
+        .on_hello(
+            &gateway.device_id,
+            u64::MAX,
+            ClientMessage::Hello {
+                device_name: None,
+                os: None,
+                user: None,
+                integrity: Some("Medium".into()),
+                client_version: None,
+                pi_version: None,
+            },
+        )
+        .await;
+
+    assert_eq!(
+        gateway.state.device_views().await[0].integrity.as_deref(),
+        Some("System"),
+        "a stale socket overwrote the live device's integrity"
+    );
 }

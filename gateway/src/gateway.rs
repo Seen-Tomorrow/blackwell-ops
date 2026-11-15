@@ -229,7 +229,11 @@ async fn handle_socket(
 
         match message {
             ClientMessage::Hello { .. } => {
-                state.on_hello(&device.id, message).await;
+                // A routes-only socket is not the device's attached connection, so
+                // it has no metadata authority.
+                if let Some(connection_id) = connection_id {
+                    state.on_hello(&device.id, connection_id, message).await;
+                }
             }
             ClientMessage::SessionReady {
                 pid,
@@ -245,9 +249,11 @@ async fn handle_socket(
                     continue;
                 }
                 log::info!("[remote] session ready device={} pid={pid:?}", device.id);
-                state
-                    .session_ready(&device.id, pid, pi_version, integrity)
-                    .await;
+                if let Some(connection_id) = connection_id {
+                    state
+                        .session_ready(&device.id, connection_id, pid, pi_version, integrity)
+                        .await;
+                }
             }
             ClientMessage::PtyData { data } => {
                 if routes_only {

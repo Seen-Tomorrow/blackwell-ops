@@ -121,14 +121,20 @@ pub async fn remote_session_start(
     device_id: String,
     cols: Option<u16>,
     rows: Option<u16>,
+    profile: Option<String>,
 ) -> Result<SessionOpen, String> {
-    if refresh_routes(&app.stack, &remote).await == 0 {
+    let profile = profile.unwrap_or_else(|| "pi-maintenance".to_string());
+    // The test shell runs no model, so it must not require a RUNNING engine just
+    // to read logs on a device. Every other profile keeps the route requirement.
+    if profile != oym_gateway::protocol::SHELL_PROFILE
+        && refresh_routes(&app.stack, &remote).await == 0
+    {
         return Err("Start an engine (RUNNING) before opening a remote session.".into());
     }
     remote
         .start_session(
             &device_id,
-            "pi-maintenance",
+            &profile,
             cols.unwrap_or(120),
             rows.unwrap_or(32),
         )

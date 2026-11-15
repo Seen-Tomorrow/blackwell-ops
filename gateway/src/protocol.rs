@@ -10,6 +10,18 @@ use serde_json::Value;
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_WS_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 
+/// Test-only session profile: a plain interactive shell on the device instead of
+/// Pi. It needs no model routes, so it is exempt from the routes gate, and the
+/// device refuses it unless `OYM_TEST_SHELL=1` is set in its own environment.
+///
+/// This exists so the operator can read logs and check a build on a real user
+/// machine without driving a TUI. It is DEV tooling, not product surface: no UI
+/// offers it, and it is the only profile that changes the spawn path.
+///
+/// Removal: drop this constant, `link/src/shell.rs`, the two `start_session`
+/// dispatch points in `link/src/main.rs`, and the two gates keyed on it.
+pub const SHELL_PROFILE: &str = "shell";
+
 /// One selectable model route. `id` is opaque to the client; the client never
 /// learns the engine port.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

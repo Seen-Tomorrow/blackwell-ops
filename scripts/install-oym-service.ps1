@@ -17,7 +17,15 @@ param(
     [string] $ServiceExe = "",
     [string] $Cli = "",
     [string] $PiDir = "",
-    [string] $Xml = ""
+    [string] $Xml = "",
+    # Opt-in: give this service the test-shell profile (docs/remote-servicing/TEST-SHELL.md).
+    # Scoped to the service so the flag disappears with an uninstall, instead of a
+    # machine-wide environment change that outlives the feature.
+    [switch] $TestShell = $false,
+    # Pinned on purpose. An installer that resolves its own dependency at run time
+    # cannot be reproduced, and a swapped asset would be accepted silently.
+    [string] $WinSWUrl = "https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe",
+    [string] $WinSWSha256 = "05B82D46AD331CC16BDC00DE5C6332C1EF818DF8CEEFCD49C726553209B3A0DA"
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,25 +70,59 @@ if (-not $Xml) {
 if (-not (Test-Path $Xml)) { throw "Missing service XML: $Xml" }
 
 New-Item -ItemType Directory -Force -Path $ServiceDir | Out-Null
-# Stop/uninstall the old service before copying: Windows locks the running
-# service exe, and the previous order silently left the old binary in place.
-$existingWrapper = Join-Path $ServiceDir "OymLink.exe"
-if (Test-Path $existingWrapper) {
-    Push-Location $ServiceDir
-    try {
-        & $existingWrapper stop 2>$null | Out-Null
-        & $existingWrapper uninstall 2>$null | Out-Null
+
+# Windows locks a running service image, so the service is stopped before the
+# files are replaced — but it is NOT uninstalled. Tearing down the registration
+# on every update logs a 7045, costs ~13 s, and widens the window where the old
+# child tree can outlive the service. Runtime configuration (executable,
+# arguments, env, logging) is read from OymLink.xml at every start, so a
+# stop/start cycle covers it; only SCM-owned settings (account, start mode,
+# dependencies) need a real uninstall, which `uninstall-oym-service.ps1` does.
+$serviceName = "OymLink"
+$registered = $null -ne (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)
+if ($registered) {
+    Write-Host "Stopping $serviceName (registration kept)..."
+    for ($attempt = 0; $attempt -lt 12; $attempt++) {
+        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+        if ((Get-Service -Name $serviceName -ErrorAction SilentlyContinue).Status -eq "Stopped") { break }
+        Start-Sleep -Milliseconds 500
     }
-    finally {
-        Pop-Location
-    }
-    Start-Sleep -Seconds 2
 }
-Copy-Item $ServiceExe (Join-Path $ServiceDir "oym-link-service.exe") -Force
-Copy-Item $Cli (Join-Path $ServiceDir "oym-link.exe") -Force
+
+# A just-stopped service can hold its image for a moment, and an orphaned child
+# can still hold the CLI. Retry instead of failing the whole install.
+function Copy-WithRetry {
+    param([string]$From, [string]$To, [int]$Attempts = 30)
+    for ($i = 1; $i -le $Attempts; $i++) {
+        try {
+            Copy-Item -LiteralPath $From -Destination $To -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($i -eq $Attempts) { throw }
+            Start-Sleep -Milliseconds 400
+        }
+    }
+}
+
+Copy-WithRetry $ServiceExe (Join-Path $ServiceDir "oym-link-service.exe")
+Copy-WithRetry $Cli (Join-Path $ServiceDir "oym-link.exe")
 if (Test-Path (Join-Path $ServiceDir "pi")) { Remove-Item (Join-Path $ServiceDir "pi") -Recurse -Force }
 Copy-Item $PiDir (Join-Path $ServiceDir "pi") -Recurse
-Copy-Item $Xml (Join-Path $ServiceDir "OymLink.xml") -Force
+$xmlTarget = Join-Path $ServiceDir "OymLink.xml"
+Copy-WithRetry $Xml $xmlTarget
+
+# WinSW reads this file at every start, so runtime settings (executable,
+# arguments, env, logging) can be changed by editing it and restarting — no
+# uninstall needed. The test shell is injected here rather than set machine-wide.
+if ($TestShell) {
+    $xmlRaw = Get-Content -LiteralPath $xmlTarget -Raw
+    if ($xmlRaw -notmatch 'OYM_TEST_SHELL') {
+        $xmlRaw = $xmlRaw -replace '</service>', "  <env name=`"OYM_TEST_SHELL`" value=`"1`" />`n</service>"
+        [IO.File]::WriteAllText($xmlTarget, $xmlRaw, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "Test shell enabled for this service (OYM_TEST_SHELL=1)."
+    }
+}
 
 # The desktop app writes the paired identity/token into a user-only bootstrap.
 # Move it into ProgramData with a SYSTEM/Administrators-only ACL before the
@@ -118,24 +160,42 @@ if ($Bootstrap -ne "") {
     Remove-Item $Bootstrap -Force -ErrorAction SilentlyContinue
 }
 
-if (-not $WinSWPath) {
-    $WinSWPath = Join-Path $ServiceDir "WinSW.exe"
-    if (-not (Test-Path $WinSWPath)) {
-        Invoke-WebRequest "https://github.com/winsw/winsw/releases/latest/download/WinSW-x64.exe" `
-            -OutFile $WinSWPath -UseBasicParsing
-    }
-}
-if (-not (Test-Path $WinSWPath)) { throw "WinSW executable not found: $WinSWPath" }
-
+# Pin the wrapper. An update reuses the installed binary when it already matches
+# the audited hash: no 18 MB re-download, and a tampered copy is detected rather
+# than silently accepted.
 $wrapper = Join-Path $ServiceDir "OymLink.exe"
-Copy-Item $WinSWPath $wrapper -Force
+$wrapperAlreadyPinned = (Test-Path $wrapper) -and
+    ((Get-FileHash -LiteralPath $wrapper -Algorithm SHA256).Hash -eq $WinSWSha256)
+
+if ($WinSWPath) {
+    if (-not (Test-Path $WinSWPath)) { throw "WinSW executable not found: $WinSWPath" }
+    $actual = (Get-FileHash -LiteralPath $WinSWPath -Algorithm SHA256).Hash
+    if ($actual -ne $WinSWSha256) {
+        throw "WinSW hash mismatch for $WinSWPath; expected $WinSWSha256, got $actual"
+    }
+    Copy-WithRetry $WinSWPath $wrapper
+}
+elseif (-not $wrapperAlreadyPinned) {
+    $cached = Join-Path $ServiceDir "WinSW-x64.exe"
+    if (-not (Test-Path $cached)) {
+        Write-Host "Downloading pinned WinSW..."
+        Invoke-WebRequest $WinSWUrl -OutFile $cached -UseBasicParsing
+    }
+    $actual = (Get-FileHash -LiteralPath $cached -Algorithm SHA256).Hash
+    if ($actual -ne $WinSWSha256) {
+        Remove-Item -LiteralPath $cached -Force -ErrorAction SilentlyContinue
+        throw "WinSW hash mismatch; expected $WinSWSha256, got $actual"
+    }
+    Copy-WithRetry $cached $wrapper
+}
 
 Push-Location $ServiceDir
 try {
-    & $wrapper stop 2>$null | Out-Null
-    & $wrapper uninstall 2>$null | Out-Null
-    & $wrapper install | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "WinSW install failed with exit $LASTEXITCODE" }
+    if (-not $registered) {
+        Write-Host "Registering $serviceName..."
+        & $wrapper install | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "WinSW install failed with exit $LASTEXITCODE" }
+    }
     & $wrapper start | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "WinSW start failed with exit $LASTEXITCODE" }
 }

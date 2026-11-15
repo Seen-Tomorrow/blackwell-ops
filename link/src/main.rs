@@ -39,6 +39,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 mod admin;
 mod local;
+mod shell;
 
 use oym_link_core::identity::{load_identity, load_token, save_identity, Identity};
 
@@ -199,7 +200,7 @@ fn parse_args() -> Args {
 }
 
 async fn pair_device(server: &str, code: &str, name: &str) -> Result<(Identity, String), String> {
-    let integrity = if is_elevated() { "High" } else { "Medium" };
+    let integrity = integrity_level();
     oym_link_core::pairing::pair_device(
         server,
         code,
@@ -234,7 +235,7 @@ fn prompt_pairing_code() -> Result<String, String> {
 }
 
 #[cfg(windows)]
-fn conpty_available() -> bool {
+pub(crate) fn conpty_available() -> bool {
     use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 
     let kernel: Vec<u16> = "kernel32.dll\0".encode_utf16().collect();
@@ -249,39 +250,75 @@ fn conpty_available() -> bool {
 }
 
 #[cfg(not(windows))]
-fn conpty_available() -> bool {
+pub(crate) fn conpty_available() -> bool {
     false
 }
 
 #[cfg(windows)]
-fn is_elevated() -> bool {
+fn integrity_level() -> &'static str {
     use std::mem::size_of;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows_sys::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+    use windows_sys::Win32::Security::{
+        GetSidSubAuthority, GetSidSubAuthorityCount, GetTokenInformation, TokenIntegrityLevel,
+        TOKEN_MANDATORY_LABEL, TOKEN_QUERY,
+    };
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     unsafe {
         let mut token: HANDLE = std::ptr::null_mut();
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
-            return false;
+            return "Medium";
         }
-        let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        // Room for a TOKEN_MANDATORY_LABEL and the SID it points at, which is one
+        // sub-authority for an integrity label. `usize` keeps the struct alignment
+        // the SID pointer requires.
+        let mut buffer = [0usize; 16];
         let mut returned = 0u32;
         let ok = GetTokenInformation(
             token,
-            TokenElevation,
-            &mut elevation as *mut _ as *mut _,
-            size_of::<TOKEN_ELEVATION>() as u32,
+            TokenIntegrityLevel,
+            buffer.as_mut_ptr().cast(),
+            size_of::<[usize; 16]>() as u32,
             &mut returned,
         );
+        let level = if ok == 0 {
+            "Medium"
+        } else {
+            let label = &*(buffer.as_ptr() as *const TOKEN_MANDATORY_LABEL);
+            let sub_authorities = *GetSidSubAuthorityCount(label.Label.Sid);
+            if sub_authorities == 0 {
+                "Medium"
+            } else {
+                label_for_integrity_rid(*GetSidSubAuthority(
+                    label.Label.Sid,
+                    u32::from(sub_authorities - 1),
+                ))
+            }
+        };
         CloseHandle(token);
-        ok != 0 && elevation.TokenIsElevated != 0
+        level
     }
 }
 
 #[cfg(not(windows))]
-fn is_elevated() -> bool {
-    false
+fn integrity_level() -> &'static str {
+    "Medium"
+}
+
+/// Map a token integrity SID's last sub-authority to the label the operator sees.
+///
+/// `TokenElevation` cannot answer this question: LocalSystem has no
+/// filtered/elevated token pair, so it reports 0 and a SYSTEM service session was
+/// reported as "Medium" while it actually runs at System integrity. The mandatory
+/// label is the value that tracks privilege, so it is what we report.
+fn label_for_integrity_rid(rid: u32) -> &'static str {
+    match rid {
+        0x1000 => "Low",
+        0x2000 => "Medium",
+        0x3000 => "High",
+        0x4000 => "System",
+        _ => "Medium",
+    }
 }
 
 struct ModelHeadInfo {
@@ -573,10 +610,10 @@ async fn start_proxy(shared: Arc<ProxyShared>, model_routed: bool) -> Result<u16
     Ok(port)
 }
 
-struct PtySession {
-    writer: Box<dyn Write + Send>,
-    master: Box<dyn MasterPty + Send>,
-    pid: Option<u32>,
+pub(crate) struct PtySession {
+    pub(crate) writer: Box<dyn Write + Send>,
+    pub(crate) master: Box<dyn MasterPty + Send>,
+    pub(crate) pid: Option<u32>,
 }
 
 impl PtySession {
@@ -624,7 +661,7 @@ impl Drop for PtySession {
     }
 }
 
-fn encode_b64(data: &[u8]) -> String {
+pub(crate) fn encode_b64(data: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(data)
 }
 
@@ -917,6 +954,11 @@ async fn start_pi_session(
         &launch_bat.to_string_lossy().to_string(),
     ]);
     command.env("PI_CODING_AGENT_DIR", home.to_string_lossy().to_string());
+    // See `child_temp_dir`: a missing profile temp directory under SYSTEM is not
+    // hypothetical, it is the default, and it killed sessions.
+    let temp = child_temp_dir(&args.data_dir);
+    command.env("TEMP", &temp);
+    command.env("TMP", &temp);
     command.cwd(&args.cwd);
     let child = pair
         .slave
@@ -962,6 +1004,39 @@ async fn start_pi_session(
         master: pair.master,
         pid,
     })
+}
+
+/// A temp directory the link owns, for the children it spawns.
+///
+/// Children must not depend on the ambient `%TEMP%`. Under the LocalSystem service
+/// that path is `...\config\systemprofile\AppData\Local\Temp`, which frequently
+/// does not exist on a default install, and a tool that writes a log there fails
+/// with ENOENT — Pi's PowerShell tool did exactly that and took whole sessions
+/// down with it. A directory under the link's own data dir always exists and is
+/// already writable by whichever account owns the link.
+fn child_temp_dir(data_dir: &Path) -> PathBuf {
+    let dir = data_dir.join("tmp");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// Dispatch a session to the profile it asks for.
+///
+/// Only one profile is special: the test-only shell in `shell.rs`. Everything
+/// else — including the default `pi-maintenance` — takes the Pi path unchanged,
+/// so this function is the single place the two paths diverge.
+async fn start_session(
+    shared: Arc<ProxyShared>,
+    args: &Args,
+    session: &SessionOpen,
+    last_activity: Arc<AtomicU64>,
+) -> Result<PtySession, String> {
+    if shell::wants(&session.profile) {
+        let temp = child_temp_dir(&args.data_dir);
+        return shell::start(&args.cwd, &temp, session, shared.outbound.clone(), last_activity)
+            .await;
+    }
+    start_pi_session(shared, args, session, last_activity).await
 }
 
 async fn prompt_and_pair(server: &str, args: &Args) -> Result<(Identity, String), String> {
@@ -1139,7 +1214,7 @@ async fn run(args: Args) -> Result<(), String> {
         device_name: Some(args.name.clone()),
         os: Some("Windows".into()),
         user: std::env::var("USERNAME").ok(),
-        integrity: Some(if is_elevated() { "High" } else { "Medium" }.into()),
+        integrity: Some(integrity_level().into()),
         client_version: Some(CLIENT_VERSION.into()),
         pi_version: Some(PI_VERSION.into()),
     });
@@ -1187,7 +1262,7 @@ async fn run(args: Args) -> Result<(), String> {
                     public_url.as_deref().unwrap_or("no public URL")
                 );
                 if let Some(session) = session {
-                    match start_pi_session(shared.clone(), &args, &session, last_activity.clone()).await {
+                    match start_session(shared.clone(), &args, &session, last_activity.clone()).await {
                         Ok(next) => {
                             let pid = next.pid;
                             pty = Some(next);
@@ -1201,7 +1276,7 @@ async fn run(args: Args) -> Result<(), String> {
                                 pid,
                                 pi_version: Some(PI_VERSION.into()),
                                 integrity: Some(
-                                    if is_elevated() { "High" } else { "Medium" }.into(),
+                                    integrity_level().into(),
                                 ),
                             });
                         }
@@ -1220,7 +1295,7 @@ async fn run(args: Args) -> Result<(), String> {
                 if let Some(mut current) = pty.take() {
                     current.kill();
                 }
-                match start_pi_session(shared.clone(), &args, &session, last_activity.clone()).await {
+                match start_session(shared.clone(), &args, &session, last_activity.clone()).await {
                     Ok(next) => {
                         let pid = next.pid;
                         pty = Some(next);
@@ -1234,7 +1309,7 @@ async fn run(args: Args) -> Result<(), String> {
                             pid,
                             pi_version: Some(PI_VERSION.into()),
                             integrity: Some(
-                                if is_elevated() { "High" } else { "Medium" }.into(),
+                                integrity_level().into(),
                             ),
                         });
                     }
@@ -1371,7 +1446,7 @@ fn write_auth_state(
         }
     }
 }
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())

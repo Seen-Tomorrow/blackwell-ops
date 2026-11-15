@@ -495,6 +495,12 @@ export default function App() {
       }
       setCode("");
       setView("home");
+      // The bootstrap is read once on mount and `pairingRequired` is derived from
+      // it, so without this refresh the pairing block stays on screen — the home
+      // view is mounted underneath it but every branch that paints it is gated on
+      // `!pairingRequired`. A restart re-runs the bootstrap, which is why the bug
+      // looked like "works after restart".
+      void invoke<Bootstrap>("invite_bootstrap").then(setBoot).catch(() => {});
     } catch (e) {
       setServiceApply(null);
       setError(typeof e === "string" ? e : String(e));

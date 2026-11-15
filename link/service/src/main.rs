@@ -149,10 +149,48 @@ fn consume_bootstrap(base: &Path) -> Result<Option<(Value, String)>, String> {
     Ok(Some((identity, token)))
 }
 
+/// Kill link children left behind by a previous service run.
+///
+/// A restart can orphan the tree: the WinSW wrapper is torn down while the job
+/// owner survives, and an install path that uninstalls before re-installing widens
+/// that window further. Two links then hold the same device token and cancel each
+/// other's socket, which reads as a device that flaps online and a session that
+/// looks stuck.
+///
+/// The session filter is the safety catch: only service-hosted links run in
+/// session 0, so an interactive portable link in the user's session is never a
+/// candidate. `taskkill` exits non-zero when nothing matches, which is the normal
+/// case and is ignored.
+#[cfg(windows)]
+fn reap_session0_orphans() {
+    use std::os::windows::process::CommandExt;
+
+    let _ = Command::new("taskkill")
+        .args([
+            "/F",
+            "/T",
+            "/FI",
+            "IMAGENAME eq oym-link.exe",
+            "/FI",
+            "SESSION eq 0",
+        ])
+        .creation_flags(0x0800_0000)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[cfg(not(windows))]
+fn reap_session0_orphans() {}
+
 fn prepare(base: &Path) -> Result<PathBuf, String> {
     let data = base.join("service-data");
     std::fs::create_dir_all(&data)
         .map_err(|error| format!("create service data dir: {error}"))?;
+    // A status file from a previous run names a pid and a session that no longer
+    // exist. A reconnecting client reads it as "a session is active", so drop it
+    // before the new link writes its own. It is rewritten within seconds.
+    let _ = std::fs::remove_file(data.join("link-status.json"));
 
     if let Some((identity, token)) = consume_bootstrap(base)? {
         let _ = std::fs::remove_file(data.join("auth-state.json"));
@@ -308,7 +346,19 @@ fn main() {
     let base = data_dir();
     let started_at = now();
     let once = std::env::args().any(|arg| arg == "--once");
-    let _ = std::fs::write(base.join("service-child.log"), "");
+    // Append a start marker instead of truncating. Truncating erased the previous
+    // run's lines, which is precisely the history needed after a crash/restart.
+    if let Ok(mut log) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(base.join("service-child.log"))
+    {
+        use std::io::Write;
+        let _ = writeln!(log, "--- service start {started_at} ---");
+    }
+    // Before spawning anything: a link left over from a previous run would fight
+    // the new one for the same device token.
+    reap_session0_orphans();
     #[cfg(windows)]
     let job = create_job();
     let mut child: Option<Child> = None;
