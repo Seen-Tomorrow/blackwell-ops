@@ -834,19 +834,13 @@
 /* ── E-ink Panel — parameters section, themed phosphor text ─── */
 .eink-panel {
   background: var(--theme-panel-accent);
-}
-
-/* Phosphor ink — explicit child rules (was: `.eink-panel *` wildcard bomb).
-   Children that own their ink (value-chip, config-value-segment, err-*,
-   engine-stack-profile-pill, provider-pill-active, catalog-seat-edit-banner,
-   full-auto-cockpit, config-spec-mode-badge, ctx-slider-*) are excluded. */
-.eink-panel > *,
-.eink-panel > * > *,
-.eink-panel > * > * > * {
-  color: var(--theme-accent-bright) !important;
-}
-.eink-panel .value-chip, .eink-panel .value-chip-active, .eink-panel .config-value-segment, .eink-panel .config-value-segment *, .eink-panel .err-title, .eink-panel .err-body, .eink-panel .err-detail, .eink-panel .err-reload, .eink-panel .engine-stack-profile-pill, .eink-panel .provider-pill-active, .eink-panel .catalog-seat-edit-banner, .eink-panel .catalog-seat-edit-banner *, .eink-panel .full-auto-cockpit, .eink-panel .full-auto-cockpit *{
-  color: inherit;
+  /* Phosphor ink, declared once. Colour inherits, so plain descendants need no rule at
+     all, and a control that paints its own background keeps its own contrasting ink.
+     The previous scheme forced ink by tree depth (`> * > * > *` with !important) and then
+     handed it back to the parent for a roster of controls via `color: inherit` — ink
+     keyed by where an element sits rather than what it is, so every filled control had to
+     out-specify a rule from another file to stay readable. */
+  color: var(--theme-accent-bright);
 }
 
 /* Group headers on e-ink — re-keyed to .config-group-header, the class that owns the
