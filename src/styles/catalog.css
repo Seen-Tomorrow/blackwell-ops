@@ -2334,24 +2334,6 @@
   color: color-mix(in srgb, var(--theme-text) 60%, transparent);
 }
 
-/* FIT SCAN button — quiet idle, accent while scanning */
-.mcard-fit-scan {
-  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
-  color: var(--theme-text-muted);
-}
-
-.mcard-fit-scan:hover {
-  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
-  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-text) 4%, transparent);
-}
-
-.mcard-fit-scan--scanning {
-  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-  color: var(--theme-accent);
-}
-
 /* ⚠ SCAN button (no metadata) — warn idle, info while scanning */
 .mcard-scan {
   border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);

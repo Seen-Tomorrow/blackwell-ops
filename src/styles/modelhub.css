@@ -33,11 +33,6 @@
   color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
 }
 
-/* The GPU pass is the heavier one — amber, same family as the fit badges. */
-.hdr-maint-strip[data-job="fit"] .hdr-maint-strip__label {
-  color: var(--theme-tel-amber);
-}
-
 .hdr-maint-strip__count {
   color: color-mix(in srgb, var(--theme-text) 75%, transparent);
 }
@@ -56,10 +51,6 @@
   height: 100%;
   background: var(--theme-tel-cyan);
   transition: width 0.2s ease;
-}
-
-.hdr-maint-strip[data-job="fit"] .hdr-maint-strip__fill {
-  background: var(--theme-tel-amber);
 }
 
 .hdr-maint-strip__current {
