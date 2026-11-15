@@ -145,13 +145,60 @@ fn copy_factory_config_jsons(source: &std::path::Path, app_root: &std::path::Pat
                 continue;
             }
             let dst = dst_config.join(cfg_entry.file_name());
-            match std::fs::copy(&path, &dst) {
+            // The installer puts the bundled resources beside the exe, so the factory refresh
+            // reads and writes the same file. Windows CopyFileEx refuses that with a sharing
+            // violation (os error 32) that looks exactly like another process holding the file -
+            // nobody is. Skip the self-copy, and skip an already-identical destination, so a
+            // launch only rewrites a config that actually changed.
+            if same_file(&path, &dst) || same_contents(&path, &dst) {
+                continue;
+            }
+            match copy_with_retry(&path, &dst) {
                 Ok(_) => copied += 1,
-                Err(e) => log::warn!("[setup] Failed to copy {}: {}", path.display(), e),
+                Err(e) => log::warn!("[setup] Failed to copy {} -> {}: {}", path.display(), dst.display(), e),
             }
         }
     }
     copied
+}
+
+fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+fn same_contents(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (
+        std::fs::metadata(a).map(|m| m.len()),
+        std::fs::metadata(b).map(|m| m.len()),
+    ) {
+        (Ok(la), Ok(lb)) if la == lb => match (std::fs::read(a), std::fs::read(b)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// An in-app update unpacks and restarts the app, so the previous process can still hold the
+/// destination for a moment (os error 32, sharing violation). Retry briefly instead of logging a
+/// warning on every start of an updated install.
+fn copy_with_retry(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<u64> {
+    let mut last = None;
+    for attempt in 0..3 {
+        match std::fs::copy(src, dst) {
+            Ok(bytes) => return Ok(bytes),
+            Err(e) => {
+                last = Some(e);
+                if attempt < 2 {
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                }
+            }
+        }
+    }
+    Err(last.expect("copy attempt ran at least once"))
 }
 
 /// DEV only: refresh `runtime/<provider>/config/*.json` from `src-tauri/runtime` so spawn_profile edits

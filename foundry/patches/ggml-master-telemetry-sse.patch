@@ -1,8 +1,8 @@
 diff --git a/tools/server/server-common.h b/tools/server/server-common.h
-index 0925c508e..097d23f8e 100644
+index 05622849a..d8594efc2 100644
 --- a/tools/server/server-common.h
 +++ b/tools/server/server-common.h
-@@ -489,6 +489,35 @@ struct server_slot_stats {
+@@ -505,6 +505,35 @@ struct server_slot_stats {
      json to_json() const;
  };
  
@@ -39,10 +39,10 @@ index 0925c508e..097d23f8e 100644
  // unlike server_slot_stats, server_metrics is server-global and cumulative, not tied to a slot
  struct server_metrics {
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index a5cba1d71..3f7c91bf9 100644
+index 448f7912f..8c84dadef 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -27,6 +27,7 @@
+@@ -29,6 +29,7 @@
  #include <cinttypes>
  #include <deque>
  #include <exception>
@@ -50,7 +50,7 @@ index a5cba1d71..3f7c91bf9 100644
  #include <memory>
  #include <filesystem>
  #include <random>
-@@ -1520,6 +1521,7 @@ private:
+@@ -1541,6 +1542,7 @@ private:
  
              slot.callback_on_release = [this](int id_slot) {
                  queue_tasks.pop_deferred_task(id_slot);
@@ -58,7 +58,7 @@ index a5cba1d71..3f7c91bf9 100644
              };
  
              slot.callback_on_reset = [this](const server_slot & slot) {
-@@ -2379,6 +2381,18 @@ private:
+@@ -2430,6 +2432,18 @@ private:
          res->prompt          = slot.task->tokens.detokenize(ctx_tgt, true);
          res->response_fields = std::move(slot.task->params.response_fields);
  
@@ -77,7 +77,7 @@ index a5cba1d71..3f7c91bf9 100644
          res->truncated             = slot.truncated;
          res->n_decoded             = slot.stats.n_gen;
          res->n_prompt_tokens       = slot.task->n_tokens();
-@@ -3906,8 +3920,13 @@ private:
+@@ -4035,8 +4049,13 @@ private:
                      if (slot.state == SLOT_STATE_STARTED) {
                          slot.stats.update_prompt_start();
  
@@ -91,7 +91,7 @@ index a5cba1d71..3f7c91bf9 100644
                          SLT_TRC(slot, "new prompt, n_ctx_slot = %d, n_keep = %d, task.n_tokens = %d\n",
                                  slot.n_ctx, slot.task->params.n_keep, slot.task->n_tokens());
  
-@@ -4711,6 +4730,8 @@ private:
+@@ -4846,6 +4865,8 @@ private:
                  if (slot.task->params.stream && slot.task->params.return_progress) {
                      send_partial_response(slot, {}, true);
                  }
@@ -100,7 +100,7 @@ index a5cba1d71..3f7c91bf9 100644
              }
  
              if (!is_inside_view(slot.i_batch)) {
-@@ -4746,6 +4767,8 @@ private:
+@@ -4881,6 +4902,8 @@ private:
                  // prompt evaluated for next-token prediction
                  slot.state = SLOT_STATE_GENERATING;
  
@@ -109,7 +109,7 @@ index a5cba1d71..3f7c91bf9 100644
                  if (slot.can_speculate()) {
                      common_speculative_begin(spec.get(), slot.id, slot.prompt.tokens.get_text_tokens());
                  }
-@@ -4783,6 +4806,8 @@ private:
+@@ -4918,6 +4941,8 @@ private:
  
              slot.stats.update_gen_last();
  
@@ -118,7 +118,7 @@ index a5cba1d71..3f7c91bf9 100644
              completion_token_output result;
              result.tok          = id;
              result.text_to_send = common_token_to_piece(slot.ctx_tgt, result.tok, accept_special_token(slot, result.tok));
-@@ -4901,6 +4926,8 @@ private:
+@@ -5037,6 +5062,8 @@ private:
  
              slot.stats.update_gen_last();
  
@@ -127,7 +127,7 @@ index a5cba1d71..3f7c91bf9 100644
              // update how many tokens out of those tested were accepted
              slot.stats.n_draft_accepted += n_accepted;
              slot.stats.n_draft_verif_steps += 1;
-@@ -5076,6 +5103,77 @@ private:
+@@ -5212,6 +5239,77 @@ private:
              dst[i] += src[i];
          }
      }
@@ -206,10 +206,10 @@ index a5cba1d71..3f7c91bf9 100644
  
  //
 diff --git a/tools/server/server-http.cpp b/tools/server/server-http.cpp
-index f4de5efdb..ccc8ba169 100644
+index d56ceb46d..93b99074b 100644
 --- a/tools/server/server-http.cpp
 +++ b/tools/server/server-http.cpp
-@@ -312,7 +312,9 @@ bool server_http_context::init_listener(const common_params & params) {
+@@ -398,7 +398,9 @@ bool server_http_context::init_listener(const common_params & params) {
              }
              // Cold-boot progress stream must be reachable while weights load (single-model + router).
              // Without this, GET /models/sse returns 503 "Loading model" and never streams progress.
@@ -221,10 +221,10 @@ index f4de5efdb..ccc8ba169 100644
              }
              // no endpoints are allowed to be accessed when the server is not ready
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index d9abe7906..bd86c6d19 100644
+index 12b2c9b5b..a1ff4b00c 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -109,6 +109,206 @@ static server_http_res_ptr handle_single_model_load_sse(const server_http_req &
+@@ -112,6 +112,206 @@ static server_http_res_ptr handle_single_model_load_sse(const server_http_req &
      };
      return res;
  }
@@ -431,14 +431,14 @@ index d9abe7906..bd86c6d19 100644
  // satisfies -Wmissing-declarations (used by llama command)
  int llama_server(int argc, char ** argv);
  
-@@ -280,6 +480,10 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+@@ -285,6 +485,10 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+     ctx_http.get ("/slots",                    ex_wrapper(routes.get_slots));
      ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
  
-     // Google Cloud Platform (Vertex AI) compat
 +    // engine telemetry fan-out: prompt_progress / request_end / state, so an
 +    // observer that does not own the request can meter PP and TG directly
 +    ctx_http.get("/events/sse", ex_wrapper(handle_engine_events_sse));
 +
+     // Google Cloud Platform (Vertex AI) compat
      ctx_http.register_gcp_compat();
  }
- 

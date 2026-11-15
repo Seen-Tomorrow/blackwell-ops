@@ -560,6 +560,10 @@ pub async fn is_port_in_use(port: u16) -> bool {
     .unwrap_or(false)
 }
 
+/// Windows NTSTATUS for "a dependent DLL is missing" — the process dies in the loader, before
+/// `main()`, so no engine log exists. Callers use it to trigger a dependency walk.
+pub const EXIT_DLL_NOT_FOUND: i32 = -1073741515;
+
 /// Human-readable Windows child process exit code (NTSTATUS / Win32).
 pub fn describe_process_exit_code(code: i32) -> String {
     match code {
@@ -570,6 +574,17 @@ pub fn describe_process_exit_code(code: i32) -> String {
             "{code} (STACK_BUFFER_OVERRUN 0xC0000409 — security cookie failure / stack corruption in native code)"
         ),
         -1073741510 => format!("{code} (0xC000013A — process terminated by Ctrl+C/break)"),
+        // Loader failures. All three kill the process before main(), so the engine log is empty
+        // and the only evidence is this code — that is why they must not fall through to NTSTATUS.
+        -1073741515 => format!(
+            "{code} (STATUS_DLL_NOT_FOUND 0xC0000135 — a dependent DLL is missing and the process died in the loader before any engine log; check the portable CUDA runtime (toolchain/cuda/v<ver>) and the MSVC runtime beside the exe)"
+        ),
+        -1073741511 => format!(
+            "{code} (STATUS_ENTRYPOINT_NOT_FOUND 0xC0000139 — a DLL was found but lacks an export the engine needs; usually a stale MSVC or CUDA runtime winning the search order)"
+        ),
+        -1073741502 => format!(
+            "{code} (STATUS_DLL_INIT_FAILED 0xC0000142 — a DLL failed during initialization; often a GPU driver DLL or a broken runtime install)"
+        ),
         c if c < 0 => format!("{c} (0x{:08X} NTSTATUS)", c as u32),
         c => c.to_string(),
     }

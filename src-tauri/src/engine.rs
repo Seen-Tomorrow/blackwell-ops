@@ -769,9 +769,21 @@ pub async fn launch_engine(
             }
             Err(e) => {
                 if e == crate::engine_stack::LOAD_FAILURE_ALREADY_REPORTED {
-                    return Err(BlackwellError::EngineSpawnFailed {
-                        message: "Model load failed".to_string(),
-                    });
+                    // The detail went out as a load-failed event; keep the rejection useful too
+                    // instead of a bare "Model load failed" that hides a missing DLL.
+                    let mut message = "Model load failed".to_string();
+                    let missing = crate::engine_deps::missing_dependencies_for_profile(
+                        &binary_path,
+                        crate::engine_utils::normalized_binary_profile(&config.binary_profile),
+                    );
+                    if !missing.is_empty() {
+                        message = format!(
+                            "{message} - missing dependent DLL(s) for {}: {}",
+                            binary_path.display(),
+                            missing.join(", ")
+                        );
+                    }
+                    return Err(BlackwellError::EngineSpawnFailed { message });
                 }
                 if e == crate::engine_stack::LAUNCH_CANCELLED {
                     return Err(BlackwellError::EngineSpawnFailed {
@@ -816,6 +828,16 @@ pub async fn launch_engine(
                             stack.release_reserved_slot(slot_idx, reservation);
                         }
                         EngineStack::emit_stack_changed_unlocked(&app.stack).await;
+                        // Loader deaths (0xC0000135) carry the missing DLL name and nothing else:
+                        // no engine stderr, so this line is the only durable record.
+                        let msg = format!("[{}] Launch failed: {}", config.alias, err_msg);
+                        log::error!("{msg}");
+                        crate::session_log::append_session_line(&msg);
+                        app.blackwell_output_console_manager.emit_line_to_category(
+                            crate::output_console::BlackwellOutputConsoleCategory::Error,
+                            msg,
+                            crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+                        );
                         return Err(BlackwellError::EngineSpawnFailed {
                             message: err_msg,
                         });
@@ -846,6 +868,14 @@ pub async fn launch_engine(
             stack.release_reserved_slot(slot_idx, reservation);
         }
         EngineStack::emit_stack_changed_unlocked(&app.stack).await;
+        let msg = format!("[{}] Launch failed after retry: {}", config.alias, e);
+        log::error!("{msg}");
+        crate::session_log::append_session_line(&msg);
+        app.blackwell_output_console_manager.emit_line_to_category(
+            crate::output_console::BlackwellOutputConsoleCategory::Error,
+            msg,
+            crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+        );
         return Err(BlackwellError::EngineSpawnFailed { message: e });
     }
 

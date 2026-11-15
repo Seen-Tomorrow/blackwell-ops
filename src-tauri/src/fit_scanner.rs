@@ -722,6 +722,14 @@ pub fn decode_fit_exit(exit_code: Option<i32>) -> String {
         Some(-1073741819) => "exit 0xC0000005 (access violation)".into(),
         // 0xC0000374 STATUS_HEAP_CORRUPTION
         Some(-1073740940) => "exit 0xC0000374 (heap corruption)".into(),
+        // 0xC0000135 STATUS_DLL_NOT_FOUND — loader death, stderr is empty by construction
+        Some(-1073741515) => {
+            "exit 0xC0000135 (STATUS_DLL_NOT_FOUND — a dependent DLL is missing, so FIT died in the loader with no output; check the portable CUDA runtime and the MSVC runtime beside the exe)".into()
+        }
+        // 0xC0000139 STATUS_ENTRYPOINT_NOT_FOUND
+        Some(-1073741511) => {
+            "exit 0xC0000139 (STATUS_ENTRYPOINT_NOT_FOUND — a stale MSVC/CUDA runtime lacks a needed export)".into()
+        }
         Some(c) => format!("exit={c} (0x{c:08X})"),
     }
 }
@@ -733,14 +741,27 @@ fn fit_process_error_message(
     exit_code: Option<i32>,
     stderr: &str,
 ) -> String {
-    format!(
+    let mut msg = format!(
         "Fit process failed for {} (adapter={}, binary={}, {}): {}",
         model_path,
         adapter.as_str(),
         fit_binary,
         decode_fit_exit(exit_code),
         fit_stderr_reason(stderr)
-    )
+    );
+    // Loader death leaves stderr empty, so the static dependency walk is the only evidence.
+    if exit_code == Some(crate::engine_utils::EXIT_DLL_NOT_FOUND) {
+        msg.push_str(&format!(
+            "; {}",
+            crate::engine_deps::describe_missing_dlls(
+                std::path::Path::new(fit_binary),
+                crate::config::FIT_SCAN_BINARY_PROFILE,
+            )
+        ));
+    }
+    // FIT has no engine-session stderr to correlate with, so put the reason in the runtime log.
+    log::error!("[FIT] {msg}");
+    msg
 }
 
 /// Scan a single model at one anchor point with pre-built CLI args.

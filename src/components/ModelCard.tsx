@@ -165,6 +165,13 @@ export default function ModelCard({
     archBadge = resolved.archBadge;
   }
 
+  // Vision capability is catalog evidence: the scan found a projector beside this model
+  // (`vision` is set from `find_largest_mmproj`, not from the launch flag). The badge is
+  // the only place that projector is visible in the UI, so it names the file and size.
+  const visionProjector = model.vision
+    ? `${model.mmproj ?? "mmproj"}${model.mmproj_size_mib ? ` (${Math.round(model.mmproj_size_mib)} MiB)` : ""}`
+    : null;
+
   const isNvfp = quantBadge && (quantBadge.toLowerCase().includes('nvfp4') || quantBadge.toLowerCase().includes('mxfp4'));
   const quantBadgeClass = isNvfp
     ? 'model-card-quant-badge model-card-quant-badge--nvfp mcard-quant--nvfp border'
@@ -299,6 +306,14 @@ export default function ModelCard({
         {draftBadge && !isDraftOnly && (
           <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">
             {draftBadge}
+          </span>
+        )}
+        {visionProjector && (
+          <span
+            className="mcard-mm type-micro font-mono px-1 py-0.5 rounded-sm border shrink-0 whitespace-nowrap"
+            title={`Vision projector on disk: ${visionProjector} — loaded when the VISION flag is auto/on`}
+          >
+            VISION
           </span>
         )}
       </div>

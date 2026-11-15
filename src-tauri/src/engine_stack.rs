@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::types::{EngineConfig, StackEntry};
@@ -134,6 +135,8 @@ pub struct EngineSlot {
     pub split_mode: String,
     /// Runtime profile binary env (vanguard/edge/fresh/stable) used at launch.
     pub binary_profile: String,
+    /// Engine exe this slot launched — lets a load failure name a missing dependent DLL.
+    pub binary_path: Option<PathBuf>,
     pub supports_fusion: bool,
     /// True when launch injected mmproj (vision on + projector loaded).
     pub vision: bool,
@@ -171,6 +174,7 @@ impl EngineStack {
                 backend_type: String::new(),
                 split_mode: String::new(),
                 binary_profile: String::new(),
+                binary_path: None,
                 supports_fusion: true,
                 vision: false,
                 reaper_cancel: Arc::new(AtomicBool::new(false)),
@@ -582,8 +586,18 @@ impl EngineStack {
             if already_reported {
                 return Err(LOAD_FAILURE_ALREADY_REPORTED.to_string());
             }
+            // 0xC0000135 has no engine output at all, so name the DLL: otherwise this reads as a
+            // generic crash and sends the report to the wrong layer.
+            let hint = if exit_code == crate::engine_utils::EXIT_DLL_NOT_FOUND {
+                format!(
+                    " — {}",
+                    crate::engine_deps::describe_missing_dlls(binary_path, profile_for_toolchain)
+                )
+            } else {
+                String::new()
+            };
             return Err(format!(
-                "Engine crashed immediately with exit code {}",
+                "Engine crashed immediately with exit code {}{hint}",
                 crate::engine_utils::describe_process_exit_code(exit_code)
             ));
         }
@@ -655,6 +669,7 @@ impl EngineStack {
                 } else {
                     config.binary_profile.clone()
                 };
+                slot.binary_path = Some(binary_path.to_path_buf());
                 slot.supports_fusion = supports_fusion;
                 // Vision only when mmproj was actually on the launch line (not just vision=on).
                 slot.vision = cmd_args.windows(2).any(|w| w[0].eq_ignore_ascii_case("--mmproj"))
@@ -1134,10 +1149,12 @@ impl EngineStack {
                 slot.split_mode.clone(),
                 slot.port,
                 slot.model_path.clone(),
+                slot.binary_path.clone(),
+                slot.binary_profile.clone(),
             )
         };
 
-        let (alias, pid, split_mode, port, model_path) = snapshot;
+        let (alias, pid, split_mode, port, model_path, binary_path, binary_profile) = snapshot;
 
         crate::fusion::stop_brain(slot_idx).await;
 
@@ -1145,7 +1162,20 @@ impl EngineStack {
         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         let stderr_tail = log_hub.stderr_tail_line(slot_idx);
         let user_reason = format_load_failure_reason(reason, &split_mode);
-        let user_reason = LogHub::format_reason_with_stderr_tail(&user_reason, stderr_tail.as_deref());
+        let mut user_reason =
+            LogHub::format_reason_with_stderr_tail(&user_reason, stderr_tail.as_deref());
+        // A loader death (0xC0000135) writes no stderr at all: name the DLL here, where every
+        // load-failure path passes through, including the reaper's fixed-string variant.
+        if let Some(path) = binary_path.as_deref() {
+            let missing = crate::engine_deps::missing_dependencies_for_profile(path, &binary_profile);
+            if !missing.is_empty() {
+                user_reason = format!(
+                    "{user_reason} - missing dependent DLL(s) for {}: {}",
+                    path.display(),
+                    missing.join(", ")
+                );
+            }
+        }
         log_hub.clear_stderr_tail(slot_idx);
         let launch_err = format!("LAUNCH_ERROR: {}", user_reason);
         log_hub.emit_system_event(slot_idx, &alias, &launch_err).await;
@@ -1255,6 +1285,7 @@ impl EngineStack {
             slot.backend_type.clear();
             slot.split_mode.clear();
             slot.binary_profile.clear();
+            slot.binary_path = None;
             slot.supports_fusion = false;
             slot.reaper_cancel = Arc::new(AtomicBool::new(false));
             slot.load_fail_claimed = Arc::new(AtomicBool::new(false));

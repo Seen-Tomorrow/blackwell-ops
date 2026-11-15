@@ -1,8 +1,8 @@
 diff --git a/tools/server/server-http.cpp b/tools/server/server-http.cpp
-index cf147c7e7..f4de5efdb 100644
+index 5bdece55b..d56ceb46d 100644
 --- a/tools/server/server-http.cpp
 +++ b/tools/server/server-http.cpp
-@@ -310,6 +310,11 @@ bool server_http_context::init_listener(const common_params & params) {
+@@ -396,6 +396,11 @@ bool server_http_context::init_listener(const common_params & params) {
              if (frontend_paths.count(req.path)) {
                  return true; // frontend asset, allow it to load and show "loading"
              }
@@ -15,21 +15,20 @@ index cf147c7e7..f4de5efdb 100644
              // this is to prevent any data races or inconsistent states
              res.status = 503;
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index b6ebf7523..d9abe7906 100644
+index 9892efa5b..12b2c9b5b 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -14,7 +14,10 @@
- #include "log.h"
+@@ -16,7 +16,9 @@
  
+ #include <algorithm>
  #include <atomic>
 +#include <chrono>
  #include <clocale>
 +#include <condition_variable>
-+#include <mutex>
  #include <exception>
+ #include <mutex>
  #include <signal.h>
- #include <thread> // for std::thread::hardware_concurrency
-@@ -43,6 +46,69 @@ struct server_run_opts {
+@@ -47,6 +49,69 @@ struct server_run_opts {
      bool resolve_model           = true; // download / resolve -hf and docker models; off when the caller did it already
  };
  
@@ -99,7 +98,7 @@ index b6ebf7523..d9abe7906 100644
  // satisfies -Wmissing-declarations (used by llama command)
  int llama_server(int argc, char ** argv);
  
-@@ -596,6 +662,9 @@ static int server_run_instance(common_params & params, server_role & role, commo
+@@ -667,6 +732,9 @@ static int server_run_instance(common_params & params, server_role & role, commo
      }
  
      server_register_routes(ctx_http, routes);
@@ -109,7 +108,7 @@ index b6ebf7523..d9abe7906 100644
      server_register_stream_routes(ctx_http,
          server_stream_make_get_handler(),
          server_stream_make_lookup_handler(),
-@@ -623,12 +692,62 @@ static int server_run_instance(common_params & params, server_role & role, commo
+@@ -694,12 +762,62 @@ static int server_run_instance(common_params & params, server_role & role, commo
          return 1;
      }
  
@@ -128,7 +127,7 @@ index b6ebf7523..d9abe7906 100644
 +    }
 +    if (model_label.empty()) {
 +        model_label = "model";
-+    }
+     }
 +    {
 +        json boot = {
 +            {"model", model_label},
@@ -136,7 +135,7 @@ index b6ebf7523..d9abe7906 100644
 +            {"data", {{"status", "loading"}}},
 +        };
 +        g_single_model_load_hub.publish(std::move(boot), false);
-     }
++    }
 +    ctx_server.set_state_callback([&, model_label](server_state state, json payload) {
 +        if (role.is_managed_by_router()) {
 +            role.notify_to_router(server_state_to_str(state), payload);
@@ -177,7 +176,7 @@ index b6ebf7523..d9abe7906 100644
  
      if (!ctx_server.load_model(params)) {
          clean_up();
-@@ -637,6 +756,19 @@ static int server_run_instance(common_params & params, server_role & role, commo
+@@ -708,6 +826,19 @@ static int server_run_instance(common_params & params, server_role & role, commo
          return 1;
      }
  

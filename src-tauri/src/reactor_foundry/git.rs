@@ -354,11 +354,15 @@ pub(crate) async fn apply_foundry_vendor_patches(
             continue;
         }
 
+        // --index keeps the staged tree level with the worktree. Without it a plain apply leaves
+        // the index behind, and the --3way fallback for a later patch touching the same file dies
+        // with "does not match index" before it can merge.
         let apply = match git_hidden_output(
             git_exe.to_path_buf(),
             src_dir.to_path_buf(),
             vec![
                 "apply".into(),
+                "--index".into(),
                 "--whitespace=nowarn".into(),
                 patch_str,
             ],
