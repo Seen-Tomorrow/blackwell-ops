@@ -366,9 +366,6 @@ function App() {
   useLibrarySchedule({
     models,
     runtimeReady: setupGuide.runtimeReady,
-    setupActive: setupGuide.active,
-    setupResolved: setupGuide.resolved,
-    stack,
     onCatalogChanged: reloadModels,
     onModelScanned: patchScannedModel,
   });

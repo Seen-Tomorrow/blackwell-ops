@@ -1,13 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  cancelMetadataScan,
-  getMetadataJob,
-  getRunningFitSession,
-  snoozeFitScan,
-  stopFitScan,
-  subscribeLibraryJobs,
-} from "../lib/libraryJobs";
-import { subscribeFitScanSessions } from "../lib/fitScanSessionStore";
+import { cancelMetadataScan, getMetadataJob, subscribeLibraryJobs } from "../lib/libraryJobs";
 
 function baseName(path: string | null): string | null {
   if (!path) return null;
@@ -16,86 +8,50 @@ function baseName(path: string | null): string | null {
   return leaf ? leaf.replace(/\.gguf$/i, "") : null;
 }
 
-/** Re-render on any store change — the stores hold the truth, this just wakes up. */
+/** Re-render on any store change - the store holds the truth, this just wakes up. */
 function useJobTick(): void {
   const [, setTick] = useState(0);
-  useEffect(() => {
-    const bump = () => setTick((t) => t + 1);
-    const unsubscribeJobs = subscribeLibraryJobs(bump);
-    const unsubscribeFit = subscribeFitScanSessions(bump);
-    return () => {
-      unsubscribeJobs();
-      unsubscribeFit();
-    };
-  }, []);
+  useEffect(() => subscribeLibraryJobs(() => setTick((t) => t + 1)), []);
 }
 
 /**
- * Background library passes in the page header — metadata (per model, CPU) then
- * the VRAM fit scan (GPU, minutes).
+ * The metadata pass in the page header (per model, CPU only).
  *
- * Reads the shared job stores directly, so it shows the same progress whatever
- * started the run: the first-run backfill, the catalog's SCAN META, or CONFIG's
- * SCAN LIBRARY. Each row stops independently; the fit row also carries NOT NOW,
- * which keeps it quiet for a day.
+ * Reads the shared job store directly, so it shows the same progress whatever started the run: the
+ * first-run backfill or the catalog's SCAN META. The library-wide VRAM fit scan that used to share
+ * this strip is gone; a model is measured on demand and by its own launches.
  */
 export default function HeaderMaintenanceStrip() {
   useJobTick();
   const metadata = getMetadataJob();
-  const fit = getRunningFitSession();
 
-  const view =
-    metadata.status === "running"
-      ? {
-          kind: "metadata" as const,
-          done: metadata.done,
-          total: metadata.total,
-          manual: metadata.manual,
-          current: baseName(metadata.current),
-          providerId: null as string | null,
-        }
-      : fit
-        ? {
-            kind: "fit" as const,
-            // Models finished in this run — the results map also carries cached
-            // entries, so counting it would show 60/12 on an incremental pass.
-            done: fit.state.runCompleted ?? 0,
-            // The queue the caller announced is an ESTIMATE: an incremental pass can pick up
-            // more models than it expected, which rendered as "3/1". Never show less than done.
-            total: Math.max(fit.state.totalModels ?? 0, fit.state.runCompleted ?? 0),
-            manual: fit.state.manual ?? false,
-            current: baseName(fit.state.activeModelPath ?? null),
-            providerId: fit.providerId,
-          }
-        : null;
+  if (metadata.status !== "running") return null;
 
-  if (!view) return null;
-
-  const isFit = view.kind === "fit";
-  const pct = view.total > 0 ? Math.min(100, (view.done / view.total) * 100) : 0;
-  const label = isFit ? "VRAM FIT SCAN" : "MODEL METADATA SCAN";
-  const mode = view.manual ? "MANUAL SCAN" : "ONE-TIME SCAN";
-  const detail = isFit
-    ? `VRAM fit scan — ${view.done} of ${view.total} models measured`
-    : `Model metadata scan — ${view.done} of ${view.total} models parsed`;
+  const done = metadata.done;
+  const total = metadata.total;
+  const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
+  const label = "MODEL METADATA SCAN";
+  const mode = metadata.manual ? "MANUAL SCAN" : "ONE-TIME SCAN";
+  const detail = `Model metadata scan - ${done} of ${total} models parsed`;
+  const current = baseName(metadata.current);
 
   return (
     <div
       className="hdr-maint-strip flex items-center gap-2 flex-shrink-0"
-      data-job={view.kind}
-      title={view.current ? `${detail}\nModel ${view.current}` : detail}
+      data-job="metadata"
+      title={current ? `${detail}\nModel ${current}` : detail}
     >
-      {/* Model first: it is the only variable-width cell. With a fixed width it is the
-          left edge that moves, and the strip is right-anchored — so the progress, mode and
-          buttons keep a stable position instead of sliding as names change. */}
-      {view.current && (
-        <span className="hdr-maint-strip__current" title={`Model ${view.current}`}>
-          Model {view.current}
+      {/* Model first: it is the only variable-width cell. With a fixed width it is the left edge
+          that moves, and the strip is right-anchored - so progress, mode and buttons keep a stable
+          position instead of sliding as names change. */}
+      {current && (
+        <span className="hdr-maint-strip__current" title={`Model ${current}`}>
+          Model {current}
         </span>
       )}
       <span className="hdr-maint-strip__label">{label}</span>
       <span className="hdr-maint-strip__count">
-        {view.done}/{view.total || "?"}
+        {done}/{total || "?"}
       </span>
       <span
         className="hdr-maint-strip__track"
@@ -108,24 +64,11 @@ export default function HeaderMaintenanceStrip() {
         <span className="hdr-maint-strip__fill" style={{ width: `${pct}%` }} />
       </span>
       <span className="hdr-maint-strip__mode">{mode}</span>
-      {isFit && view.providerId && (
-        <button
-          type="button"
-          className="hdr-maint-strip__btn"
-          onClick={() => void snoozeFitScan(view.providerId!)}
-          title="Stop the fit scan and keep it off for a day"
-        >
-          NOT NOW
-        </button>
-      )}
       <button
         type="button"
         className="hdr-maint-strip__btn hdr-maint-strip__btn--stop"
-        onClick={() => {
-          if (isFit && view.providerId) void stopFitScan(view.providerId);
-          else cancelMetadataScan();
-        }}
-        aria-label={`Stop ${isFit ? "VRAM fit scan" : "metadata scan"}`}
+        onClick={() => cancelMetadataScan()}
+        aria-label="Stop metadata scan"
         title="Stop"
       >
         ✕

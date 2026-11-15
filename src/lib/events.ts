@@ -44,7 +44,6 @@ export const EVENTS = {
   resetSetupGuide: `${STORAGE_PREFIX}reset-setup-guide`,
   showAllHiddenParams: `${STORAGE_PREFIX}show-all-hidden-params`,
   localStorageCleared: `${STORAGE_PREFIX}local-storage-cleared`,
-  fitScanCacheChanged: `${STORAGE_PREFIX}fit-scan-cache-changed`,
   /** Monitor focus mode — fusion + HW only chrome hide. */
   monitorFocusChanged: `${STORAGE_PREFIX}monitor-focus-changed`,
 

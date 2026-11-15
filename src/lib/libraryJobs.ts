@@ -1,32 +1,23 @@
 /**
- * Library maintenance jobs — the ONE place that runs metadata probes and the
- * VRAM fit scan, whatever started them.
+ * Library maintenance jobs — the ONE place that runs metadata probes, whatever started them.
  *
- * Three callers exist (first-run backfill, catalog SCAN META, CONFIG SCAN
- * LIBRARY). Before this module each had its own sequencing, so the same scan
- * behaved differently per entry point: metadata was only published when a batch
- * finished, a background fit could overlap a manual one, and progress lived in
- * different places. They now all call the functions below.
+ * Two callers exist (the first-run backfill and the catalog's SCAN META). Before this module each
+ * had its own sequencing, so the same scan behaved differently per entry point: metadata was only
+ * published when a batch finished, and progress lived in different places. They now all call the
+ * functions below.
  *
  * Rules encoded here:
- * - metadata is scanned **per model**, ordered (last-used first, then smallest),
- *   and published as each model lands — no all-or-nothing batch;
- * - the fit scan drives `fitScanSessionStore`, so the CONFIG panel, the catalog
- *   badges and the header strip all read the same session;
- * - only one job of each kind can run (the backend guards the fit too).
+ * - metadata is scanned **per model**, ordered (last-used first, then smallest), and published as
+ *   each model lands — no all-or-nothing batch;
+ * - only one metadata job can run at a time.
+ *
+ * The library-wide VRAM fit scan is gone: a model is measured by its own launches and by an
+ * on-demand probe, not by a background pass over the whole library.
  */
 import { invoke } from "@tauri-apps/api/core";
-import type { FitScanComplete, ModelEntry } from "./types";
+import type { ModelEntry } from "./types";
 import { dispatchAppEvent, EVENTS } from "./events";
 import { errorMessage } from "./blackwellError";
-import {
-  beginFitScanSession,
-  bootstrapFitScanCache,
-  completeFitScanSession,
-  failFitScanSession,
-  getFitScanSessions,
-  stopFitScanLocal,
-} from "./fitScanSessionStore";
 import { loadLibraryBackfill, saveLibraryBackfill } from "./storage";
 import { sizeLabelBytes } from "./modelSize";
 
@@ -72,9 +63,6 @@ function orderModelsForScan<T extends ScanOrderModel>(
       return a.path.localeCompare(b.path);
     });
 }
-
-/** “NOT NOW” silence window for the fit scan. */
-const FIT_SNOOZE_MS = 24 * 60 * 60 * 1000;
 
 export interface MetadataJobState {
   status: "idle" | "running";
@@ -220,93 +208,4 @@ export function cancelMetadataScan(): void {
   metadataToken += 1;
   metadataJob = { ...IDLE_METADATA };
   bump();
-}
-
-// ── Fit job ─────────────────────────────────────────────────────────────
-
-function getFitSnoozeUntil(): number {
-  return loadLibraryBackfill().fitSnoozeUntil ?? 0;
-}
-
-export function isFitSnoozed(now = Date.now()): boolean {
-  return getFitSnoozeUntil() > now;
-}
-
-/** The fit session currently scanning, if any — single source for progress. */
-export function getRunningFitSession() {
-  for (const [providerId, state] of Object.entries(getFitScanSessions())) {
-    if (state.status === "scanning") return { providerId, state };
-  }
-  return null;
-}
-
-export type FitStartResult = "completed" | "failed" | "stopped" | "busy";
-
-/** Set when a stop is requested while a run is in flight — the invoke resolves
- *  with partial results, which must not be mistaken for a finished pass. */
-let fitStopRequested = false;
-
-/**
- * Run the library VRAM fit scan through the shared session store.
- *
- * Returns `busy` when a session is already scanning — the caller must not treat
- * that as its own run (the backend refuses a second concurrent scan anyway).
- * `stopped` means the run was cut short: partial results are already on disk,
- * but the library is NOT covered, so the caller must not mark it as such.
- */
-export async function startFitScan(
-  providerId: string,
-  parallel: number,
-  forceRescan = false,
-  opts?: { expectedTotal?: number; manual?: boolean },
-): Promise<FitStartResult> {
-  if (getFitScanSessions()[providerId]?.status === "scanning") return "busy";
-  if (getRunningFitSession()) return "busy";
-
-  fitStopRequested = false;
-  const cached = forceRescan ? null : await bootstrapFitScanCache(providerId);
-  beginFitScanSession(providerId, parallel, cached, forceRescan, {
-    totalModels: opts?.expectedTotal,
-    manual: opts?.manual,
-  });
-
-  try {
-    const result = await invoke<FitScanComplete>("fit_scan_library", {
-      providerId,
-      modelBase: "",
-      parallelCount: Math.max(parallel, 1),
-      batch: 2048,
-      ubatch: 512,
-      forceRescan,
-    });
-    dispatchAppEvent(EVENTS.fitScanCacheChanged);
-    if (fitStopRequested) {
-      // Partial results are on disk; leaving the session “complete” would claim
-      // a finished pass.
-      stopFitScanLocal(providerId);
-      return "stopped";
-    }
-    completeFitScanSession(providerId, result);
-    return "completed";
-  } catch (err) {
-    failFitScanSession(providerId, errorMessage(err) || String(err), parallel);
-    return "failed";
-  }
-}
-
-export async function stopFitScan(providerId: string): Promise<void> {
-  fitStopRequested = true;
-  try {
-    await invoke("fit_stop_scan");
-  } catch {
-    /* already finishing */
-  }
-  stopFitScanLocal(providerId);
-}
-
-/** Stop the fit scan and keep it off for a day. */
-export async function snoozeFitScan(providerId: string): Promise<void> {
-  const until = Date.now() + FIT_SNOOZE_MS;
-  saveLibraryBackfill({ ...loadLibraryBackfill(), fitSnoozeUntil: until });
-  await stopFitScan(providerId);
 }

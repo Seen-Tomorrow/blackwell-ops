@@ -563,11 +563,6 @@ async fn main() {
             config::reorder_provider,
             // FIT Scanner commands — the probe lives in fit_scanner with the rest of the domain
             fit_scanner::fit_scan_model,
-            fit_scanner::fit_scan_single_model,
-            fit_scanner::fit_scan_library,
-            fit_scanner::fit_stop_scan,
-            fit_scanner::get_fit_scan_points,
-            fit_scanner::get_fit_scan_cache_snapshot,
             vram_learn::get_learned_vram,
             vram_learn::get_learned_vram_for_model,
             vram_learn::get_learned_vram_curve,

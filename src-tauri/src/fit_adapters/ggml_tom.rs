@@ -9,8 +9,6 @@ use crate::fit_scanner::{parse_fit_breakdown, parse_gpu_components, FitScanRaw, 
 pub const TOM_MTP_SKIP_NOTE: &str =
     "MTP model — Tom does not load draft/MTP models yet";
 
-pub const TOM_TENSOR_SKIP_NOTE: &str =
-    "Tensor split — Tom llama-fit-params does not support SPLIT_MODE_TENSOR yet; no FIT data until tool update";
 
 /// MTP / draft model — GGUF meta (`nextn_predict_layers`), HF repo, or path heuristics.
 pub fn is_mtp_model(model_path: &str) -> bool {
@@ -45,16 +43,6 @@ pub fn model_skip_note(model_path: &str) -> Option<&'static str> {
     }
 }
 
-/// Per-point skip (tensor split labels only).
-pub fn point_skip_note(label: &str, split_mode: &str) -> Option<&'static str> {
-    if split_mode.eq_ignore_ascii_case("tensor")
-        || label.starts_with("split_tensor_")
-    {
-        Some(TOM_TENSOR_SKIP_NOTE)
-    } else {
-        None
-    }
-}
 
 pub fn build_scan_args(
     model_path: &str,
@@ -185,12 +173,6 @@ llama_params_fit_impl: projected to use 15480 MiB of device memory vs. 190564 Mi
         const CUDA_INIT: &str =
             "ggml_cuda_init: found 1 CUDA devices (Total VRAM: 97886 MiB):\n  Device 0: VRAM: 97886 MiB\n";
         assert!(parse_scan_output("", CUDA_INIT).is_none());
-    }
-
-    #[test]
-    fn tensor_point_skip_note() {
-        assert!(point_skip_note("split_tensor_64k", "tensor").is_some());
-        assert!(point_skip_note("base", "none").is_none());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { FitScanFull, FitScanProgress, GpuInfo, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
+import type { GpuInfo, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { useTauriListen } from "./useTauriListen";
@@ -12,14 +12,7 @@ import {
   type SortDirection,
   type SortField,
 } from "../lib/catalogSort";
-import { bootstrapFitScanCache } from "../lib/fitScanSessionStore";
-import {
-  FIT_SCAN_POINTS_TOTAL,
-  findFitScanEntry,
-  fitScanBadgeLabel,
-  mergeFitScanProgressPoint,
-  modelHasCompleteFitScan,
-} from "../lib/fitScanTable";
+
 import {
   type CatalogDraftFilter,
   draftRoleFromModel,
@@ -648,132 +641,6 @@ export function useModelCatalog({
     await onReload();
   }, [catalogSelectedModel, panelActiveModel, onReload]);
 
-  const [fitProviderId, setFitProviderId] = useState(
-    () => readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID,
-  );
-  const [fitScanResults, setFitScanResults] = useState<Record<string, FitScanFull>>({});
-  const [fitScanPointsTotal, setFitScanPointsTotal] = useState(FIT_SCAN_POINTS_TOTAL);
-  const [fitScanningPaths, setFitScanningPaths] = useState<Set<string>>(() => new Set());
-  const [fitScanActiveLabels, setFitScanActiveLabels] = useState<Record<string, string>>({});
-  const fitScanInFlightRef = useRef(new Set<string>());
-  const fitScanningPathsRef = useRef(fitScanningPaths);
-  fitScanningPathsRef.current = fitScanningPaths;
-
-  const reloadFitScanCache = useCallback(async (providerId: string) => {
-    const cached = await bootstrapFitScanCache(providerId);
-    if (cached) {
-      setFitScanResults(cached.results);
-      setFitScanPointsTotal(cached.scan_points_total ?? FIT_SCAN_POINTS_TOTAL);
-    } else {
-      setFitScanResults({});
-      setFitScanPointsTotal(FIT_SCAN_POINTS_TOTAL);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reloadFitScanCache(fitProviderId);
-  }, [fitProviderId, reloadFitScanCache]);
-
-  useEffect(() => {
-    const onProviderChanged = () => {
-      const next = readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID;
-      setFitProviderId(next);
-    };
-    const onFitCacheChanged = () => {
-      const pid = readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID;
-      void reloadFitScanCache(pid);
-    };
-    const unsubProvider = subscribeStorage(KEYS.lastProvider, onProviderChanged);
-    window.addEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
-    return () => {
-      unsubProvider();
-      window.removeEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
-    };
-  }, [reloadFitScanCache]);
-
-  // Fit progress arrives per plan point (~10 per model). Applying each event to
-  // state re-rendered the whole catalog (73 cards) >1000 times per library run —
-  // coalesce into ~4 batches per second while preserving event order.
-  const pendingFitEventsRef = useRef<FitScanProgress[]>([]);
-  const fitFlushTimerRef = useRef<number | null>(null);
-
-  useTauriListen<FitScanProgress>("fit-scan-progress", (evt) => {
-    if (!evt?.model_path) return;
-    pendingFitEventsRef.current.push(evt);
-    if (fitFlushTimerRef.current != null) return;
-    fitFlushTimerRef.current = window.setTimeout(() => {
-      fitFlushTimerRef.current = null;
-      const batch = pendingFitEventsRef.current;
-      pendingFitEventsRef.current = [];
-
-      // Live row label: only the latest scanning event matters.
-      let liveLabel: { path: string; label: string } | null = null;
-      let pointsTotal: number | null = null;
-      let resultsChanged = false;
-      for (const e of batch) {
-        if (e.status === "scanning") {
-          if (e.label) liveLabel = { path: e.model_path, label: e.label };
-          if (e.scan_points_total) pointsTotal = e.scan_points_total;
-        } else {
-          resultsChanged = true;
-        }
-      }
-      if (liveLabel && fitScanningPathsRef.current.has(liveLabel.path)) {
-        setFitScanActiveLabels((prev) => ({ ...prev, [liveLabel!.path]: liveLabel!.label }));
-      }
-      if (pointsTotal != null) setFitScanPointsTotal(pointsTotal);
-      if (!resultsChanged) return;
-
-      setFitScanResults((prev) => {
-        let next = prev;
-        for (const evt of batch) {
-          if (evt.status === "scanning") continue;
-          const entry = findFitScanEntry(next, evt.model_path);
-          if (evt.status === "skipped") {
-            next = {
-              ...next,
-              [evt.model_path]: {
-                model_path: evt.model_path,
-                points: [],
-                skip_reason: evt.skip_reason,
-              },
-            };
-          } else if (evt.status === "point_skipped" && evt.label) {
-            const prevSkipped = { ...(entry?.skipped_points ?? {}) };
-            if (evt.skip_reason) prevSkipped[evt.label] = evt.skip_reason;
-            next = {
-              ...next,
-              [evt.model_path]: {
-                model_path: evt.model_path,
-                points: entry?.points ?? [],
-                error: entry?.error,
-                skip_reason: entry?.skip_reason,
-                skipped_points: prevSkipped,
-              },
-            };
-          } else if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
-            next = {
-              ...next,
-              [evt.model_path]: mergeFitScanProgressPoint(
-                entry,
-                evt.model_path,
-                evt.label,
-                evt.vram_mib,
-              ),
-            };
-          }
-        }
-        return next;
-      });
-    }, 250);
-  });
-
-  const fitScanAvailable = useMemo(() => {
-    if (!providers?.length) return true;
-    const provider = providers.find((p) => p.id === fitProviderId);
-    return Boolean(provider?.enabled);
-  }, [fitProviderId, providers]);
-
   // Fit-now + sorted/filtered list (after FIT cache is available; no forecast calls)
   const catalogModels = useMemo(() => {
     let sorted = [...models].sort((a, b) =>
@@ -836,63 +703,6 @@ export function useModelCatalog({
     return () => window.removeEventListener(EVENTS.catalogFocusModel, onFocus);
   }, [handleSelectPath]);
 
-  const getFitScanBadge = useCallback(
-    (model: ModelEntry) => {
-      const entry = findFitScanEntry(fitScanResults, model.path);
-      return fitScanBadgeLabel(entry, fitScanPointsTotal);
-    },
-    [fitScanResults, fitScanPointsTotal],
-  );
-
-  const modelNeedsFitScan = useCallback(
-    (model: ModelEntry) => {
-      if (!model.metadata) return false;
-      if (isExternalDraftOnly(model)) return false;
-      const entry = findFitScanEntry(fitScanResults, model.path);
-      return !modelHasCompleteFitScan(entry, fitScanPointsTotal);
-    },
-    [fitScanResults, fitScanPointsTotal],
-  );
-
-  const isFitScanning = useCallback(
-    (modelPath: string) => fitScanningPaths.has(modelPath),
-    [fitScanningPaths],
-  );
-
-  const getFitScanActiveLabel = useCallback(
-    (modelPath: string) => fitScanActiveLabels[modelPath] ?? null,
-    [fitScanActiveLabels],
-  );
-
-  const handleFitScanModel = useCallback((model: ModelEntry) => {
-    if (!model.metadata || fitScanInFlightRef.current.has(model.path)) return;
-    if (isExternalDraftOnly(model)) return;
-    fitScanInFlightRef.current.add(model.path);
-    setFitScanningPaths((prev) => new Set(prev).add(model.path));
-    setFitScanActiveLabels((prev) => ({ ...prev, [model.path]: "" }));
-
-    void invoke<FitScanFull>("fit_scan_single_model", {
-      modelPath: model.path,
-      providerId: fitProviderId,
-      forceRescan: false,
-    })
-      .then(() => reloadFitScanCache(fitProviderId))
-      .then(() => dispatchAppEvent(EVENTS.fitScanCacheChanged))
-      .catch((e) => console.error("FIT scan failed:", e))
-      .finally(() => {
-        fitScanInFlightRef.current.delete(model.path);
-        setFitScanningPaths((prev) => {
-          const next = new Set(prev);
-          next.delete(model.path);
-          return next;
-        });
-        setFitScanActiveLabels((prev) => {
-          const { [model.path]: _removed, ...rest } = prev;
-          return rest;
-        });
-      });
-  }, [fitProviderId, reloadFitScanCache]);
-
   // Keyboard navigation
   const handleKeyboardSelect = useCallback((index: number) => {
     if (catalogModels[index]) handleSelect(catalogModels[index]);
@@ -923,8 +733,6 @@ export function useModelCatalog({
     scanningPath, setScanningPath, handleScanModel,
     batchScanState, setBatchScanState, handleScanAll, handleCancelScan,
     handleDeleteModel, handleRenameModel,
-    fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
-    fitScanningCount: fitScanningPaths.size,
     // Quick access (pins / recents / seats)
     catalogPins, catalogRecents, catalogSeats, activeSeatSet,
     handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,

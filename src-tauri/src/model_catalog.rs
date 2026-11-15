@@ -382,14 +382,6 @@ pub fn scan_path(
     Ok(temp_catalog.into_values().collect())
 }
 
-/// Same filter as the catalog Regular tab — exclude external draft-only GGUFs.
-pub fn is_launchable_main_model(entry: &ModelEntry) -> bool {
-    if crate::spec_draft::is_external_draft_role_hint(&entry.draft_role_hint) {
-        return false;
-    }
-    crate::spec_draft::is_launchable_target(entry.gguf_shape.as_ref(), &entry.path)
-}
-
 /// Per-path diagnostics for a catalog scan — the same directory walk `scan_path`
 /// does, with no metadata work. One entry per configured path, in order.
 ///

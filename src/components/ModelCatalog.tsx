@@ -153,8 +153,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     catalogModels: catalogModelsRaw, runningModelPaths,
     handleScanModel, handleScanAll, handleCancelScan,
     handleDeleteModel, handleRenameModel,
-    fitScanAvailable, isFitScanning, getFitScanActiveLabel, modelNeedsFitScan, handleFitScanModel,
-    fitScanningCount,
     catalogPins, catalogRecents, catalogSeats, activeSeatSet,
     handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
     isPinned, getSeatRole,
@@ -634,11 +632,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           >
             {sortDirection === "asc" ? "\u2191" : "\u2193"}
           </button>
-          {fitScanningCount > 0 && (
-            <span className="catalog-scan-status type-tiny font-mono cat-mut whitespace-nowrap">
-              FIT {fitScanningCount}
-            </span>
-          )}
         </div>
         <div className="catalog-tools-right">
           {renderScanMetaControl()}
@@ -996,11 +989,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                           && catalogSelectedModel?.path !== model.path
                           && panelActiveModel?.path !== model.path
                         }
-                        fitScanAvailable={fitScanAvailable}
-                        needsFitScan={modelNeedsFitScan(model)}
-                        fitScanning={isFitScanning(model.path)}
-                        fitScanActiveLabel={getFitScanActiveLabel(model.path)}
-                        onFitScanModel={handleFitScanModel}
                         pinned={isPinned(model.path)}
                         onTogglePin={handleTogglePin}
                         seatRole={getSeatRole(model.path)}

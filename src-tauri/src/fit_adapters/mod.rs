@@ -105,12 +105,4 @@ impl FitAdapterId {
             Self::GgmlMaster => None,
         }
     }
-
-    /// Per scan-plan point skip (Tom tensor) — no subprocess probes.
-    pub fn point_skip_note(self, label: &str, split_mode: &str) -> Option<&'static str> {
-        match self {
-            Self::GgmlTom => ggml_tom::point_skip_note(label, split_mode),
-            Self::GgmlMaster => None,
-        }
-    }
 }

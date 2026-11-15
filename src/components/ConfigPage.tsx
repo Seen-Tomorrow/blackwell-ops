@@ -34,7 +34,6 @@ import {
   type ConfigActor,
 } from "../lib/systemParams";
 import type { ConfigSubTab } from "../lib/appNav";
-import { FitScanButton } from "./FitScanButton";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
@@ -267,7 +266,6 @@ function ModelPathsPanel() {
       <div className="px-4 py-3 border-b cfg-bord flex items-center justify-between">
         <h2 className="text-xs font-mono cfg-acc tracking-wider">MODEL PATHS</h2>
         <div className="flex items-center gap-2">
-          <FitScanButton />
           <button
             onClick={handleAddPath}
             data-onboarding="add-folder"

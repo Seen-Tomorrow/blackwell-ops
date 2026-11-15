@@ -179,16 +179,13 @@ export const KEYS = {
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
   /** Legacy: toolchain skip removed — key only cleared on reset / successful install. */
   toolchainOnboardingSkipped: `${STORAGE_PREFIX}toolchain-onboarding-skipped`,
-  /** Background library backfill — fingerprint of the library each job last covered,
-   *  plus the “NOT NOW” snooze for the VRAM fit scan. */
+  /** Background library backfill — fingerprint of the library the metadata pass last covered. */
   libraryBackfill: `${STORAGE_PREFIX}library-backfill`,
   /** Onboarding: user chose to download models later (skip library link + metadata scan). */
   setupModelsDeferred: `${STORAGE_PREFIX}setup-models-deferred`,
   benchControls: `${STORAGE_PREFIX}bench-controls`,
   /** Daily fusion share PNG sequence (1–999), keyed by YYYY-MM-DD. */
   fusionShareSeq: `${STORAGE_PREFIX}fusion-share-seq`,
-  /** CONFIG providers FIT library scan UI — survives sub-tab navigation (session). */
-  fitScanSessions: `${STORAGE_PREFIX}fit-scan-sessions`,
   /** GPU overclock presets + re-apply on launch (Telemetry). */
   gpuControlState: `${STORAGE_PREFIX}gpu-control-state`,
 } as const;
@@ -285,7 +282,6 @@ export function clearSetupModelsDeferred(): void {
 /** The only maintenance preference that survives a restart. */
 export interface LibraryBackfillPersisted {
   /** Epoch ms before which the VRAM fit pass must not auto-start (“NOT NOW”). */
-  fitSnoozeUntil?: number;
 }
 
 export function loadLibraryBackfill(): LibraryBackfillPersisted {
@@ -295,8 +291,6 @@ export function loadLibraryBackfill(): LibraryBackfillPersisted {
     const parsed = JSON.parse(raw) as LibraryBackfillPersisted;
     if (!parsed || typeof parsed !== "object") return {};
     return {
-      fitSnoozeUntil:
-        typeof parsed.fitSnoozeUntil === "number" ? parsed.fitSnoozeUntil : undefined,
     };
   } catch {
     return {};

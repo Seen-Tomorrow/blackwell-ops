@@ -34,7 +34,7 @@ fn format_load_failure_reason(reason: &str, split_mode: &str) -> String {
     }
 }
 
-/// Estimate committed VRAM for a launched engine — learned → FIT scan → file size fallback.
+/// Estimate committed VRAM for a launched engine — learned → file size fallback.
 fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     let provider_id = if config.backend_type.is_empty() {
         crate::config::DEFAULT_PROVIDER_ID.to_string()
@@ -47,18 +47,6 @@ fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
         return entry.paint_vram_mib();
     }
 
-    if let Some(full) = crate::fit_scanner::find_existing_scan_in_provider_partition(
-        &provider_id,
-        &config.model_path,
-    ) {
-            let ctx_str = config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string());
-            let ctx_tokens = ctx_str.parse::<usize>().unwrap_or(32768);
-        if let Some(pt) = full.points.iter().find(|p| {
-            p.ctx == ctx_tokens && p.kv_quant.to_lowercase() == config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()).to_lowercase()
-        }) {
-            return pt.vram_mib;
-        }
-    }
     if let Ok(meta) = std::fs::metadata(&config.model_path) {
         meta.len() as f64 / (1024.0 * 1024.0)
     } else {

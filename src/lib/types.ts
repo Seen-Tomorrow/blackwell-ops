@@ -1096,53 +1096,6 @@ export interface FitScanResult {
   probe_mode?: string;
 }
 
-/** Progress update during library scanning */
-export interface FitScanProgress {
-  model_path: string;
-  model_name: string;
-  status: 'scanning' | 'complete' | 'error' | 'skipped' | 'point_skipped' | 'library_meta';
-  args?: string;
-  vram_mib?: number;
-  label?: string;
-  provider_id?: string;
-  total_models?: number;
-  scan_points_total?: number;
-  /** Model-level skip (e.g. Tom + MTP) — not a point failure */
-  skip_reason?: string;
-}
-
-/** Complete result from a library scan */
-export interface FitScanComplete {
-  provider_id: string;
-  total_models: number;
-  completed: number;
-  failed: number;
-  scan_points_total?: number;
-  results: Record<string, FitScanFull>;
-}
-
-/** Single measured data point from comprehensive scan */
-export interface FitDataPoint {
-  label: string;
-  ctx: number;
-  kv_quant: string;
-  batch: number;
-  parallel: number;
-  split_mode: string;
-  vram_mib: number;
-}
-
-/** Full comprehensive scan result for one model — all measured data points */
-export interface FitScanFull {
-  model_path: string;
-  points: FitDataPoint[];
-  error?: string;
-  /** Intentional skip — not counted as scan failure */
-  skip_reason?: string;
-  /** Per-label skips (e.g. Tom tensor) — label → reason */
-  skipped_points?: Record<string, string>;
-}
-
 export interface LogEntry {
   slot: number;
   alias: string;

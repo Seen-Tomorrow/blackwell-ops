@@ -94,11 +94,6 @@ interface ModelCardProps {
   hfUpdateKind?: "header" | "full" | "current" | null;
   hfUpdateBusy?: boolean;
   onApplyHfUpdate?: () => void;
-  fitScanAvailable?: boolean;
-  needsFitScan?: boolean;
-  fitScanning?: boolean;
-  fitScanActiveLabel?: string | null;
-  onFitScanModel?: (model: ModelEntry) => void;
   pinned?: boolean;
   onTogglePin?: (model: ModelEntry) => void;
   seatRole?: CatalogSeatRole | null;
@@ -123,11 +118,6 @@ export default function ModelCard({
   hfUpdateKind = null,
   hfUpdateBusy = false,
   onApplyHfUpdate,
-  fitScanAvailable = false,
-  needsFitScan = false,
-  fitScanning = false,
-  fitScanActiveLabel = null,
-  onFitScanModel,
   pinned = false,
   onTogglePin,
   seatRole = null,
@@ -366,26 +356,6 @@ export default function ModelCard({
               title="Weights changed — full re-download (confirmation required)"
             >
               {hfUpdateBusy ? "QUEUING…" : "FULL"}
-            </button>
-          )}
-          {fitScanAvailable && needsFitScan && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onFitScanModel?.(model);
-              }}
-              disabled={fitScanning}
-              className={`model-card-fit-scan type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
-                fitScanning ? "mcard-fit-scan--scanning border" : "mcard-fit-scan border"
-              }`}
-              title="Run full VRAM fit probe (same 28 points as library FIT scan)"
-            >
-              {fitScanning
-                ? fitScanActiveLabel
-                  ? `⠋ FIT ${fitScanActiveLabel}`
-                  : "⠋ FIT…"
-                : "FIT SCAN"}
             </button>
           )}
           {draftBadge && isDraftOnly && (

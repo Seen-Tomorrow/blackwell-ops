@@ -182,10 +182,6 @@ ipc_registry! {
     "StackEntry" => crate::types::StackEntry,
     "FusionUpdate" => crate::fusion::emit::FusionUpdate,
     "SlotCtxInfo" => crate::fusion::emit::SlotCtxInfo,
-    "FitDataPoint" => crate::fit_scanner::FitDataPoint,
-    "FitScanProgress" => crate::fit_scanner::FitScanProgress,
-    "FitScanComplete" => crate::fit_scanner::FitScanComplete,
-    "FitScanFull" => crate::fit_scanner::FitScanFull,
     // ── NVRAM snapshot / diff (the glass SNAP chip) ────────────────────
     "NvramDiffPayload" => crate::nvram_snapshot::DiffPayload,
     "NvramDiffRow" => crate::nvram_snapshot::DiffRow,
