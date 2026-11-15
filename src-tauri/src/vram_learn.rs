@@ -290,8 +290,17 @@ impl LearnedVramEntry {
     }
 }
 
+/// Version of the *memory maths* that wrote the store. Bump it by hand when a formula changes
+/// (ubatch scaling, runtime residual, component attribution) - never per build, so a rebuild does
+/// not throw away measurements. A store written by another version is discarded instead of being
+/// interpreted: rows carry components computed by code we no longer have.
+const STORE_SCHEMA: u32 = 1;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct LearnedVramStore {
+    /// 0 = written before the field existed; treated as current and stamped on the next save.
+    #[serde(default)]
+    schema: u32,
     #[serde(default)]
     entries: HashMap<String, LearnedVramEntry>,
 }
@@ -333,13 +342,30 @@ fn load_store() -> LearnedVramStore {
     if !path.exists() {
         return LearnedVramStore::default();
     }
-    match std::fs::read_to_string(&path) {
+    let store: LearnedVramStore = match std::fs::read_to_string(&path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => LearnedVramStore::default(),
+    };
+
+    // Legacy rows (schema 0) were written by the maths that is current today, so they stay. A
+    // *different* schema means the numbers came from code this build cannot reproduce - drop them
+    // rather than serving an estimate nobody can explain.
+    if store.schema != 0 && store.schema != STORE_SCHEMA {
+        log::warn!(
+            "[vram_learn] store schema {} != {STORE_SCHEMA} - discarding {} learned row(s); they will be re-learned on the next launches",
+            store.schema,
+            store.entries.len()
+        );
+        return LearnedVramStore::default();
     }
+
+    store
 }
 
 fn save_store(store: &LearnedVramStore) -> Result<(), String> {
+    let mut stamped = store.clone();
+    stamped.schema = STORE_SCHEMA;
+    let store = &stamped;
     let path = store_path();
     // Atomic, and it creates the parent dir. These are *learned* curves — the
     // measurements only exist because engines have already run, so losing them
