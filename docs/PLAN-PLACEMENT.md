@@ -88,6 +88,13 @@ block. It does not move a uniform split (the factor is the same on both cards), 
 `kv_blocks` flag from the header would make the plan's absolute totals honest and sharpen the
 mixed-capacity case.
 
+The plan splits the MAIN model only. A speculative draft model gets the same `-ts` fraction and
+has few layers, so it can land unevenly: DSpark is 4 layers, `-ts 0.524` put 3 of them (7.8 GiB)
+on GPU0 and 1 (0.3 GiB) on GPU1. The forecast now adds the draft to the total, but the plan does
+not weight its per-card bytes. Reading the draft GGUF's layer table and applying the same
+cumulative boundary would close that gap; until then, a draft-heavy topology can be off by a few
+GiB on one card.
+
 ## Landmines
 
 - `--fit` on WDDM reads a budget, not physical free. Never trust "will leave N free".
