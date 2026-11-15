@@ -7,17 +7,19 @@
  * the byte-balanced boundary (22 layers) is within ~1.2 GiB.
  *
  * This module answers one question: given the measured block sizes and a per-GPU budget,
- * which whole-layer boundary balances the load best, and what `-ts` expresses it.
+ * which whole-layer boundaries balance the load best for N cards, and what `-ts` expresses
+ * them. Mixed-capacity topologies balance by UTILISATION (bytes / budget), not by bytes, so
+ * a 24 GiB card and a 48 GiB card both end up equally close to their own ceiling.
  */
 
 export type LayerPlanInput = {
   /** One entry per block, MiB, index order. */
   perBlockMib: number[];
-  /** Token embedding — llama.cpp keeps it on the first device. */
+  /** Token embedding, kept on the first device by the engine. */
   tokenEmbdMib?: number;
-  /** Output tensor — rides with the last device. */
+  /** Output tensor, which rides with the last device. */
   outputMib?: number;
-  /** Everything else (norms, biases) — spread evenly. */
+  /** Everything else (norms, biases), spread evenly across the devices. */
   otherMib?: number;
   /** Per-GPU budget in MiB AFTER reserve, runtime overhead and any draft model. */
   budgetsMib: number[];
@@ -26,166 +28,128 @@ export type LayerPlanInput = {
   /** Per-device overhead the launch will also allocate (compute graph buffers), MiB. */
   overheadMib?: number[];
   /** The same overhead as one total, split by layer count. A cold forecast knows the shape
-   *  total but not where the boundary will land, and compute buffers follow layers. */
+   *  total but not where the boundaries will land, and compute buffers follow layers. */
   overheadTotalMib?: number;
-  /** `-ts` already in the launch config. It pins the placement, so the plan reports the
-   *  layers that split really gets instead of proposing its own. */
-  appliedTs?: number[];
 };
 
 export type LayerPlan = {
-  /** Blocks on the first GPU; the rest follow in order. */
+  /** First boundary: blocks on device 0. Kept for callers that read one number. */
   boundary: number;
-  /** The `-ts` this geometry corresponds to: the split found in the config when one is
-   *  applied, otherwise the value that realises `boundary`. Always 3 decimals, because
-   *  that is what the CLI receives. */
+  /** Every cumulative boundary B1..B(n-1), ascending. Device i owns [B(i-1), B(i)). */
+  boundaries: number[];
+  /** Whole blocks per device, length = number of budgets. */
+  deviceLayers: number[];
+  /** The `-ts` that realises these boundaries. Always 3 decimals, because that is what
+   *  the CLI receives. */
   ts: number[];
-  /** The `-ts` to WRITE for the byte-balanced plan. Differs from `ts` when the config
-   *  already holds a split that lands somewhere else. */
+  /** The `-ts` to WRITE for this plan. Same as `ts` while the app owns placement. */
   applyTs: number[];
-  /** Boundary the applied `-ts` really gets (llama.cpp ceiling), when one is set. */
-  appliedBoundary?: number;
-  /** Boundary the byte-balanced scan would pick. */
+  /** First boundary of the byte-balanced plan. */
   optimalBoundary: number;
   /** Weights per GPU in MiB, excluding KV. */
   weightsMib: number[];
   /** KV per GPU in MiB. */
   kvMib: number[];
-  /** weights + KV per GPU in MiB. */
+  /** weights + KV + per-device overhead, per GPU in MiB. */
   totalMib: number[];
   /** The budgets this plan was fitted into, per device, MiB. */
   budgetsMib: number[];
-  /** Total block count, so the boundary reads "22 / 40". */
+  /** Total block count, so a boundary reads "22 / 40". */
   layerCount: number;
   /** total / budget per GPU; the plan minimises the worst of these. */
   util: number[];
   maxUtil: number;
-  /** Sum of totalMib across all devices — the whole planned footprint. */
+  /** Sum of totalMib across all devices - the whole planned footprint. */
   sumMib: number;
   /** Sum of the budgets the plan was fitted into. */
   budgetSumMib: number;
 };
 
-const requirePositive = (values: number[]): boolean =>
-  values.length > 0 && values.every((v) => Number.isFinite(v) && v > 0);
+const round3 = (value: number): number => {
+  const rounded = Math.round(value * 1000) / 1000;
+  return Object.is(rounded, -0) ? 0 : rounded;
+};
+
+const finiteNonNegative = (values: number[]): boolean =>
+  values.length > 0 && values.every((v) => Number.isFinite(v) && v >= 0);
 
 /**
- * Best whole-layer boundary for a TWO-device layer split.
- *
- * Returns null when the inputs cannot describe a split (no blocks, non-positive budgets,
- * or more than two devices — a multi-way partition needs its own planner).
- */
-export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
-  const blocks = input.perBlockMib.filter((m) => Number.isFinite(m) && m > 0);
-  if (blocks.length < 2) return null;
-  if (input.budgetsMib.length !== 2) return null;
-  if (!requirePositive(input.budgetsMib)) return null;
-
-  const tokenEmbd = Math.max(0, input.tokenEmbdMib ?? 0);
-  const output = Math.max(0, input.outputMib ?? 0);
-  const other = Math.max(0, input.otherMib ?? 0);
-  const kvPerLayer = Math.max(0, input.kvMibPerLayer ?? 0);
-
-  // Prefix sums keep the scan linear in the block count.
-  const prefix = new Array<number>(blocks.length + 1).fill(0);
-  for (let i = 0; i < blocks.length; i += 1) prefix[i + 1] = prefix[i] + blocks[i];
-  const total = prefix[blocks.length];
-
-  const evaluate = (
-    boundary: number,
-  ): Omit<LayerPlan, "applyTs" | "optimalBoundary" | "appliedBoundary"> => {
-    const firstLayers = boundary;
-    const lastLayers = blocks.length - boundary;
-    const weights0 = prefix[boundary] + tokenEmbd + other / 2;
-    const weights1 = total - prefix[boundary] + output + other / 2;
-    const kv0 = kvPerLayer * firstLayers;
-    const kv1 = kvPerLayer * lastLayers;
-    const shapeOverhead = Math.max(0, input.overheadTotalMib ?? 0);
-    const extra0 = Math.max(
-      0,
-      input.overheadMib?.[0] ?? (shapeOverhead * firstLayers) / Math.max(blocks.length, 1),
-    );
-    const extra1 = Math.max(
-      0,
-      input.overheadMib?.[1] ?? (shapeOverhead * lastLayers) / Math.max(blocks.length, 1),
-    );
-    const totalMib = [weights0 + kv0 + extra0, weights1 + kv1 + extra1];
-    const util = [totalMib[0] / input.budgetsMib[0], totalMib[1] / input.budgetsMib[1]];
-    return {
-      boundary,
-      ts: [firstLayers / blocks.length, lastLayers / blocks.length],
-      weightsMib: [weights0, weights1],
-      kvMib: [kv0, kv1],
-      budgetsMib: [input.budgetsMib[0], input.budgetsMib[1]],
-      layerCount: blocks.length,
-      totalMib,
-      util,
-      maxUtil: Math.max(util[0], util[1]),
-      sumMib: totalMib[0] + totalMib[1],
-      budgetSumMib: input.budgetsMib[0] + input.budgetsMib[1],
-    };
-  };
-
-  let best: Omit<LayerPlan, "applyTs" | "optimalBoundary" | "appliedBoundary"> | null = null;
-  // Every boundary is tried: the block sizes are not monotone (dense layers are much
-  // smaller than the MoE ones), so a greedy walk can stop at a local dip that leaves
-  // several GiB on one card.
-  for (let boundary = 1; boundary < blocks.length; boundary += 1) {
-    const plan = evaluate(boundary);
-    if (best == null || plan.maxUtil < best.maxUtil) best = plan;
-  }
-  if (best == null) return null;
-
-  // An applied `-ts` pins the placement: report the layers it really gets, so the bars and
-  // the plan describe the launch that will happen, not the one we would have chosen.
-  const appliedBoundary = input.appliedTs
-    ? tensorSplitBoundary(input.appliedTs, blocks.length)
-    : null;
-  const display = appliedBoundary != null ? evaluate(appliedBoundary) : best;
-  const displayTs =
-    appliedBoundary != null && input.appliedTs
-      ? [input.appliedTs[0], input.appliedTs[1]]
-      : tensorSplitForBoundary(display.boundary, blocks.length);
-
-  return {
-    ...display,
-    ts: displayTs,
-    applyTs: tensorSplitForBoundary(best.boundary, blocks.length),
-    optimalBoundary: best.boundary,
-    appliedBoundary: appliedBoundary ?? undefined,
-  };
-}
-
-/**
- * Boundary a `-ts` really gets.
+ * Cumulative boundaries a `-ts` really gets.
  *
  * Measured on DeepSeek-V4.1 (40 blocks, `--fit off`), CUDA0 model buffer = prefix[boundary]:
- * `0.550 → 23 blocks` (81,240.99 MiB), `0.575 → 24` (85,297.72), `0.563 → 24` (85,297.72).
- * That is `ceil(ts * (n_layer + 1))` — the engine counts the output layer as one more slot,
- * and ceils: 0.55*41 = 22.55 → 23, 0.575*41 = 23.575 → 24, 0.563*41 = 23.083 → 24. Neither
- * `ts * n_layer` nor rounding fits the 0.563 point, which is what pinned the rule.
+ * `0.550 -> 23 blocks` (81,240.99 MiB), `0.575 -> 24` (85,297.72), `0.563 -> 24`
+ * (85,297.72). The engine normalises the fractions to cumulative split points and assigns
+ * layer `il` with `upper_bound(split, il / (n_layer + 1))`, which is `ceil(f * (n_layer + 1))`
+ * for every non-integral point. For N devices the same rule applies to every cumulative
+ * prefix, so one function covers 2 and N.
  */
-export function tensorSplitBoundary(ts: number[], layerCount: number): number | null {
-  if (layerCount < 2 || ts.length !== 2) return null;
+export function tensorSplitBoundaries(ts: number[], layerCount: number): number[] | null {
+  const devices = ts.length;
+  if (layerCount < 2 || devices < 2) return null;
   if (!ts.every((v) => Number.isFinite(v) && v > 0)) return null;
-  const sum = ts[0] + ts[1];
+  const sum = ts.reduce((total, value) => total + value, 0);
   if (!(sum > 0)) return null;
-  const boundary = Math.ceil(Math.fround(ts[0] / sum) * (layerCount + 1));
-  return Math.min(Math.max(boundary, 1), layerCount);
+
+  const slots = layerCount + 1;
+  const boundaries: number[] = [];
+  let cumulative = 0;
+  for (let i = 0; i < devices - 1; i += 1) {
+    cumulative = Math.fround(cumulative + Math.fround(ts[i] / sum));
+    const raw = Math.ceil(Math.fround(cumulative) * slots);
+    // Keep room for one block on every device that still has to be placed.
+    const lower = (boundaries.length ? boundaries[boundaries.length - 1] : 0) + 1;
+    const upper = layerCount - (devices - 1 - i);
+    boundaries.push(Math.min(Math.max(raw, lower), upper));
+  }
+  return boundaries;
+}
+
+/** First boundary a `-ts` really gets; the two-device form of `tensorSplitBoundaries`. */
+export function tensorSplitBoundary(ts: number[], layerCount: number): number | null {
+  return tensorSplitBoundaries(ts, layerCount)?.[0] ?? null;
 }
 
 /**
- * The `-ts` that makes the engine put exactly `boundary` blocks on the first device.
+ * The `-ts` that makes the engine put exactly `boundaries` blocks on the devices.
  *
- * The value sits in the MIDDLE of the band that maps to this boundary,
- * `(boundary - 0.5) / (n_layer + 1)`, because the engine ceils `ts * (n_layer + 1)`:
+ * Each cumulative fraction sits in the MIDDLE of the band that maps to its boundary,
+ * `(boundary - 0.5) / (n_layer + 1)`, because the engine ceils `fraction * (n_layer + 1)`:
  * the band for `boundary` is `((b-1)/(n+1), b/(n+1)]`, and writing 22/40 = 0.55 lands on 23.
- * Mid-band also survives float dust. 3 decimals, because that is what `-ts` carries.
+ * Mid-band survives float dust. 3 decimals, because that is what `-ts` carries.
  */
+export function tensorSplitForBoundaries(boundaries: number[], layerCount: number): number[] {
+  const devices = boundaries.length + 1;
+  if (boundaries.length === 0 || layerCount < devices) {
+    // No usable boundaries: an even fraction keeps the CLI valid instead of emitting NaN.
+    const even = 1 / devices;
+    return Array.from({ length: devices }, () => round3(even));
+  }
+
+  const slots = layerCount + 1;
+  const safe: number[] = [];
+  let previous = 0;
+  for (let i = 0; i < boundaries.length; i += 1) {
+    const lower = previous + 1;
+    const upper = layerCount - (boundaries.length - i);
+    const boundary = Math.min(Math.max(Math.round(boundaries[i]), lower), upper);
+    safe.push(boundary);
+    previous = boundary;
+  }
+
+  const cumulative = safe.map((boundary) => round3((boundary - 0.5) / slots));
+  const ts: number[] = [];
+  let previousCumulative = 0;
+  for (const value of cumulative) {
+    ts.push(round3(value - previousCumulative));
+    previousCumulative = value;
+  }
+  ts.push(round3(1 - previousCumulative));
+  return ts;
+}
+
+/** The `-ts` that makes the engine put exactly `boundary` blocks on the first device. */
 export function tensorSplitForBoundary(boundary: number, layerCount: number): number[] {
-  const target = Math.min(Math.max(boundary, 1), layerCount - 1);
-  const first = Math.round(((target - 0.5) / (layerCount + 1)) * 1000) / 1000;
-  return [first, Math.round((1 - first) * 1000) / 1000];
+  return tensorSplitForBoundaries([boundary], layerCount);
 }
 
 /** `-ts` value llama.cpp expects, e.g. "0.550,0.450". */
@@ -196,7 +160,7 @@ export function formatTensorSplit(ts: number[]): string {
 /** Conservative fallback when no calibration exists (a card that never launched here). */
 export const DEFAULT_RUNTIME_OVERHEAD_MIB = 768;
 
-/** One row from get_gpu_calibration — the measured runtime cost per device. */
+/** One row from get_gpu_calibration - the measured runtime cost per device. */
 export type GpuCalibrationRow = {
   index: number;
   median_residual_mib: number;
@@ -206,7 +170,7 @@ export type GpuCalibrationRow = {
 /**
  * CUDA context + allocator slack for a device.
  *
- * Measured under TCC on this box at 64K and 512K: 627 and 629 MiB — flat, because a context
+ * Measured under TCC on this box at 64K and 512K: 627 and 629 MiB - flat, because a context
  * does not grow with context length. Under WDDM the same figure cannot be attributed, so the
  * conservative default is used until a launch has been sampled there.
  */
@@ -234,6 +198,149 @@ export function budgetsFromFree(
   });
 }
 
+type Segment = {
+  layers: number;
+  weightsMib: number;
+  kvMib: number;
+  totalMib: number;
+};
+
+/**
+ * Best whole-layer boundaries for an N-device layer split.
+ *
+ * The engine can only place contiguous blocks in order, so the search space is every
+ * ascending boundary tuple. A min-max dynamic program over (device, blocks consumed) finds
+ * the tuple whose worst per-card utilisation is smallest; a second key (sum of squared
+ * utilisations) spreads the remaining slack instead of piling it on one card. That is what
+ * makes mixed budgets work: a 24 GiB and a 48 GiB card get layer shares proportional to
+ * their own budgets, so both sit at the same fill fraction and neither hits its ceiling.
+ *
+ * Returns null when the inputs cannot describe a split (no blocks, fewer devices than
+ * blocks, or a non-positive budget).
+ */
+export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
+  const blocks = input.perBlockMib;
+  const devices = input.budgetsMib.length;
+  if (blocks.length < 2) return null;
+  if (devices < 2 || blocks.length < devices) return null;
+  if (!finiteNonNegative(blocks)) return null;
+  if (!input.budgetsMib.every((mib) => Number.isFinite(mib) && mib > 0)) return null;
+
+  const layerCount = blocks.length;
+  const tokenEmbd = Math.max(0, input.tokenEmbdMib ?? 0);
+  const output = Math.max(0, input.outputMib ?? 0);
+  const other = Math.max(0, input.otherMib ?? 0);
+  const kvPerLayer = Math.max(0, input.kvMibPerLayer ?? 0);
+  const shapeOverhead = Math.max(0, input.overheadTotalMib ?? 0);
+  const otherPerDevice = other / devices;
+
+  // Prefix sums keep every segment cost O(1).
+  const prefix = new Array<number>(layerCount + 1).fill(0);
+  for (let i = 0; i < layerCount; i += 1) prefix[i + 1] = prefix[i] + blocks[i];
+
+  const segmentFor = (device: number, from: number, to: number): Segment => {
+    const layers = to - from;
+    const weightsMib =
+      prefix[to] -
+      prefix[from] +
+      (device === 0 ? tokenEmbd : 0) +
+      (device === devices - 1 ? output : 0) +
+      otherPerDevice;
+    const kvMib = kvPerLayer * layers;
+    const measuredOverhead = input.overheadMib?.[device];
+    const overheadMib =
+      measuredOverhead != null && Number.isFinite(measuredOverhead) && measuredOverhead >= 0
+        ? measuredOverhead
+        : (shapeOverhead * layers) / layerCount;
+    return { layers, weightsMib, kvMib, totalMib: weightsMib + kvMib + overheadMib };
+  };
+
+  type Node = {
+    /** Worst utilisation on the prefix path. */
+    maxUtil: number;
+    /** Sum of squared utilisations; breaks ties toward an even spread. */
+    sumSq: number;
+    /** First block of this device (the previous device's exclusive end). */
+    previous: number;
+  };
+
+  const dp: Array<Array<Node | null>> = Array.from({ length: devices + 1 }, () =>
+    new Array<Node | null>(layerCount + 1).fill(null),
+  );
+  dp[0]![0] = { maxUtil: 0, sumSq: 0, previous: -1 };
+
+  for (let device = 1; device <= devices; device += 1) {
+    const minEnd = device;
+    const maxEnd = layerCount - (devices - device);
+    for (let end = minEnd; end <= maxEnd; end += 1) {
+      const budget = input.budgetsMib[device - 1]!;
+      for (let start = device - 1; start < end; start += 1) {
+        const previous = dp[device - 1]![start];
+        if (!previous) continue;
+        const segment = segmentFor(device - 1, start, end);
+        const util = segment.totalMib / budget;
+        const maxUtil = Math.max(previous.maxUtil, util);
+        const sumSq = previous.sumSq + util * util;
+        const current = dp[device]![end];
+        const better =
+          !current ||
+          maxUtil < current.maxUtil - 1e-9 ||
+          (Math.abs(maxUtil - current.maxUtil) <= 1e-9 && sumSq < current.sumSq);
+        if (better) {
+          dp[device]![end] = { maxUtil, sumSq, previous: start };
+        }
+      }
+    }
+  }
+
+  if (!dp[devices]![layerCount]) return null;
+
+  // Walk the chosen path backwards, keeping every boundary except the final layer count.
+  const boundaries = new Array<number>(devices - 1).fill(0);
+  let end = layerCount;
+  for (let device = devices; device >= 2; device -= 1) {
+    const node = dp[device]![end]!;
+    boundaries[device - 2] = node.previous;
+    end = node.previous;
+  }
+
+  const deviceLayers: number[] = [];
+  const weightsMib: number[] = [];
+  const kvMib: number[] = [];
+  const totalMib: number[] = [];
+  const util: number[] = [];
+  let start = 0;
+  for (let device = 0; device < devices; device += 1) {
+    const stop = device === devices - 1 ? layerCount : boundaries[device]!;
+    const segment = segmentFor(device, start, stop);
+    deviceLayers.push(segment.layers);
+    weightsMib.push(segment.weightsMib);
+    kvMib.push(segment.kvMib);
+    totalMib.push(segment.totalMib);
+    util.push(segment.totalMib / input.budgetsMib[device]!);
+    start = stop;
+  }
+
+  const ts = tensorSplitForBoundaries(boundaries, layerCount);
+  return {
+    boundary: boundaries[0]!,
+    boundaries,
+    deviceLayers,
+    ts,
+    applyTs: ts.slice(),
+    optimalBoundary: boundaries[0]!,
+    weightsMib,
+    kvMib,
+    totalMib,
+    budgetsMib: [...input.budgetsMib],
+    layerCount,
+    util,
+    maxUtil: Math.max(...util),
+    sumMib: totalMib.reduce((sum, mib) => sum + mib, 0),
+    budgetSumMib: input.budgetsMib.reduce((sum, mib) => sum + mib, 0),
+  };
+}
+
 /** End-to-end plan from live numbers: layer sizes + free VRAM + calibration. */
 export function planFromLive(args: {
   perBlockMib: number[];
@@ -244,13 +351,11 @@ export function planFromLive(args: {
   /** Per-device overhead the launch also allocates (compute graph buffers), MiB. */
   overheadMib?: number[];
   /** Same overhead as one total, split by layer count - for a cold forecast, which knows
-   *  the shape total but not how the boundary will land. */
+   *  the shape total but not how the boundaries will land. */
   overheadTotalMib?: number;
   freeMib: number[];
   calibration?: GpuCalibrationRow[] | null;
   draftMib?: number[];
-  /** `-ts` from the launch config — the placement the engine will really get. */
-  appliedTs?: number[];
 }): LayerPlan | null {
   const overheads = args.freeMib.map((_, i) => runtimeOverheadMibForDevice(i, args.calibration));
   const budgetsMib = budgetsFromFree(args.freeMib, overheads, args.draftMib);
@@ -263,6 +368,5 @@ export function planFromLive(args: {
     overheadMib: args.overheadMib,
     overheadTotalMib: args.overheadTotalMib,
     budgetsMib,
-    appliedTs: args.appliedTs,
   });
 }

@@ -1,5 +1,9 @@
 # Handover — PLAN / TAKEOVER review
 
+> Superseded 2026-11-15 by `docs/PLAN-PLACEMENT.md`: the manual ENGINE FIT / APP TAKEOVER
+> switch is gone, placement is automatic for every multi-GPU layer split, and SPLIT EQ is
+> the manual nudge. Keep this file for the measurements and landmines it records.
+
 Date: 2026-11-15. For a fresh session whose job is to review the *placement* feature: the layer plan
 and the ENGINE FIT ↔ APP TAKEOVER switch. It is functional but clumsy; this file is what to know
 before touching it.

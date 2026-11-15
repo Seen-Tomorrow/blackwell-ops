@@ -3,7 +3,7 @@
  * Pure modules only; no React / localStorage.
  */
 import { describe, expect, it } from "vitest";
-import type { UserEditedTemplateParam } from "./types";
+import type { GpuInfo, UserEditedTemplateParam } from "./types";
 import {
   JOE_FULL_AUTO_DEFAULTS,
   applyBatchPolicy,
@@ -16,7 +16,7 @@ import {
   seedFullAutoProfile,
 } from "./launchPolicy";
 import { migrateCatalogOverrideStore } from "./launchProfiles";
-import { buildLaunchConfig, factoryDefaultsFromParams } from "./buildLaunchConfig";
+import { buildLaunchConfig, factoryDefaultsFromParams, type BuildLaunchConfigInput } from "./buildLaunchConfig";
 import { pickHighNumeric } from "./multiAgentBooster";
 
 function param(
@@ -457,5 +457,51 @@ describe("buildLaunchConfig policy metadata", () => {
     });
     expect(assisted.extra_params?.batch).toBe(512);
     expect(assisted.extra_params?.temp).toBe(1.0);
+  });
+
+  it("one owner writes -ts into the launch payload, and clears a stale split otherwise", () => {
+    const model = {
+      path: "C:/models/test.gguf",
+      author: "t",
+      name: "test",
+      quant: "Q4",
+      size_str: "1G",
+      vision: false,
+    };
+    const gpus = [
+      { index: 0, memory_total: 24576 },
+      { index: 1, memory_total: 24576 },
+    ] as unknown as GpuInfo[];
+    const base: BuildLaunchConfigInput = {
+      model,
+      finalAlias: "test",
+      profileValues: { ctx: 8192, parallel: 1, split: "layer" },
+      policy: getLaunchPolicy("assisted_full"),
+      effectiveBackendType: "ggml-master",
+      selectedBinaryProfile: "edge" as const,
+      fitLaunchSupported: false,
+      essentialFactoryKeys: essentialKeys,
+      allParamsResolved: template,
+      gpus,
+      runningSlotsForPlan: [],
+      vramManifest: null,
+      testFlagsEnabled: false,
+      testFlags: "",
+      testFlagsMode: "add" as const,
+    };
+
+    const placed = buildLaunchConfig({
+      ...base,
+      placement: { tensorSplit: "0.524,0.476" },
+    });
+    expect(placed.extra_params?.split).toBe("layer");
+    expect(placed.extra_params?.tensor_split).toBe("0.524,0.476");
+    expect(placed.extra_params?.__fit_off).toBe(true);
+
+    // Without a plan the row is blanked: a leftover -ts makes --fit abort, and the engine
+    // must not inherit the split from a previous takeover.
+    const unplaced = buildLaunchConfig(base);
+    expect(unplaced.extra_params?.tensor_split).toBe("");
+    expect(unplaced.extra_params?.__fit_off).toBeUndefined();
   });
 });

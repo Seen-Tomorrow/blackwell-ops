@@ -1030,8 +1030,8 @@
   margin-left: calc(8px * var(--vram-fc-scale, 1.12));
 }
 
-/* VRAM PLACEMENT — which side owns the split; the engaged mode is always on screen.
-   Compact segment switch (same amber chrome as the RUNTIME MODE bar, one step smaller). */
+/* VRAM PLACEMENT - one owner, always on screen. AUTO means the launch carries the plan's
+   -ts; ENGINE means there is no multi-card split to place. SPLIT EQ is the manual nudge. */
 .vram-fc-placement {
   display: flex;
   align-items: center;
@@ -1050,6 +1050,67 @@
   text-transform: uppercase;
   white-space: nowrap;
   color: color-mix(in srgb, var(--display-face-text-muted) 92%, transparent);
+}
+
+.vram-fc-placement__mode {
+  display: inline-flex;
+  align-items: baseline;
+  gap: calc(5px * var(--vram-fc-scale, 1.12));
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--theme-provider-pill-border) 60%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-provider-pill-bg) 55%, transparent);
+  color: var(--theme-provider-pill-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.vram-fc-placement[data-placement="auto"] .vram-fc-placement__mode {
+  border-color: var(--theme-provider-pill-active-border);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 16%, transparent);
+  color: var(--theme-provider-pill-active-text);
+}
+
+.vram-fc-placement__detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--display-face-text-muted) 86%, transparent);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.vram-fc-placement__eq {
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--theme-provider-pill-border) 70%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  color: color-mix(in srgb, var(--theme-provider-pill-hover-text) 90%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: calc(9px * var(--vram-fc-scale, 1.12));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.vram-fc-placement__eq:hover:not(:disabled) {
+  border-color: var(--theme-provider-pill-active-border);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 12%, transparent);
+  color: var(--theme-provider-pill-active-text);
+}
+
+.vram-fc-placement__eq:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .vram-forecast-scenario-badge {

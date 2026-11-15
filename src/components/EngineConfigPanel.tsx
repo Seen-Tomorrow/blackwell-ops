@@ -218,6 +218,8 @@ import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_fa
 import { useGpuIdleBaseline } from "../hooks/useGpuIdleBaseline";
 import { useGpuCalibration } from "../hooks/useGpuCalibration";
 import { useLayerPlan } from "../hooks/useLayerPlan";
+import { formatTensorSplit } from "../lib/vramLayerPlan";
+import { needsAutoLayerSplit } from "../lib/autoVramLaunch";
 import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
 
@@ -396,8 +398,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [testFlagsMode, setTestFlagsMode] = useState<"add" | "replace">(() => {
     return readStorage(KEYS.testFlagsMode) === "replace" ? "replace" : "add";
   });
-  /** VRAM badge FIT OFF — suppress the auto-VRAM `--fit on`. */
-  const [fitOff, setFitOff] = useState(() => readStorage(KEYS.fitOff) === "1");
   const [customFlagsEditorOpen, setCustomFlagsEditorOpen] = useState(false);
   const [customFlagsDraft, setCustomFlagsDraft] = useState("");
   const [customFlagsPopoverPos, setCustomFlagsPopoverPos] = useState({
@@ -599,10 +599,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   useEffect(() => {
     writeStorage(KEYS.testFlagsMode, testFlagsMode);
   }, [testFlagsMode]);
-
-  useEffect(() => {
-    writeStorage(KEYS.fitOff, fitOff ? "1" : "0");
-  }, [fitOff]);
 
   useEffect(() => {
     const shell = document.querySelector(".app-shell");
@@ -1078,17 +1074,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     };
   }, [autoDecision?.plan.specType, config, effectiveBackendType, fullAutoFixed, fullAutoMode, speedBoost]);
 
-  // One plan for the glass, the bars and the popover: computing it here (instead of inside
+  // One plan for the glass, the bars and the launch: computing it here (instead of inside
   // VramBadge) lets the manifest take its per-card split from the same numbers the plan
   // prints. `-ts` names a fraction of LAYERS, and layer bytes are not that fraction.
   const { calibration: gpuCalibration } = useGpuCalibration();
-  // `tensor_split` is a `ptype: text` row, and the config resolver skips params with no
-  // `values` (useConfigResolver:147), so the panel's `config` never carries it even though
-  // the launcher writes it to the CLI. Read the param's own value — that is the real -ts.
-  const tensorSplitParam = allParamsResolved.find((param) => param.key === "tensor_split");
-  const appliedTensorSplit = String(
-    config.tensor_split || tensorSplitParam?.defaultValue || "",
-  ).trim();
   const planKnobs = useMemo(
     () => ({
       ctxTokens:
@@ -1100,7 +1089,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       batch: Number(config.batch ?? 0) || undefined,
       ubatch: Number(config.ubatch ?? 0) || undefined,
       parallel: Number(config.parallel ?? 0) || 1,
-      tensorSplit: appliedTensorSplit,
       modelMeta: model?.metadata,
     }),
     [
@@ -1110,14 +1098,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       config.batch,
       config.ubatch,
       config.parallel,
-      appliedTensorSplit,
       model?.metadata,
     ],
   );
   const planModelPath = model && !isExternalDraftOnly(model) ? model.path : null;
   const {
     plan: layerPlan,
-    applyTs: planApplyTs,
     kvSource: planKvSource,
     squeezed: planSqueezed,
   } = useLayerPlan(
@@ -1127,10 +1113,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     planKnobs,
     committedSlotsFromStack(stack),
   );
-  // Only a layer split with an explicit -ts pins the placement; anything else keeps the
-  // learned/probe breakdown, which describes what the engine did (or would do) itself.
+  // Layer geometry is what the layer split really gets. Without it the forecast falls back
+  // to a proportional split, which is the drift the plan exists to remove.
+  const assistedLayerSplit =
+    String(config.split ?? "none").trim().toLowerCase() === "layer";
   const layerSplitMib =
-    layerPlan && String(config.split ?? "none") === "layer" && appliedTensorSplit
+    layerPlan && assistedLayerSplit && tensorSplitSupported && gpus.length > 1
       ? layerPlan.totalMib
       : undefined;
 
@@ -1147,8 +1135,25 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     layerSplitMib,
   });
 
+  // Placement ownership: the app places every multi-card layer split. Full Auto only
+  // promotes a split when the forecast needs more than the best single card, so it counts
+  // only when that decision is true. There is no operator switch: a single card has no
+  // split to place, so the engine keeps its own fit there.
+  const fullAutoWillSplit =
+    fullAutoMode &&
+    needsAutoLayerSplit(
+      vramCalc.manifest?.vramTotalGb ?? 0,
+      computeGpuAvailableList(gpus, committedSlotsFromStack(stack)),
+    );
+  const placementOwned = Boolean(
+    layerPlan &&
+      tensorSplitSupported &&
+      gpus.length > 1 &&
+      (assistedLayerSplit || fullAutoWillSplit),
+  );
+
   // The plan resolves after the first paint (layer table + cold forecast are IPC). Repaint
-  // the bars once its split is known, and whenever it moves (a TAKEOVER changes the -ts).
+  // the bars once its split is known, and whenever the boundaries move.
   const planSplitKey = layerSplitMib
     ? layerSplitMib.map((mib) => Math.round(mib)).join("|")
     : "";
@@ -2184,6 +2189,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       stack,
     );
 
+    // The plan is passed into the payload, not saved to the provider: the CLI sees the
+    // exact boundaries on the same click, with no async save to race the launch.
+    const placement =
+      placementOwned && layerPlan
+        ? { tensorSplit: formatTensorSplit(layerPlan.applyTs) }
+        : undefined;
+
     // Smart = factory batch (policy.batch); no max-batch push until a real algo exists.
     return buildLaunchFullConfig({
       model,
@@ -2203,7 +2215,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       testFlagsEnabled,
       testFlags,
       testFlagsMode,
-      fitOff,
+      placement,
       smartBatchPush: false,
     });
   }, [
@@ -2228,7 +2240,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     testFlagsEnabled,
     testFlags,
     testFlagsMode,
-    fitOff,
+    placementOwned,
+    layerPlan,
   ]);
 
   /** HS button hint: panel model / CTX / parallel differ from the live seat. */
@@ -2346,6 +2359,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     specBoostMethod,
     config,
   ]);
+
+  /** Manual nudge: re-read free VRAM and make the layer split the active placement. */
+  const handleSplitEq = useCallback(() => {
+    if (!tensorSplitSupported || gpus.length < 2) return;
+    if (!assistedLayerSplit) updateParam("split", "layer");
+    requestAnimationFrame(() => vramCalc.reevaluate());
+  }, [tensorSplitSupported, gpus.length, assistedLayerSplit, updateParam, vramCalc.reevaluate]);
 
   const handleOpenNobsproofCmd = useCallback(() => {
     const fullConfig = buildCurrentLaunchConfig();
@@ -2479,7 +2499,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         testFlagsEnabled: false,
         testFlags: "",
         testFlagsMode: "add",
-        fitOff,
+        // A preset seat is a different model: its layer table is not in this panel's plan,
+        // so the engine owns placement for that launch.
         smartBatchPush: false,
       });
       fullConfig.port = port;
@@ -3321,9 +3342,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         selectedGpuIndices={selectedGpuIndices}
         isValidating={vramCalc.isValidating}
         onValidate={vramCalc.validate}
-        fitOff={fitOff}
+        placementActive={placementOwned}
+        onSplitEq={fullAutoMode || !tensorSplitSupported ? undefined : handleSplitEq}
         layerPlan={layerPlan}
-        planApplyTs={planApplyTs}
         planKvSource={planKvSource}
         planSqueezed={planSqueezed}
         modelPath={model?.path}
@@ -3332,57 +3353,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
         kvQuant={String(config.kv_quant ?? "f16")}
         splitMode={String(config.split ?? "none")}
-        onApplyPlan={(tensorSplit: string) => {
-          // Taking placement away from FIT: split=layer plus the plan's fraction.
-          updateParam("split", "layer");
-          updateParam("tensor_split", tensorSplit);
-          // Persist it: a value that only lives in component state never reaches the launcher
-          // (this is how an applied -ts vanished while the config row stayed empty).
-          // Persist it through save_provider, not just set_provider_param_value: that command
-          // writes the file but leaves the app's provider state (what list_providers returns
-          // and what the launcher merges) on the old value for the rest of the session, so the
-          // glass and the CLI would disagree until a restart.
-          const provider = currentProvider;
-          if (provider) {
-            const nextParams = (provider.userEditedTemplateParams || []).map((row) =>
-              row.key === "tensor_split" ? { ...row, defaultValue: tensorSplit } : row,
-            );
-            void invoke("save_provider", {
-              provider: { ...provider, userEditedTemplateParams: nextParams },
-            })
-              .then(() => {
-                dispatchAppEvent(EVENTS.reloadProviders);
-                dispatchAppEvent(EVENTS.paramConfigChanged);
-              })
-              .catch((err) => console.warn("[plan] persist tensor_split failed:", err));
-          }
-          // Repaint the glass with the new split (no probe).
-          requestAnimationFrame(() => vramCalc.reevaluate());
-        }}
         batch={Number(config.batch ?? 0) || undefined}
         ubatch={Number(config.ubatch ?? 0) || undefined}
-        onToggleFitOff={() => setFitOff((v) => !v)}
-        onReleasePlacement={() => {
-          // Hand placement back to the engine: clear the saved -ts first (a leftover one makes
-          // --fit bail with "tensor_split already set by user, abort"), then turn fit back on.
-          updateParam("tensor_split", "");
-          const provider = currentProvider;
-          if (provider) {
-            const nextParams = (provider.userEditedTemplateParams || []).map((row) =>
-              row.key === "tensor_split" ? { ...row, defaultValue: "" } : row,
-            );
-            void invoke("save_provider", {
-              provider: { ...provider, userEditedTemplateParams: nextParams },
-            })
-              .then(() => {
-                dispatchAppEvent(EVENTS.reloadProviders);
-                dispatchAppEvent(EVENTS.paramConfigChanged);
-              })
-              .catch((err) => console.warn("[plan] clear tensor_split failed:", err));
-          }
-          setFitOff(false);
-          requestAnimationFrame(() => vramCalc.reevaluate());
-        }}
         isModelRunning={isModelRunning}
         activeEngineAlias={activeEngineAlias}
         activeEnginePort={activeEnginePort}

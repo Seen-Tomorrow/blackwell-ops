@@ -78,6 +78,19 @@ export function factoryDefaultsFromParams(
   return out;
 }
 
+/**
+ * Placement the app owns for this launch.
+ *
+ * The layer plan is the only writer of `-ts`: when a launch really splits layers across
+ * devices, its exact per-card boundaries ride in `extra_params` (so the CLI gets them in
+ * the same click, with no provider-save round trip) and `--fit` is turned off because fit
+ * cannot see a shared card on WDDM.
+ */
+export type LayerPlacement = {
+  /** `-ts` string, e.g. "0.524,0.476". */
+  tensorSplit: string;
+};
+
 export type BuildLaunchConfigInput = {
   model: ModelEntry;
   finalAlias: string;
@@ -106,10 +119,10 @@ export type BuildLaunchConfigInput = {
   testFlags: string;
   testFlagsMode: "replace" | "add";
   /**
-   * VRAM badge FIT OFF. Skips the auto-VRAM `--fit on` so the user's own
-   * -ngl / -ts / -ot flags decide placement (and the scenario `-ngl` emits).
+   * App-owned layer placement. Ignored unless the launch's final split mode is `layer`
+   * on more than one GPU.
    */
-  fitOff?: boolean;
+  placement?: LayerPlacement;
 };
 
 /**
@@ -164,7 +177,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     testFlagsEnabled,
     testFlags,
     testFlagsMode,
-    fitOff = false,
+    placement,
   } = input;
 
   const factoryDefaults = factoryDefaultsFromParams(allParamsResolved);
@@ -260,6 +273,25 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     };
   }
 
+  // One owner for layer placement. Only `split=layer` on more than one card uses `-ts`;
+  // writing it into extra_params makes the CLI see it on the same click (the old provider
+  // save was async, and a launch in the same tick missed the value). When the app is not
+  // placing, explicitly blank the row: a leftover `-ts` makes `--fit` abort with
+  // "tensor_split already set by user".
+  const finalSplit = String(
+    launchExtra.split ?? filteredConfig.split ?? merged.split ?? "none",
+  ).trim().toLowerCase();
+  if (placement && gpus.length > 1 && finalSplit === "layer") {
+    launchExtra = {
+      ...launchExtra,
+      split: "layer",
+      tensor_split: placement.tensorSplit,
+      __fit_off: true,
+    };
+  } else {
+    launchExtra = { ...launchExtra, tensor_split: "" };
+  }
+
   const parallelRaw = filteredConfig.parallel ?? launchExtra.parallel ?? merged.parallel ?? 1;
   const parallelN = Math.max(1, Number(parallelRaw) || 1);
   const vramTopo = vramTopoTag(gpus, launchExtra.device ?? merged.device ?? "GPU-0");
@@ -275,7 +307,6 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     binary_profile: selectedBinaryProfile,
     extra_params: {
       ...launchExtra,
-      ...(fitOff ? { __fit_off: true } : {}),
       parallel: parallelN,
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
       __launch_policy: policy.id,

@@ -89,18 +89,15 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     selectedGpuIndices,
     isValidating,
     onValidate,
-    fitOff = false,
-    onToggleFitOff,
-    onReleasePlacement,
+    placementActive = false,
+    onSplitEq,
     layerPlan = null,
-    planApplyTs = null,
     planKvSource = "none",
     planSqueezed = false,
     modelPath,
     ctxTokens,
     kvQuant,
     splitMode,
-    onApplyPlan,
     batch,
     ubatch,
     isModelRunning,
@@ -473,20 +470,17 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onDeviceSelect={onDeviceSelect}
               isValidating={isValidating}
               onValidate={onValidate}
-              fitOff={fitOff}
-              onToggleFitOff={onToggleFitOff}
-              onReleasePlacement={onReleasePlacement}
+              placementActive={placementActive}
+              onSplitEq={onSplitEq}
               layerPlan={layerPlan}
               snapLogOpen={snapLogOpen}
               onCloseSnapLog={() => setSnapLogOpen(false)}
-              planApplyTs={planApplyTs}
               planKvSource={planKvSource}
               planSqueezed={planSqueezed}
               modelPath={modelPath}
               ctxTokens={ctxTokens}
               kvQuant={kvQuant}
               splitMode={splitMode}
-              onApplyPlan={onApplyPlan}
               batch={batch}
               ubatch={ubatch}
               activeEngineAlias={activeEngineAlias}
@@ -606,25 +600,20 @@ export interface EngineGpuForecastProps {
   selectedGpuIndices: number[];
   isValidating: boolean;
   onValidate: (mode?: "full" | "low_vram") => void;
-  /** VRAM badge FIT OFF — drop the auto-VRAM `--fit on`. */
-  fitOff?: boolean;
-  onToggleFitOff?: () => void;
-  /** Give placement back to the engine: clear -ts and turn fit on. */
-  onReleasePlacement?: () => void;
+  /** Automatic placement owns this launch: the app writes `-ts` and turns fit off. */
+  placementActive?: boolean;
+  /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
+  onSplitEq?: () => void;
   /** The single layer plan the glass prints and the bars paint. */
   layerPlan?: LayerPlan | null;
-  /** `-ts` the TAKEOVER button writes (the byte-balanced boundary). */
-  planApplyTs?: number[] | null;
   planKvSource?: "measured" | "profile" | "geometry" | "none";
   planSqueezed?: boolean;
-  /** Selected model path — the PLAN chip reads its block table. */
+  /** Selected model path - the PLAN chip reads its block table. */
   modelPath?: string;
   /** Planned ctx / KV quant, so the plan follows the knobs instead of a fixed context. */
   ctxTokens?: number;
   kvQuant?: string;
   splitMode?: string;
-  /** Apply the layer plan to the launch config (writes -ts + split=layer). */
-  onApplyPlan?: (tensorSplit: string) => void;
   batch?: number;
   ubatch?: number;
   isModelRunning?: boolean;

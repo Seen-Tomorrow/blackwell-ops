@@ -6,7 +6,9 @@ import {
   formatTensorSplit,
   planFromLive,
   planLayerSplit,
+  tensorSplitBoundaries,
   tensorSplitBoundary,
+  tensorSplitForBoundaries,
   tensorSplitForBoundary,
 } from "./vramLayerPlan";
 
@@ -42,7 +44,7 @@ describe("layer split planning", () => {
           toMib(V41_BLOCKS_GIB.slice(20)).reduce((a, b) => a + b, 0),
       ) / 1024;
     expect(imbalance).toBeLessThan(2);
-    // An even 20/20 split leaves more than 10 GiB on one card — the reason the planner exists.
+    // An even 20/20 split leaves more than 10 GiB on one card - the reason the planner exists.
     expect(evenSplitImbalance).toBeGreaterThan(10);
   });
 
@@ -56,6 +58,36 @@ describe("layer split planning", () => {
     // Neither card is asked to exceed its budget.
     expect(plan!.util[0]).toBeLessThanOrEqual(1);
     expect(plan!.util[1]).toBeLessThanOrEqual(1);
+  });
+
+  it("spreads N cards by utilisation so mixed capacities finish together", () => {
+    const blocks = new Array(24).fill(1024);
+    const plan = planLayerSplit({
+      perBlockMib: blocks,
+      budgetsMib: [24 * 1024, 48 * 1024, 72 * 1024],
+    });
+    expect(plan).not.toBeNull();
+    // 1:2:3 budgets on identical blocks -> 1:2:3 layers, every card at the same fill.
+    expect(plan!.deviceLayers).toEqual([4, 8, 12]);
+    expect(plan!.boundaries).toEqual([4, 12]);
+    expect(plan!.maxUtil - Math.min(...plan!.util)).toBeLessThan(1e-9);
+    // The engine reads the written -ts back as exactly those boundaries.
+    expect(tensorSplitBoundaries(plan!.ts, 24)).toEqual(plan!.boundaries);
+    expect(tensorSplitBoundaries(plan!.applyTs, 24)).toEqual(plan!.boundaries);
+  });
+
+  it("leaves room on the card that also carries unplanned buffers", () => {
+    const plan = planLayerSplit({
+      perBlockMib: new Array(12).fill(1024),
+      budgetsMib: [24 * 1024, 24 * 1024],
+      // Compute/CUDA-graph buffers the FIT probe never prints, all on device 0.
+      overheadMib: [4 * 1024, 0],
+    });
+    expect(plan).not.toBeNull();
+    // Equal budgets but 4 GiB of device-0 extras: the boundary moves four blocks earlier.
+    expect(plan!.boundary).toBe(4);
+    expect(Math.abs(plan!.totalMib[0]! - plan!.totalMib[1]!)).toBeLessThan(1);
+    expect(plan!.util[0]).toBeCloseTo(plan!.util[1]!, 6);
   });
 
   it("reads a -ts back the way llama.cpp does, and writes one that lands where it says", () => {
@@ -75,21 +107,13 @@ describe("layer split planning", () => {
       expect(ts[0] + ts[1]).toBeCloseTo(1, 6);
       expect(formatTensorSplit(ts).split(",")).toHaveLength(2);
     }
-  });
-
-  it("reports the layers an applied -ts really gets, and keeps its own proposal", () => {
-    const plan = planLayerSplit({
-      perBlockMib: toMib(V41_BLOCKS_GIB),
-      budgetsMib: [97 * 1024, 97 * 1024],
-      appliedTs: [0.575, 0.425],
-    });
-    expect(plan).not.toBeNull();
-    // The geometry on screen is the one the CLI will produce, not the one we would pick.
-    expect(plan!.appliedBoundary).toBe(24);
-    expect(plan!.boundary).toBe(24);
-    expect(plan!.ts).toEqual([0.575, 0.425]);
-    // The proposal is mid-band, so applying it lands on the boundary it names.
-    expect(tensorSplitBoundary(plan!.applyTs, 40)).toBe(plan!.optimalBoundary);
+    // Every multi-device boundary tuple round-trips too.
+    for (const boundaries of [[1, 2], [8, 16], [13, 23], [4, 8, 12], [5, 10, 15, 20]]) {
+      const ts = tensorSplitForBoundaries(boundaries, 24);
+      expect(tensorSplitBoundaries(ts, 24), JSON.stringify(ts)).toEqual(boundaries);
+      expect(ts.reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 2);
+      expect(formatTensorSplit(ts).split(",")).toHaveLength(boundaries.length + 1);
+    }
   });
 
   it("keeps KV with the layers that carry it", () => {
@@ -114,17 +138,17 @@ describe("layer split planning", () => {
       budgetsMib: [97 * 1024, 97 * 1024],
     });
     expect(plan).not.toBeNull();
-    // sum is the two device loads, and never exceeds the budgets it was fitted into
-    expect(plan!.sumMib).toBeCloseTo(plan!.totalMib[0] + plan!.totalMib[1], 3);
+    // sum is the per-device loads, and never exceeds the budgets it was fitted into
+    expect(plan!.sumMib).toBeCloseTo(plan!.totalMib[0]! + plan!.totalMib[1]!, 3);
     expect(plan!.sumMib).toBeLessThanOrEqual(plan!.budgetSumMib);
   });
 
   it("refuses inputs it cannot plan", () => {
     expect(planLayerSplit({ perBlockMib: [], budgetsMib: [1024, 1024] })).toBeNull();
     expect(planLayerSplit({ perBlockMib: toMib(V41_BLOCKS_GIB), budgetsMib: [0, 1024] })).toBeNull();
-    expect(
-      planLayerSplit({ perBlockMib: toMib(V41_BLOCKS_GIB), budgetsMib: [1024, 1024, 1024] }),
-    ).toBeNull();
+    expect(planLayerSplit({ perBlockMib: toMib(V41_BLOCKS_GIB), budgetsMib: [1024] })).toBeNull();
+    // Fewer blocks than cards cannot give each card a whole layer.
+    expect(planLayerSplit({ perBlockMib: [1024], budgetsMib: [1024, 1024, 1024] })).toBeNull();
   });
 
   it("reports per-device load against budget", () => {

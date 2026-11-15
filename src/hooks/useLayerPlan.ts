@@ -66,15 +66,6 @@ function kvMibPerLayer(args: {
   return bytes / (1024 * 1024);
 }
 
-/** Parse a written `-ts` ("0.550,0.450"); null unless it names one fraction per device. */
-function parseTensorSplit(raw: string | undefined, devices: number): number[] | null {
-  if (!raw) return null;
-  const parts = raw.split(",").map((part) => Number(part.trim()));
-  if (parts.length !== devices) return null;
-  if (!parts.every((value) => Number.isFinite(value) && value > 0)) return null;
-  return parts;
-}
-
 export function useLayerPlan(
   modelPath: string | null | undefined,
   gpus: GpuInfo[],
@@ -90,9 +81,6 @@ export function useLayerPlan(
     /** Changes on every engine state change, so a finished launch is picked up without
      *  nudging the ctx slider (`LOADING -> RUNNING -> IDLE`). */
     stackSig?: string;
-    /** Applied tensor split ("0.55,0.45"). It pins the placement, so the plan reports the
-     *  layers that split really gets instead of proposing its own boundary. */
-    tensorSplit?: string;
     modelMeta?: ModelMetadata | null;
   },
   /**
@@ -103,7 +91,7 @@ export function useLayerPlan(
   runningSlots: RunningSlotInfo[] = [],
 ): {
   plan: LayerPlan | null;
-  /** `-ts` TAKEOVER should write for the byte-balanced boundary; null before the table lands. */
+  /** `-ts` the launch should write for the byte-balanced boundaries; null before the table lands. */
   applyTs: number[] | null;
   layerBytes: LayerBytes | null;
   kvMibPerLayer: number;
@@ -283,11 +271,6 @@ export function useLayerPlan(
       ? measuredKv.modelMib / ggufWeightsMib
       : 1;
 
-  const appliedTs = useMemo(
-    () => parseTensorSplit(knobs?.tensorSplit, gpus.length),
-    [knobs?.tensorSplit, gpus.length],
-  );
-
   // Overhead is the measured total minus the terms we know: weights on the GPUs and KV.
   // Deriving it beats transporting per-device compute arrays, which arrived short and made a
   // card look free. The per-device SPLIT is not layer-proportional, though: measured compute
@@ -324,7 +307,7 @@ export function useLayerPlan(
     .join("|");
 
   const plan: LayerPlan | null = useMemo(() => {
-    if (!layerBytes || gpus.length !== 2) return null;
+    if (!layerBytes || gpus.length < 2) return null;
     return planFromLive({
       perBlockMib: layerBytes.per_block_mib.map((mib) => mib * weightScale),
       kvMibPerLayer: kvPerBlock > 0 ? kvPerBlock : undefined,
@@ -338,12 +321,9 @@ export function useLayerPlan(
       overheadTotalMib,
       // rs + vision buffers belong to the launch inventory too (598 + 248 MiB on the 27B).
       calibration,
-      // A `-ts` in the config is the placement the engine will really get; the plan reports
-      // that geometry and keeps the byte-balanced proposal in `applyTs`.
-      appliedTs: appliedTs ?? undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slotsKey stands in for the array
-  }, [layerBytes, gpus, slotsKey, calibration, kvPerBlock, measuredKv, cold, weightScale, overheadMib, overheadTotalMib, appliedTs]);
+  }, [layerBytes, gpus, slotsKey, calibration, kvPerBlock, measuredKv, cold, weightScale, overheadMib, overheadTotalMib]);
 
   const kvSource: "measured" | "profile" | "geometry" | "none" =
     measuredKv && measuredKv.kvMib > 0
@@ -400,8 +380,8 @@ export function useLayerPlan(
       knobs?.kvQuant ?? "",
       knobs?.splitMode ?? "",
       kvSource,
-      // The applied -ts moves the boundary, so it is part of the plan's identity.
-      appliedTs?.join(",") ?? "",
+      // The boundaries (and their -ts) are the plan's identity, not the knob set alone.
+      plan.ts.join(","),
     ].join("|");
     if (planSigRef.current === signature) return;
     planSigRef.current = signature;
@@ -421,6 +401,9 @@ export function useLayerPlan(
         overhead_mib: overheadMib,
         budgets_mib: plan.budgetsMib,
         ts: plan.ts,
+        boundaries: plan.boundaries,
+        device_layers: plan.deviceLayers,
+        gpu_count: plan.totalMib.length,
         boundary: plan.boundary,
         layers: plan.layerCount,
         kv_mib_per_layer: kvPerBlock,
@@ -444,7 +427,7 @@ export function useLayerPlan(
   }, [plan, modelPath, knobs?.ctxTokens, knobs?.kvQuant, knobs?.splitMode, kvPerBlock, measuredKv, cold, kvSource]);
   return {
     plan,
-    /** `-ts` the TAKEOVER/APPLY button should write for the byte-balanced boundary. */
+    /** `-ts` the launch should write for the byte-balanced boundaries. */
     applyTs: plan?.applyTs ?? null,
     layerBytes,
     kvMibPerLayer: kvPerBlock,

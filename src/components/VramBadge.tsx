@@ -5,7 +5,6 @@ import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
-import SegmentSwitch from "./SegmentSwitch";
 import NvramSnapshotOverlay from "./NvramSnapshotOverlay";
 import { formatTensorSplit, type LayerPlan } from "../lib/vramLayerPlan";
 import MemorySourcePanel, {
@@ -40,18 +39,15 @@ interface VramBadgeProps {
   onMoeSuggestionClick?: () => void;
   hideMoeBadge?: boolean;
   hideFitProbe?: boolean;
-  /** Operator override: drop the auto-VRAM `--fit on` so -ngl/-ts/-ot own placement. */
-  fitOff?: boolean;
-  onToggleFitOff?: () => void;
+  /** Automatic placement owns this launch: the app writes `-ts` and turns fit off. */
+  placementActive?: boolean;
+  /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
+  onSplitEq?: () => void;
   /** Bezel control: full-glass NVRAM snapshot log. */
   snapLogOpen?: boolean;
   onCloseSnapLog?: () => void;
-  /** Give placement back to the engine: clear -ts and turn fit on. */
-  onReleasePlacement?: () => void;
-  /** The one layer plan: printed here, painted by the bars, written by TAKEOVER. */
+  /** The one layer plan: printed here, painted by the bars, written by the launcher. */
   layerPlan?: LayerPlan | null;
-  /** `-ts` TAKEOVER writes — the byte-balanced proposal, not the applied string. */
-  planApplyTs?: number[] | null;
   planKvSource?: "measured" | "profile" | "geometry" | "none";
   planSqueezed?: boolean;
   /** Model whose layer table the planner reads; absent hides the PLAN chip. */
@@ -63,8 +59,6 @@ interface VramBadgeProps {
   splitMode?: string;
   /** Batch/ubatch of the plan — compute buffers scale with them (~10x 2048 → 8192). */
   batch?: number;
-  /** Write the plan into the launch config: `-ts` from the plan, split=layer. */
-  onApplyPlan?: (tensorSplit: string) => void;
   ubatch?: number;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
@@ -109,11 +103,10 @@ export default function VramBadge({
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
   hideFitProbe = false, draftOnly = false, className,
-  fitOff = false, onToggleFitOff, onReleasePlacement,
+  placementActive = false, onSplitEq,
   snapLogOpen = false,
   onCloseSnapLog,
   layerPlan = null,
-  planApplyTs = null,
   planKvSource = "none",
   planSqueezed = false,
   modelPath,
@@ -122,7 +115,6 @@ export default function VramBadge({
   splitMode,
   batch,
   ubatch,
-  onApplyPlan,
 
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
   gpuIdleBaselineMib,
@@ -134,7 +126,6 @@ export default function VramBadge({
 
   // The plan arrives from EngineConfigPanel: the same object feeds the manifest's per-card
   // split, so what the bars paint and what this glass prints cannot disagree.
-  const applyTs = planApplyTs ?? layerPlan?.applyTs ?? null;
 
   // Publish what this glass shows, so an agent can read it instead of asking for a
   // screenshot. DEV builds write config/automation/ui/vram-badge.json.
@@ -150,7 +141,7 @@ export default function VramBadge({
           splitMode: splitMode ?? null,
           batch: batch ?? null,
           ubatch: ubatch ?? null,
-          fitOff: fitOff === true,
+          placementActive: placementActive === true,
           sourceKind: manifest.memorySource?.kind ?? null,
           sourceExact: manifest.memorySource?.exact ?? null,
           sourceDetail: manifest.memorySource?.detail ?? null,
@@ -165,14 +156,12 @@ export default function VramBadge({
                 totalMib: layerPlan.sumMib,
                 budgetSumMib: layerPlan.budgetSumMib,
                 gpuMib: layerPlan.totalMib,
-                /** Geometry on screen: the applied `-ts` when one is set, else the proposal. */
-                boundary: layerPlan.boundary,
+                boundaries: layerPlan.boundaries,
+                deviceLayers: layerPlan.deviceLayers,
                 layers: layerPlan.layerCount,
                 ts: layerPlan.ts,
-                /** `-ts` TAKEOVER writes (the byte-balanced boundary). */
                 applyTs: layerPlan.applyTs,
                 optimalBoundary: layerPlan.optimalBoundary,
-                appliedBoundary: layerPlan.appliedBoundary ?? null,
                 kvSource: planKvSource,
                 squeezed: planSqueezed,
               }
@@ -184,24 +173,24 @@ export default function VramBadge({
     }, 400);
     return () => clearTimeout(timer);
   }, [
-    modelPath, modelName, ctxTokens, kvQuant, splitMode, batch, ubatch, fitOff,
+    modelPath, modelName, ctxTokens, kvQuant, splitMode, batch, ubatch, placementActive,
     manifest, layerPlan, planKvSource, planSqueezed,
   ]);
 
-  const [takeoverState, setTakeoverState] = useState<"idle" | "busy">("idle");
+  const [placementBusy, setPlacementBusy] = useState(false);
   // Same denial table the engine config and the launch guard obey; the glass only reports it.
   const denials = useEngineDenials();
-  // A mode switch must be visible even when the numbers land in the same place: the topo runs
+  // A mode change must be visible even when the numbers land in the same place: the topo runs
   // a short re-scan and the bars ease to their new widths.
   const [placementFlash, setPlacementFlash] = useState(false);
-  const prevFitOff = useRef(fitOff);
+  const prevPlacementActive = useRef(placementActive);
   useEffect(() => {
-    if (prevFitOff.current === fitOff) return;
-    prevFitOff.current = fitOff;
+    if (prevPlacementActive.current === placementActive) return;
+    prevPlacementActive.current = placementActive;
     setPlacementFlash(true);
     const timer = setTimeout(() => setPlacementFlash(false), 700);
     return () => clearTimeout(timer);
-  }, [fitOff]);
+  }, [placementActive]);
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
     selectedSlotIdx !== undefined &&
@@ -464,6 +453,18 @@ export default function VramBadge({
   })();
   const showRamHistory = ramHistoryGb > 0.05 && !ramBarInset;
 
+  // Placement is a state, not a mode: the app owns every multi-card layer split, so the glass
+  // only has to say which side is placing. "AUTO" means the launch carries these exact `-ts`
+  // boundaries; "ENGINE" means there is no split to place (one card, or no layer table yet).
+  const placementDetail = layerPlan
+    ? placementActive
+      ? `${layerPlan.deviceLayers.join("/")} L · -ts ${formatTensorSplit(layerPlan.applyTs)}`
+      : `${layerPlan.deviceLayers.join("/")} L planned`
+    : null;
+  const placementTitle = layerPlan
+    ? `${placementActive ? "Automatic" : "Proposed"}: -ts ${formatTensorSplit(layerPlan.applyTs)}` +
+      ` · ${layerPlan.deviceLayers.join("/")} layers`
+    : "No layer table for this model yet - the engine's own fit chooses placement";
 
   return (
     <div
@@ -488,47 +489,37 @@ export default function VramBadge({
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
-        {/* Placement handover, visible both ways: which side owns placement is always on screen.
-            APP TAKEOVER writes the plan's -ts and turns fit off; ENGINE FIT gives placement back
-            (clears -ts first — a leftover one makes --fit bail with "tensor_split already set"). */}
-        <div className="vram-fc-placement" data-takeover={takeoverState}>
+        {/* Placement ownership is always on screen. There is no operator switch: an app-owned
+            launch carries -ts + fit off, and one without a split lets the engine place. SPLIT EQ
+            is the manual nudge for the case where the automatic pass had nothing to arm. */}
+        <div
+          className="vram-fc-placement"
+          data-placement={placementActive ? "auto" : "engine"}
+          data-busy={placementBusy ? "1" : undefined}
+        >
           <span className="vram-fc-placement__label">VRAM PLACEMENT</span>
-          <SegmentSwitch
-            ariaLabel="VRAM placement"
-            size="compact"
-            tone="amber"
-            selectedId={fitOff ? "takeover" : "fit"}
-            disabled={takeoverState !== "idle"}
-            options={[
-              {
-                id: "fit",
-                label: "ENGINE FIT",
-                disabled: !onReleasePlacement,
-                title: "The engine's --fit chooses the split (clears -ts)",
-              },
-              {
-                id: "takeover",
-                label: "APP TAKEOVER",
-                disabled: !onApplyPlan || !layerPlan || !applyTs,
-                title:
-                  layerPlan && applyTs
-                    ? `Apply -ts ${formatTensorSplit(applyTs)} (${layerPlan.optimalBoundary} / ${layerPlan.layerCount} layers) and FIT off: the engine stops shaving the graph`
-                    : "No layer plan for this model yet",
-              },
-            ]}
-            onSelect={(id) => {
-              if (id === (fitOff ? "takeover" : "fit")) return;
-              setTakeoverState("busy");
-              if (id === "fit") {
-                onReleasePlacement?.();
-              } else if (onApplyPlan && applyTs) {
-                onApplyPlan(formatTensorSplit(applyTs));
-                onToggleFitOff?.();
-              }
-              // The selection itself shows the engaged mode; the lock is only anti-double-click.
-              setTimeout(() => setTakeoverState("idle"), 600);
-            }}
-          />
+          <span className="vram-fc-placement__mode" title={placementTitle}>
+            {placementActive ? "AUTO" : "ENGINE"}
+            {placementDetail ? (
+              <span className="vram-fc-placement__detail">{placementDetail}</span>
+            ) : null}
+          </span>
+          {onSplitEq && layerPlan ? (
+            <button
+              type="button"
+              className="vram-fc-placement__eq"
+              title="Re-read free VRAM, balance the layer split by bytes and arm it for the next launch"
+              disabled={placementBusy}
+              onClick={() => {
+                setPlacementBusy(true);
+                onSplitEq();
+                // The button is a trigger, not a mode: flash while the plan repaints.
+                setTimeout(() => setPlacementBusy(false), 600);
+              }}
+            >
+              SPLIT EQ
+            </button>
+          ) : null}
         </div>
       </div>
 
