@@ -89,8 +89,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     cfgStr(input.engineConfig, "spec_type", "") || null,
     draftPathConfigured,
   );
-  const learnedHasDraft = adapter ? adapter.memory.learnedIncludesDraft(draftPathConfigured) : false;
-  const needsDraftAdd = draftAddon > 0 && !learnedHasDraft;
   // A point is only valid at the context it was measured at — nothing is scaled to another
   // CTX, and nothing is added for split mode: a launch measured the split it ran, and a
   // probe is run with the split it is asked for.
@@ -311,6 +309,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     || source === "probe_curve"
     || source === "probe_anchored";
   const isSingleProbe = source === "probe_exact";
+
+  // The backend's `spec_included` answers only for the exact-key row. Curve points are not
+  // tagged, so fall back to the adapter's shape rule for them and for probes.
+  const learnedHasDraft =
+    (source === "launch_exact" ? input.learnedSpecIncluded : undefined)
+    ?? (adapter ? adapter.memory.learnedIncludesDraft(draftPathConfigured) : false);
+  const needsDraftAdd = draftAddon > 0 && !learnedHasDraft;
 
   // FIT never loads the draft head or the vision projector, so a pure probe needs them on
   // top. An anchored curve already carries the launch's level (which included both) and its

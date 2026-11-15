@@ -257,12 +257,11 @@ export function useLayerPlan(
     return 0;
   }, [blocks, measuredKv, ctxForKv, kvPerLayer, cold]);
 
-  // The GGUF total counts tensors the engine keeps on the host; a launch reports what it
-  // actually placed on the GPUs (+1.3 GB on Q6_K, +0.7 GB on UD-IQ3_XXS). When a launch of
-  // this shape exists, match its weights instead of the file total.
+  // The GGUF total counts tensors the engine keeps on the HOST; a launch reports what it
+  // actually placed on the GPUs (+1.3 GB on Q6_K, +0.7 GB on UD-IQ3_XXS). token_embd is a
+  // CUDA_Host buffer, so it does not belong on either card's weight term.
   const ggufWeightsMib = layerBytes
     ? layerBytes.per_block_mib.reduce((sum, mib) => sum + mib, 0) +
-      (layerBytes.token_embd_mib ?? 0) +
       (layerBytes.output_mib ?? 0) +
       (layerBytes.other_mib ?? 0)
     : 0;
@@ -311,7 +310,6 @@ export function useLayerPlan(
     return planFromLive({
       perBlockMib: layerBytes.per_block_mib.map((mib) => mib * weightScale),
       kvMibPerLayer: kvPerBlock > 0 ? kvPerBlock : undefined,
-      tokenEmbdMib: (layerBytes.token_embd_mib ?? 0) * weightScale,
       outputMib: (layerBytes.output_mib ?? 0) * weightScale,
       otherMib: (layerBytes.other_mib ?? 0) * weightScale,
       freeMib: computeGpuAvailableList(gpus, runningSlots).map(

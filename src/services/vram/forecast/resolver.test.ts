@@ -68,6 +68,29 @@ describe("forecast resolver states", () => {
     expect(m?.vramTotalGb).toBeCloseTo(40.5, 1);
   });
 
+  it("a learned row that excludes the draft gets the draft addon", () => {
+    const withDraft = input({
+      learnedVramMib: 40 * GIB,
+      learnedHostMib: GIB,
+      learnedSpecIncluded: false,
+      draftSizeMib: 10 * GIB,
+      engineConfig: {
+        ...input({}).engineConfig,
+        extra_params: {
+          ctx: 65_536,
+          split: "none",
+          device: "GPU-0",
+          spec_type: "draft-dflash",
+          dflash_draft_model: "C:/models/draft.gguf",
+        },
+      },
+    });
+    const withoutDraft = evaluate({ ...withDraft, learnedSpecIncluded: true });
+    // 10 GiB of draft + its measured overhead, not a confidence trick.
+    expect(evaluate(withDraft)!.vramTotalGb).toBeGreaterThan(50);
+    expect(withoutDraft!.vramTotalGb).toBeCloseTo(40.5, 1);
+  });
+
   it("INCOMPLETE: a lone launch is scaled by its own measured KV", () => {
     // 40 GB @64K, 4 GB of it KV → +4 GB per +64K tokens → 44 GB @128K.
     const m = evaluate(

@@ -53,6 +53,10 @@ pub struct LearnedVramEntry {
     /// Spec/draft identity of the base measurement. Spec deltas are relative to it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_spec_key: Option<String>,
+    /// Response-only: does `vram_mib`/`host_mib` already include the external draft?
+    /// `None` for stored rows and for lookups that did not take the spec path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec_included: Option<bool>,
     /// Learned VRAM additions for other batch/ubatch pairs (key: "batch|ubatch").
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub batch_deltas: HashMap<String, LearnedBatchDelta>,
@@ -904,6 +908,7 @@ pub fn record_learned_vram(
             reference_ubatch: None,
             batch_deltas: HashMap::new(),
             reference_spec_key: None,
+            spec_included: None,
             spec_deltas: HashMap::new(),
             joint_deltas: HashMap::new(),
             gpu_breakdown_mib,
@@ -1016,6 +1021,18 @@ fn spec_reference_matches(entry: &mut LearnedVramEntry, spec_key: &str) -> bool 
     }
 }
 
+/// A spec/draft model ADDS memory. A measured total below half the base model is a collapsed
+/// ledger - the draft's buffers overwrote the main model's (same device/kind/tag key) - not a
+/// spec cost. Such a point must never become a learned delta.
+fn spec_measurement_is_additive(base_vram: f64, measured_vram: f64) -> bool {
+    measured_vram >= base_vram * 0.5
+}
+
+/// A delta may be slightly negative (measurement noise), never large enough to erase the base.
+fn spec_delta_is_additive(base_vram: f64, delta_vram: f64) -> bool {
+    delta_vram >= -(base_vram * 0.05).max(512.0)
+}
+
 fn record_spec_delta(
     entry: &mut LearnedVramEntry,
     ctx: usize,
@@ -1024,6 +1041,14 @@ fn record_spec_delta(
     host_mib: Option<f64>,
 ) {
     let base_vram = entry.paint_vram_mib();
+    if !spec_measurement_is_additive(base_vram, vram_mib) {
+        log::warn!(
+            "[vram_learn] ignoring spec measurement {:.1} MiB vs base {:.1} MiB - draft-only ledger",
+            vram_mib,
+            base_vram
+        );
+        return;
+    }
     let base_host = entry.paint_host_mib().unwrap_or(0.0);
     entry.spec_deltas.insert(
         spec_key.to_string(),
@@ -1049,6 +1074,14 @@ fn record_joint_delta(
     host_mib: Option<f64>,
 ) {
     let base_vram = entry.paint_vram_mib();
+    if !spec_measurement_is_additive(base_vram, vram_mib) {
+        log::warn!(
+            "[vram_learn] ignoring joint batch+spec measurement {:.1} MiB vs base {:.1} MiB - draft-only ledger",
+            vram_mib,
+            base_vram
+        );
+        return;
+    }
     let base_host = entry.paint_host_mib().unwrap_or(0.0);
     entry.joint_deltas.insert(
         joint_delta_key(pair, spec_key),
@@ -1097,6 +1130,7 @@ pub fn append_fit_breakdown_tables(
         reference_ubatch: None,
         batch_deltas: HashMap::new(),
         reference_spec_key: None,
+        spec_included: None,
         spec_deltas: HashMap::new(),
         joint_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
@@ -1331,6 +1365,7 @@ mod dedup_tests {
                     reference_ubatch: None,
                     batch_deltas: HashMap::new(),
                     reference_spec_key: None,
+                    spec_included: None,
                     spec_deltas: HashMap::new(),
                     joint_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![85485.0, 83376.0]),
@@ -1412,6 +1447,7 @@ mod dedup_tests {
                     reference_ubatch: None,
                     batch_deltas: HashMap::new(),
                     reference_spec_key: None,
+                    spec_included: None,
                     spec_deltas: HashMap::new(),
                     joint_deltas: HashMap::new(),
                     gpu_breakdown_mib: Some(vec![50000.0, 48854.0]),
@@ -1483,6 +1519,7 @@ pub fn record_launch_memory_snapshot(
         reference_ubatch: None,
         batch_deltas: HashMap::new(),
         reference_spec_key: None,
+        spec_included: None,
         spec_deltas: HashMap::new(),
         joint_deltas: HashMap::new(),
         gpu_breakdown_mib: None,
@@ -2447,6 +2484,12 @@ pub fn get_learned_vram(
         .as_deref()
         .map(|reference| reference != wanted_spec)
         .unwrap_or(false);
+    // A row measured WITH a draft is not a measurement of the same model without one.
+    // Returning it for a boost-off request would double-count the draft; the base row is
+    // the only honest answer.
+    if spec_mismatch && wanted_spec == "none" {
+        return None;
+    }
     if spec_mismatch {
         let base_v = entry.paint_vram_mib();
         let base_h = entry.paint_host_mib();
@@ -2462,18 +2505,39 @@ pub fn get_learned_vram(
                 &wanted_spec,
             )
         };
-        let live_ctx = normalize_ctx_key(&ctx).parse::<usize>().ok()?;
-        let (spec_v, spec_h) = interpolate_spec_delta(&points, live_ctx)?;
-        entry.vram_mib = base_v + spec_v;
-        entry.host_mib = match (base_h, spec_h) {
-            (Some(base), extra) => Some(base + extra),
-            (None, extra) if extra != 0.0 => Some(extra),
-            (base, _) => base,
-        };
+        // A missing or implausible delta is not a reason to drop the base row: return the base
+        // and mark the draft as NOT included, so the forecast adds its own draft estimate.
+        let delta = normalize_ctx_key(&ctx)
+            .parse::<usize>()
+            .ok()
+            .and_then(|live_ctx| interpolate_spec_delta(&points, live_ctx));
+        let plausible = delta.filter(|(vram, _)| spec_delta_is_additive(base_v, *vram));
+        if let Some((spec_v, spec_h)) = plausible {
+            entry.vram_mib = base_v + spec_v;
+            entry.host_mib = match (base_h, spec_h) {
+                (Some(base), extra) => Some(base + extra),
+                (None, extra) if extra != 0.0 => Some(extra),
+                (base, _) => base,
+            };
+            entry.spec_included = Some(true);
+        } else {
+            if let Some((spec_v, _)) = delta {
+                log::warn!(
+                    "[vram_learn] ignoring implausible spec delta {:.1} MiB for {} (base {:.1} MiB)",
+                    spec_v,
+                    wanted_spec,
+                    base_v
+                );
+            }
+            entry.spec_included = Some(false);
+        }
         entry.launch_snapshot = None;
         entry.gpu_breakdown_mib = None;
         entry.gpu_components_mib = None;
         entry.host_components_mib = None;
+    } else {
+        // The row's own reference spec already answers this request.
+        entry.spec_included = Some(wanted_spec != "none");
     }
     // The row is a measurement at one (ctx, ubatch); the caller may be at another ubatch. Prefer
     // the family fit — affine in both, built from every measured point of this model/kv/split/
@@ -2991,6 +3055,14 @@ pub fn get_learned_vram_curve(
                 delta_h += spec_h;
             }
         }
+        // A row measured with a draft is not a boost-off point; and a collapsed draft-only
+        // spec delta must not become a curve point (it would under-read by the whole model).
+        if spec_mismatch && wanted_spec == "none" {
+            continue;
+        }
+        if spec_mismatch && !spec_delta_is_additive(entry.paint_vram_mib(), delta_v) {
+            continue;
+        }
         // Each point is scaled from its own components: a curve mixes ubatches as soon as the
         // knob moves, and a point measured at another ubatch is still a measurement of this ctx.
         let mut scaled = entry.clone();
@@ -3107,6 +3179,27 @@ mod cuda_device_tests {
 }
 
 #[cfg(test)]
+mod spec_delta_tests {
+    use super::{spec_delta_is_additive, spec_measurement_is_additive};
+
+    /// The spec launch loads a second model. The engine ledger keys buffers by
+    /// (device, kind, tag), so the draft overwrites the main model and `/memory` reports
+    /// only the draft (~10 GiB on a 176 GiB base). That measurement must never become a
+    /// learned delta: it would subtract the whole main model from the forecast.
+    #[test]
+    fn a_draft_only_ledger_is_not_a_spec_delta() {
+        let base = 175_940.0;
+        assert!(!spec_measurement_is_additive(base, 10_196.0));
+        assert!(!spec_delta_is_additive(base, 10_196.0 - base));
+
+        assert!(spec_measurement_is_additive(base, 187_400.0));
+        assert!(spec_delta_is_additive(base, 11_460.0));
+        // Measurement noise is allowed; erasing the base is not.
+        assert!(spec_delta_is_additive(base, -100.0));
+    }
+}
+
+#[cfg(test)]
 mod compute_model_tests {
     use super::*;
 
@@ -3194,6 +3287,7 @@ mod compute_model_tests {
             reference_batch: Some(2048),
             reference_ubatch: Some(512),
             reference_spec_key: None,
+            spec_included: None,
             batch_deltas: std::collections::HashMap::new(),
             spec_deltas: std::collections::HashMap::new(),
             joint_deltas: std::collections::HashMap::new(),

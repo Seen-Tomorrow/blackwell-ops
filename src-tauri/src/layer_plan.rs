@@ -15,7 +15,8 @@ pub struct LayerBytes {
     pub per_block_mib: Vec<f64>,
     /// Engram / PLE lookup table — host by design for this architecture.
     pub lookup_mib: f64,
-    /// Token embedding, which llama.cpp keeps on the first device.
+    /// Token embedding. llama.cpp keeps the input layer on `CUDA_Host`, so this is reported
+    /// for completeness and must NOT be charged to GPU0's weight term.
     pub token_embd_mib: f64,
     /// Output tensor, which rides with the last layers.
     pub output_mib: f64,

@@ -39,6 +39,8 @@ export interface ForecastInput {
   layerSplitMib?: number[];
 
   learnedVramMib?: number;
+  /** Backend says whether `learnedVramMib` already includes the external draft. */
+  learnedSpecIncluded?: boolean;
   learnedHostMib?: number;
   /** Host model column from the learned entry — weights, not buffer. */
   learnedHostModelMib?: number;

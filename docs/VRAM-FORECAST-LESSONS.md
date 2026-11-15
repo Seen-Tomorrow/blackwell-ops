@@ -61,7 +61,26 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
   extrapolating: linear extrapolation of the total under-reads above the top point, which is the
   direction that lets a launch spill.
 
-## Forecast / plan pitfalls hit today
+## Spec / draft launches: the ledger collapses two models
+
+Measured 2026-11-15 on DSV4.1 + DSpark. A spec launch loads the draft model **after** the main
+model, and the `/memory` ledger keys entries by `(device, kind, tag)`. Both models call
+`load_tensors`/`sched_reserve`, so the draft's buffers overwrite the main model's entries:
+the endpoint reported **10.2 GiB** for a launch whose stderr inventory was **~186 GiB**
+(main 176 + draft 10). The old code preferred the endpoint, recorded a spec delta of
+**-165,744 MiB**, and the forecast then showed 11.9 GB VRAM with 126 GB in RAM.
+
+- A spec/draft measurement is **additive**. A measured total below half the base row is a
+  collapsed ledger, never a spec cost. `record_spec_delta` refuses it; a stored implausible
+  negative delta is ignored at lookup.
+- `get_learned_vram` now returns `spec_included`: true when the row already contains the draft.
+  The forecast adds `draftAddon` only when that is false. Do not infer this from the adapter:
+  a base row with a delta is not the same shape as a row measured with the head loaded.
+- Until the engine ledger carries an owner id per model/context, `log_hub` compares the endpoint
+  with the stderr parse on spec launches and uses the stderr total when the endpoint reports
+  less than half of it. The stderr parser sees both `load_tensors` sections before `model loaded`.
+
+## `Forecast / plan pitfalls hit today`
 
 - **Tauri `fn` commands run on the main thread.** Header parsing (`get_model_layer_bytes`) froze the
   window for seconds until made `async` + `spawn_blocking`; cache by (path, mtime).
@@ -107,8 +126,10 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
   the usable context. Forecast the request, not the cap.
 - `ubatch` moves the compute buffers (+338/+248 MiB per +512); `batch` alone does not (512 vs 2048
   identical). Earlier "batch 2048 vs 8192" differences were ubatch.
-- `token_embd` is a CUDA_Host buffer, not a GPU0 one: the plan's weights0 = prefix + token_embd
-  overcharges the first card by 670 MiB on DSV4.1 (the engine keeps it on CUDA_Host).
+- `token_embd` is a CUDA_Host buffer, not a GPU0 one: the plan used to charge it to the first
+  card (670 MiB on DSV4.1, exactly the gap between planned and measured GPU0 weights). The
+  planner now takes only per-block weights, output (last card) and other; the host token stays
+  out of the per-card weights.
 
 ## Measuring from the CLI: three ways to get a different model footprint
 

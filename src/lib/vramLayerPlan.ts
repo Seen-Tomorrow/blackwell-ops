@@ -15,8 +15,6 @@
 export type LayerPlanInput = {
   /** One entry per block, MiB, index order. */
   perBlockMib: number[];
-  /** Token embedding, kept on the first device by the engine. */
-  tokenEmbdMib?: number;
   /** Output tensor, which rides with the last device. */
   outputMib?: number;
   /** Everything else (norms, biases), spread evenly across the devices. */
@@ -227,7 +225,6 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
   if (!input.budgetsMib.every((mib) => Number.isFinite(mib) && mib > 0)) return null;
 
   const layerCount = blocks.length;
-  const tokenEmbd = Math.max(0, input.tokenEmbdMib ?? 0);
   const output = Math.max(0, input.outputMib ?? 0);
   const other = Math.max(0, input.otherMib ?? 0);
   const kvPerLayer = Math.max(0, input.kvMibPerLayer ?? 0);
@@ -243,7 +240,6 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
     const weightsMib =
       prefix[to] -
       prefix[from] +
-      (device === 0 ? tokenEmbd : 0) +
       (device === devices - 1 ? output : 0) +
       otherPerDevice;
     const kvMib = kvPerLayer * layers;
@@ -344,7 +340,6 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
 /** End-to-end plan from live numbers: layer sizes + free VRAM + calibration. */
 export function planFromLive(args: {
   perBlockMib: number[];
-  tokenEmbdMib?: number;
   outputMib?: number;
   otherMib?: number;
   kvMibPerLayer?: number;
@@ -361,7 +356,6 @@ export function planFromLive(args: {
   const budgetsMib = budgetsFromFree(args.freeMib, overheads, args.draftMib);
   return planLayerSplit({
     perBlockMib: args.perBlockMib,
-    tokenEmbdMib: args.tokenEmbdMib,
     outputMib: args.outputMib,
     otherMib: args.otherMib,
     kvMibPerLayer: args.kvMibPerLayer,

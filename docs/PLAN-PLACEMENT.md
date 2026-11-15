@@ -26,7 +26,8 @@ produced the plan or the engine's defaults.
 - Mixed capacities therefore balance by **utilisation**, not by bytes: a 24 GiB and a 48 GiB
   card both finish at the same fill fraction, so neither hits its ceiling and neither keeps
   20 GiB idle.
-- Per-device totals include weights (`token_embd` on device 0, `output` on the last),
+- Per-device totals include weights (per-block weights, plus `output` on the last card;
+  `token_embd` is CUDA_Host and stays out),
   KV on the layers that carry it, and measured compute buffers / calibration residuals.
   A device with extra unplanned buffers gets fewer layers - that is the GPU0-buffer correction
   the planner can express today.

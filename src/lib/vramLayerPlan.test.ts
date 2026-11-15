@@ -25,7 +25,6 @@ describe("layer split planning", () => {
   it("balances by bytes, not by layer count", () => {
     const plan = planLayerSplit({
       perBlockMib: toMib(V41_BLOCKS_GIB),
-      tokenEmbdMib: 0.7 * 1024,
       outputMib: 0.5 * 1024,
       budgetsMib: [97 * 1024, 97 * 1024],
     });
@@ -43,7 +42,9 @@ describe("layer split planning", () => {
         toMib(V41_BLOCKS_GIB.slice(0, 20)).reduce((a, b) => a + b, 0) -
           toMib(V41_BLOCKS_GIB.slice(20)).reduce((a, b) => a + b, 0),
       ) / 1024;
-    expect(imbalance).toBeLessThan(2);
+    // Measured model buffers on this split: 77,184 / 79,785 MiB (2.54 GiB apart); token_embd
+    // is CUDA_Host and is not charged to GPU0 any more.
+    expect(imbalance).toBeLessThan(3);
     // An even 20/20 split leaves more than 10 GiB on one card - the reason the planner exists.
     expect(evenSplitImbalance).toBeGreaterThan(10);
   });
@@ -133,7 +134,6 @@ describe("layer split planning", () => {
   it("reports the planned footprint and what it was fitted into", () => {
     const plan = planLayerSplit({
       perBlockMib: toMib(V41_BLOCKS_GIB),
-      tokenEmbdMib: 0.7 * 1024,
       outputMib: 0.5 * 1024,
       budgetsMib: [97 * 1024, 97 * 1024],
     });
@@ -190,7 +190,6 @@ describe("calibrated budgets", () => {
     ];
     const plan = planFromLive({
       perBlockMib: toMib(V41_BLOCKS_GIB),
-      tokenEmbdMib: 0.7 * 1024,
       outputMib: 0.5 * 1024,
       // Idle cards under TCC (no engine loaded): 97,475 MiB free each.
       freeMib: [97_475, 97_475],

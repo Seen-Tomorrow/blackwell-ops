@@ -223,6 +223,8 @@ interface LearnedVramEntry {
   reference_batch?: number;
   reference_ubatch?: number;
   reference_spec_key?: string;
+  /** Response-only: the returned vram/host already include the external draft. */
+  spec_included?: boolean;
   batch_deltas?: Record<string, unknown>;
   spec_deltas?: Record<string, unknown>;
   joint_deltas?: Record<string, unknown>;
@@ -476,6 +478,8 @@ export function useScenarioEvaluator({
   const lastPlacementKeyRef = useRef<string>("");
   const lastStackKeyRef = useRef<string>("");
   const learnedVramRef = useRef<number | null>(null);
+  /** Whether the learned row already includes the external draft (backend response). */
+  const learnedSpecIncludedRef = useRef<boolean | null>(null);
   const learnedHostRef = useRef<number | null>(null);
   /** Host model column (lookup table + spilled weights) from the learned entry. */
   const learnedHostModelRef = useRef<number | null>(null);
@@ -657,6 +661,7 @@ export function useScenarioEvaluator({
       fullAutoMode: fullAutoModeRef.current,
       gpuCalibration: gpuCalibrationRef.current,
       learnedVramMib: learnedVramRef.current ?? undefined,
+      learnedSpecIncluded: learnedSpecIncludedRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
       learnedHostModelMib: learnedHostModelRef.current ?? undefined,
       learnedEngramMib: learnedEngramRef.current ?? undefined,
@@ -774,6 +779,7 @@ export function useScenarioEvaluator({
     const fetchGen = ++learnedFetchGenRef.current;
     learnedFetchPendingRef.current = true;
     learnedVramRef.current = null;
+    learnedSpecIncludedRef.current = null;
     learnedHostRef.current = null;
     learnedHostModelRef.current = null;
     learnedEngramRef.current = null;
@@ -847,6 +853,7 @@ export function useScenarioEvaluator({
           ? entry.fit_attempts[entry.fit_attempts.length - 1]
           : undefined;
         learnedVramRef.current = entry?.vram_mib ?? snap?.vram_mib ?? null;
+        learnedSpecIncludedRef.current = entry?.spec_included ?? null;
         learnedHostRef.current =
           entry?.host_mib ?? snap?.host_mib ?? lastAttempt?.host_mib ?? null;
         learnedHostModelRef.current =
@@ -889,6 +896,7 @@ export function useScenarioEvaluator({
       .catch(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
         learnedVramRef.current = null;
+        learnedSpecIncludedRef.current = null;
         learnedHostRef.current = null;
     learnedHostModelRef.current = null;
     learnedEngramRef.current = null;
@@ -1173,6 +1181,7 @@ export function useScenarioEvaluator({
         fullAutoMode: fullAutoModeRef.current,
         gpuCalibration: gpuCalibrationRef.current,
         learnedVramMib: learnedVramRef.current ?? undefined,
+        learnedSpecIncluded: learnedSpecIncludedRef.current ?? undefined,
         learnedHostMib: learnedHostRef.current ?? undefined,
         learnedHostModelMib: learnedHostModelRef.current ?? undefined,
         learnedEngramMib: learnedEngramRef.current ?? undefined,
