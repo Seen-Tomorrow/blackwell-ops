@@ -1,5 +1,8 @@
 # VRAM forecast — facts worth not rediscovering
 
+> SPEC `n_max` / parallel / ctx additivity and the upstream FIT gap: see
+> `docs/SPEC-VRAM-FINDINGS.md` (2026-11-16). Do not add more learned keys for it.
+
 Written 2026-11-04 after a day of measuring, breaking, and re-measuring the layer-plan forecast on
 2 × RTX PRO 6000 (96 GB, TCC) with Qwen3.8-27B / Qwen3.8-Flash. Everything below is measured on this
 box unless marked otherwise. Keep it short; add only facts that cost time to learn.
