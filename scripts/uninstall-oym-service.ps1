@@ -25,16 +25,23 @@ if (Test-Path $wrapper) {
     Push-Location $ServiceDir
     try {
         & $wrapper stop 2>$null | Out-Null
-        & $wrapper uninstall | Out-Host
     }
     finally {
         Pop-Location
     }
 }
-else {
-    sc.exe stop OymLink 2>$null | Out-Null
-    sc.exe delete OymLink 2>$null | Out-Null
+
+# SCM only — never WinSW's `uninstall` verb. It deletes its own wrapper and the service
+# binaries, which endpoint protection reads as a self-deleting executable: Bitdefender ATC
+# classified the tray app as malware and blocked the whole OYM process tree (2026-11-16).
+# Stopping and deleting the registration is all portable mode needs.
+sc.exe stop OymLink 2>$null | Out-Null
+for ($i = 0; $i -lt 40; $i++) {
+    $query = sc.exe query OymLink 2>$null
+    if (-not ($query -match "RUNNING")) { break }
+    Start-Sleep -Milliseconds 250
 }
+sc.exe delete OymLink 2>$null | Out-Null
 
 if ($RemoveFiles -and (Test-Path $ServiceDir)) {
     Remove-Item $ServiceDir -Recurse -Force

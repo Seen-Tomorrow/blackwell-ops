@@ -1236,7 +1236,150 @@ fn service_install(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn service_uninstall() -> Result<(), String> {
-    launch_elevated_script("uninstall-oym-service.ps1", "")
+    self_elevate(SERVICE_UNINSTALL_ARG)
+}
+
+/// Elevated re-entry used by [`service_uninstall`].
+const SERVICE_UNINSTALL_ARG: &str = "--service-uninstall";
+
+/// Start this exe again with `runas` and one argument.
+///
+/// Uninstalling used to launch a hidden `powershell.exe -ExecutionPolicy Bypass -File`
+/// that ran WinSW's `uninstall`, which deletes its own wrapper and the service binaries.
+/// To endpoint protection that is an unsigned app spawning a hidden shell to remove a
+/// service and delete executables: Bitdefender ATC classified the tray app as malware and
+/// blocked the whole tree (58 processes, WebView2 children included) on 2026-11-16.
+/// Re-entering our own binary for the SCM calls has none of that shape.
+#[cfg(windows)]
+fn self_elevate(arg: &str) -> Result<(), String> {
+    use std::iter::once;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+    let exe = std::env::current_exe().map_err(|error| format!("locate exe: {error}"))?;
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let file: Vec<u16> = exe.as_os_str().to_string_lossy().encode_utf16().chain(once(0)).collect();
+    let params: Vec<u16> = arg.encode_utf16().chain(once(0)).collect();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            params.as_ptr(),
+            std::ptr::null(),
+            SW_HIDE,
+        )
+    };
+    if (result as isize) <= 32 {
+        return Err(format!("could not start elevated uninstall (ShellExecuteW {result:?})"));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn self_elevate(_arg: &str) -> Result<(), String> {
+    Err("service install is Windows-only".into())
+}
+
+/// Write the action marker the UI polls, so an elevated child can report back.
+fn write_service_action(ok: bool, error: Option<&str>) {
+    let Some(program_data) = std::env::var_os("PROGRAMDATA") else {
+        return;
+    };
+    let dir = PathBuf::from(program_data).join("OYM").join("Link");
+    let _ = std::fs::create_dir_all(&dir);
+    let mut marker = serde_json::json!({
+        "action": "uninstall",
+        "ok": ok,
+        "at": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    });
+    if let Some(error) = error {
+        marker["error"] = serde_json::Value::String(error.to_string());
+    }
+    let body = serde_json::to_string_pretty(&marker).unwrap_or_else(|_| "{}".into());
+    let _ = std::fs::write(dir.join("service-action.json"), body);
+}
+
+/// Stop and delete the service **registration** through the SCM. Files stay put: a mode
+/// switch must never delete or replace executables (that pattern is what endpoint
+/// protection reacts to, and the binaries are the portable install's own).
+#[cfg(windows)]
+fn service_uninstall_native() -> Result<(), String> {
+    use std::iter::once;
+    use windows_sys::Win32::System::Services::{
+        CloseServiceHandle, ControlService, DeleteService, OpenSCManagerW, OpenServiceW,
+        QueryServiceStatus, SC_MANAGER_CONNECT, SERVICE_CONTROL_STOP, SERVICE_QUERY_STATUS,
+        SERVICE_STATUS, SERVICE_STOP, SERVICE_STOPPED,
+    };
+
+    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(once(0)).collect() };
+    let service_name = wide("OymLink");
+
+    unsafe {
+        let scm = OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT);
+        if scm.is_null() {
+            return Err(format!("open service manager failed ({})", std::io::Error::last_os_error()));
+        }
+        // DELETE is required by DeleteService; the stop/query bits by the calls below.
+        const DELETE: u32 = 0x0001_0000;
+        let service = OpenServiceW(
+            scm,
+            service_name.as_ptr(),
+            SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE,
+        );
+        if service.is_null() {
+            let error = std::io::Error::last_os_error();
+            CloseServiceHandle(scm);
+            // Already gone: the switch is one-way safe, nothing to undo.
+            if error.raw_os_error() == Some(1060) {
+                return Ok(());
+            }
+            return Err(format!("open service failed ({error})"));
+        }
+
+        let mut status = std::mem::zeroed::<SERVICE_STATUS>();
+        let _ = ControlService(service, SERVICE_CONTROL_STOP, &mut status);
+        // Wait for the stop to land: DeleteService on a running service marks it for
+        // deletion and the registration lingers until the process exits.
+        for _ in 0..40 {
+            let mut poll = std::mem::zeroed::<SERVICE_STATUS>();
+            if QueryServiceStatus(service, &mut poll) == 0 {
+                break;
+            }
+            if poll.dwCurrentState == SERVICE_STOPPED {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+
+        let deleted = DeleteService(service);
+        let delete_error = std::io::Error::last_os_error();
+        CloseServiceHandle(service);
+        CloseServiceHandle(scm);
+
+        if deleted == 0 {
+            // 1072 = already marked for deletion, which is the outcome we wanted.
+            if delete_error.raw_os_error() != Some(1072) {
+                return Err(format!("delete service failed ({delete_error})"));
+            }
+        }
+    }
+
+    // The app detects "integrated" by this XML; removing it is what flips the UI back to
+    // portable. Removing a text file, not a binary.
+    if let Some(service_dir) = service_dir() {
+        let _ = std::fs::remove_file(service_dir.join("OymLink.xml"));
+        let _ = std::fs::remove_file(service_dir.join("service-status.json"));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn service_uninstall_native() -> Result<(), String> {
+    Err("service install is Windows-only".into())
 }
 
 /// Find a dev/packaged artifact by walking up from the app exe (works from
@@ -2158,6 +2301,23 @@ fn acquire_single_instance() -> bool {
 }
 
 fn main() {
+    #[cfg(windows)]
+    if std::env::args().any(|arg| arg == SERVICE_UNINSTALL_ARG) {
+        // Elevated re-entry: do the SCM work, report through the marker, exit. No Tauri,
+        // no window, and no single-instance mutex — the parent still owns that.
+        let code = match service_uninstall_native() {
+            Ok(()) => {
+                write_service_action(true, None);
+                0
+            }
+            Err(error) => {
+                write_service_action(false, Some(&error));
+                1
+            }
+        };
+        std::process::exit(code);
+    }
+
     #[cfg(windows)]
     if !acquire_single_instance() {
         return;
