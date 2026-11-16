@@ -705,6 +705,15 @@ solving `pi-ext` first (below). The previous `release.yml` failed in
 ~2 s on every tag push — its `Setup Rust` step named `dbushe/rust-musl-toolchain`, an
 action that does not exist, so the job died in “Set up job” before any step ran.
 
+**Signing is not wired yet — everything ships unsigned.** `blackwell-ops.exe`, `OYM Link.exe`,
+`oym-link.exe`, `oym-link-service.exe`, the NSIS setup and its `Uninstall.exe`. Unsigned PEs draw
+reputation detections; dropper-shaped *behaviour* (hidden elevated PowerShell + service deletion +
+self-deleting executables) draws behavioural ones even when signed — the 2026-11-16 Bitdefender ATC
+block was the second kind. Plan, the free OSS route (SignPath Foundation — the repo's public
+GPL-3.0 qualifies, but signing then moves into CI because keys live in their HSM), Azure Artifact
+Signing as the local `signtool` alternative, the full PE list, timestamping, and why signatures must
+land **before** `channel.json` is hashed: `docs/CODE-SIGNING.md`.
+
 **`cargo test` cannot build on a clean checkout** — `tauri.conf.json` bundles four
 resource dirs and two are gitignored by design: `src-tauri/runtime-bundle/` (engine
 binaries) and `src-tauri/pi-ext/` (the 1171-file pi-subagents tree, vendored locally via

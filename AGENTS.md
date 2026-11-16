@@ -237,6 +237,9 @@ tick, quiet-stderr loads, GPU "external apps", FIT adapters + library cache, run
   Engines are the exception (their stdio goes to `log_hub`).
 - **CI is tests only**; releases ship locally via `majestic` (bump → pack → ship). Ship runs both
   suites before touching GitHub; pack stays ungated on purpose.
+- **Nothing is code-signed yet.** Every shipped PE is unsigned, and a dropper-shaped behaviour
+  (hidden elevated shell + service deletion + self-deleting exe) gets blocked even when signed.
+  Free OSS route, PE list, timestamping and the hash ordering rule: `docs/CODE-SIGNING.md`.
 - `cargo test` cannot build a clean checkout (gitignored resource dirs) — CI fabricates empty trees,
   which is why no hosted runner can build the installer.
 - `CARGO_NET_GIT_FETCH_WITH_CLI` must be `true`, never `1`.
