@@ -28,13 +28,27 @@
   margin: 0 -1px;
   cursor: col-resize;
   touch-action: none;
-  z-index: 2;
-  background: var(--theme-panel-accent);
-  box-shadow:
-    inset 1px 0 0 var(--fixed-black-a52),
-    inset 3px 0 4px color-mix(in srgb, var(--fixed-black-a35) 100%, transparent),
-    inset -1px 0 0 color-mix(in srgb, var(--fixed-white) 9%, transparent);
+  /* Below the panes, and shaded from the glass side. On light faces this strip is just the
+     app background showing between two clipped boxes, so a neighbouring shadow can never
+     reach it — the gap has to carry its own falloff or it reads as a white lane cut into the
+     bezel. On dark faces a 16% black inset is invisible, which is what we want. */
+  z-index: 0;
+  background: transparent;
+  box-shadow: inset -5px 0 8px -4px var(--fixed-black-a24);
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.catalog-split-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: color-mix(in srgb, var(--theme-accent) 40%, #808080 60%);
+  opacity: 0.75;
+  transition: opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .catalog-split-handle::before {
@@ -297,7 +311,9 @@
   align-items: stretch;
 }
 
-/* ── Alt-B: filter/sort bar — same gunmetal chrome as the search bar, flush full width ── */
+/* Search / sort bar — flat. The sidebar is one region now, so this row is a row with a
+   hairline under it, not a gunmetal panel with grit: the texture belonged to the era when
+   the panel was a stack of bezelled plates. */
 .catalog-list-panel .catalog-list-panel__chrome-tools {
   flex-shrink: 0;
   padding: 8px 12px;
@@ -305,24 +321,17 @@
   z-index: 1;
   isolation: isolate;
   overflow: hidden;
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent);
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+  box-shadow: none;
 }
 .catalog-list-panel .catalog-list-panel__chrome-tools > * {
   position: relative;
   z-index: 1;
 }
 [data-model-catalog] .catalog-list-panel .catalog-list-panel__chrome-tools {
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
+  background: transparent;
+  background-image: none;
 }
 
 .catalog-chrome-row {
@@ -444,14 +453,11 @@
 }
 
 /* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
-/* The workspace pane is the sheet laid OVER the catalog: it gets a left-edge shadow and a
-   catch-light, so the two blocks are stacked slabs rather than two halves of one plate. The
-   shadow is what carries the stacking; the groove behind it is only the gap it falls into. */
+/* Rail instead of stacking: neither pane is "above" the other, so no shadow, no channel —
+   one full-height line in the handle (see .catalog-split-handle::before) does the separating. */
 [data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
   border-left: none;
-  box-shadow:
-    inset 1px 0 0 color-mix(in srgb, var(--fixed-white) 7%, transparent),
-    -10px 0 18px -12px var(--fixed-black-a52);
+  box-shadow: none;
 }
 
 [data-model-catalog] .catalog-list-scroll {
