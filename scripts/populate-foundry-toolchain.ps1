@@ -13,6 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'runtime-distribution.ps1')
 
 if (-not $AppRoot) {
     $AppRoot = Join-Path $RepoRoot "src-tauri\target\debug"
@@ -71,6 +72,9 @@ if (Test-Path $sdkSource) {
 
 Populate-VsInstance "2022" $Vs2022Src "14.44.35207"
 Populate-VsInstance "2026" $Vs2026Src "14.51.36231"
+
+Write-Host "`n--- MSVC runtime set (vcruntime / msvcp / vcomp) ---" -ForegroundColor Yellow
+Install-MsvcRuntimeSet -ToolchainRoot $ToolchainRoot | Out-Null
 
 Write-Host "`n--- Portable CMake ---" -ForegroundColor Yellow
 $CmakeDest = Join-Path $ToolchainRoot "cmake"

@@ -187,7 +187,8 @@ foreach ($id in $built.Keys) {
 $manifest | Add-Member -NotePropertyName 'packs' -NotePropertyValue $pack_entries -Force
 $manifest.version = $version
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-$json = $manifest | ConvertTo-Json -Depth 8
+# ConvertTo-Json emits CRLF on Windows; the repo pins LF.
+$json = (($manifest | ConvertTo-Json -Depth 8) -replace "`r`n", "`n")
 [System.IO.File]::WriteAllText($ManifestPath, $json + "`n", $utf8NoBom)
 
 Write-Host ("[toolchain-pack] manifest v{0} now lists: {1}" -f $version, (($pack_entries | ForEach-Object { $_.id }) -join ', ')) -ForegroundColor Cyan

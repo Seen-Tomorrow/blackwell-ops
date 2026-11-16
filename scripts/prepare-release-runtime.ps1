@@ -144,8 +144,13 @@ if (-not $?) {
 }
 
 # Stage the x64 MSVC C runtime beside every llama-server.exe in the bundle. Must run
-# after the profile copy so the engine dirs exist, and before the size report.
-Install-MsvcCrtIntoDirs -Root $bundle_root -ToolchainRoot (Join-Path $root 'toolchain')
+# after the profile copy so the engine dirs exist, and before the size report. Prefer the
+# DEV toolchain because it carries the newest single-source msvc-runtime/x64 set.
+$crt_toolchain = Join-Path $root 'src-tauri\target\debug\toolchain'
+if (-not (Test-Path -LiteralPath $crt_toolchain)) {
+    $crt_toolchain = Join-Path $root 'toolchain'
+}
+Install-MsvcCrtIntoDirs -Root $bundle_root -ToolchainRoot $crt_toolchain
 
 $bundle_bytes = (Get-ChildItem -LiteralPath $bundle_root -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $bundle_mb = [math]::Round($bundle_bytes / 1MB, 1)

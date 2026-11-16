@@ -4,7 +4,7 @@
 # 0xC0000135 STATUS_DLL_NOT_FOUND and prints nothing, so "cannot boot any model" and "FIT binary
 # crashed" look identical whatever the missing piece is. This checks the full static-import
 # surface instead of guessing:
-#   - the app-local engine binaries and the three MSVC CRT DLLs beside them
+#   - the app-local engine binaries and the four MSVC runtime DLLs beside them
 #   - the portable CUDA runtime for each profile (cublas / cublasLt / cudart)
 #   - an actual `--version` / `--help` run of each engine with that PATH, reporting the exit code
 #
@@ -43,7 +43,7 @@ $EngineBinaries = @(
     # picks. The variant presence check below catches a pack that lost them.
     'ggml-cuda.dll'
 )
-$CrtDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
+$CrtDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'vcomp140.dll')
 
 function Write-Fail($msg) { $script:failures++; Write-Host "  FAIL $msg" -ForegroundColor Red }
 function Write-Ok($msg)   { Write-Host "  ok   $msg" -ForegroundColor Green }

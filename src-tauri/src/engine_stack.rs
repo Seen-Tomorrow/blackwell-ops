@@ -383,10 +383,9 @@ impl EngineStack {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
         crate::engine_utils::apply_cuda_toolchain_for_profile(&mut cmd, profile_for_toolchain)?;
-        // MSVC C runtime (vcruntime140 / vcruntime140_1 / msvcp140) — imported by every
-        // engine binary. App-local copies beside the exe win the OS search order; if the
-        // user supplied an external engine that lacks them, resolve from the portable
-        // toolchain instead of failing at LoadLibrary with a raw Windows dialog.
+        // MSVC runtime (vcruntime140 / vcruntime140_1 / msvcp140 / vcomp140) — imported by
+        // every engine binary. App-local copies beside the exe win the OS search order; the
+        // portable toolchain carries the complete set under msvc-runtime/x64 as a fallback.
         crate::foundry_toolchain::apply_msvc_crt_to_command(
             &mut cmd,
             profile_for_toolchain,

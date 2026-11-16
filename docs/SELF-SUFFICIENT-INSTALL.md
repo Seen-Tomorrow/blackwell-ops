@@ -156,16 +156,18 @@ the days it actually changed — which is roughly once a month.
 
 ## MSVC C runtime — the dependency that was invisible
 
-**Every shipped engine binary imports the x64 MSVC CRT.** Verified with
-`dumpbin //DEPENDENTS` over all 40 `.dll`/`.exe` under `runtime/`. The complete surface is exactly:
+**Every shipped engine binary imports the x64 MSVC runtime.** Verified with
+`dumpbin //DEPENDENTS` over the `.dll`/`.exe` files under `runtime/`. The complete surface is:
 
 ```
-40 VCRUNTIME140.dll
-30 VCRUNTIME140_1.dll
-30 MSVCP140.dll
+42 VCRUNTIME140.dll
+36 VCRUNTIME140_1.dll
+36 MSVCP140.dll
+20 VCOMP140.dll (OpenMP, imported by ggml-base.dll)
 ```
 
-No `concrt140`, no `vccorlib140`, no `_threads` variant. **714 KB raw / 176 KB 7zipped.**
+No `concrt140`, no `vccorlib140`, no `_threads` variant. **922 KB raw** (the OpenMP DLL alone is
+~208 KB).
 
 Nothing bundled them and NSIS never installed a redist, so on a machine that never had
 VC++ 2015-2022 x64 the engine died at `LoadLibrary` with a raw Windows *"MSVCP140.dll was not
@@ -177,9 +179,13 @@ and still did not work: `apply_portable_cuda_to_command()` put **only CUDA bins*
 `check_runtime_ready()` checks cublas/cublasLt/cudart **only** — it has no idea the CRT exists.
 Onboarding could report fully green while the CRT was unreachable.
 
+The toolchain now carries the complete version-matched set at `toolchain/msvc-runtime/x64`,
+seeded from one VC Redist x64 tree (CRT + OpenMP) by `populate-foundry-toolchain.ps1`; the engine
+packs stage that same set beside the exe.
+
 ### Resolution order (foundry_toolchain.rs)
 
-**app-local beside the exe → portable toolchain → System32.**
+**app-local beside the exe → `toolchain/msvc-runtime/x64` → legacy toolset bin → System32.**
 
 App-local wins the OS DLL search order. PATH is an **addition, never a substitute**, so a stale
 toolchain copy cannot shadow a newer system CRT. A **partial** app-local set counts as absent —

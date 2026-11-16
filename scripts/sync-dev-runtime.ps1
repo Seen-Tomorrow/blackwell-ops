@@ -168,8 +168,8 @@ if (Test-Path -LiteralPath $piext_src) {
 # user gets. *.dll is gitignored, so this is a build step, not a committed artifact.
 # Runs BEFORE the fingerprint early-exit below: the CRT is not part of the runtime source
 # fingerprint, so a skip-copy day would otherwise leave the debug tree without it. Idempotent
-# and cheap (6 files). Non-fatal: a missing CRT must never block the dev loop - the Rust side
-# still resolves it from the portable toolchain at spawn.
+# and cheap (a few files per engine dir). Non-fatal: a missing CRT must never block the dev loop -
+# the Rust side still resolves it from the portable toolchain at spawn when available.
 try {
     Install-MsvcCrtIntoDirs -Root $dest_root -ToolchainRoot (Join-Path $root 'src-tauri\target\debug\toolchain') -Quiet
 } catch {

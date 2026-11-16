@@ -62,8 +62,8 @@
       "id": "build",
       "kind": "build",
       "asset": "toolchain-build-v4.7z",
-      "sha256": "2b0fb63e662538f5ec7209697babe76c3afaf7484740f18b8811c216da26407f",
-      "sizeBytes": 398221419
+      "sha256": "3e28a4ddaf5316c9071f7e9b2462667f5ea6e7e49905bbe07646ef6805ccbb1a",
+      "sizeBytes": 398298416
     }
   ]
 }

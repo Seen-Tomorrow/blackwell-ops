@@ -509,11 +509,13 @@ CUDA bin on PATH, returns `b<build>-<sha8>`, **fails the pack if unparseable**) 
 `Update-EngineManifest` (rewrites `engines.json`; no write when content is identical, so `git status`
 stays clean).
 
-**Every pack carries the three CRT DLLs (landed).** Previously `Install-MsvcCrtIntoDirs` ran only in
-`prepare-release-runtime.ps1` (the installer seed), so `pack-provider-runtime.ps1` published engine
-dirs without `msvcp140/vcruntime140` — the documented "raw Windows dialog, no engine log" failure on a
-machine that never had VC++ 2015-2022. The pack script now stages them into the staged profile and
-fails the pack if it wrote fewer than three.
+**Every pack carries the four MSVC runtime DLLs (landed).** Previously `Install-MsvcCrtIntoDirs` ran
+only in `prepare-release-runtime.ps1` (the installer seed), so `pack-provider-runtime.ps1` published
+engine dirs without `msvcp140/vcruntime140` — the documented "raw Windows dialog, no engine log"
+failure on a machine that never had VC++ 2015-2022. `vcomp140.dll` (OpenMP, imported by
+`ggml-base.dll`) is part of the same set, which the build toolchain carries at
+`toolchain/msvc-runtime/x64` (one VC Redist version). The pack script stages all four into the
+staged profile and fails the pack if it wrote fewer than four.
 
 ### 8.6 `scripts/majestic/majestic.ps1`
 

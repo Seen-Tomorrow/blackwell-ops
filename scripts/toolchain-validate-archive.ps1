@@ -67,6 +67,9 @@ foreach ($prof in $manifest.profiles) {
 
 Test-Entry "portable cmake" "cmake/bin/cmake.exe"
 Test-Entry "Windows SDK" "Windows Kits/10/Include/$($manifest.windows_sdk_version)/um/windows.h"
+foreach ($dll in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'vcomp140.dll')) {
+    Test-Entry "MSVC runtime $dll" "msvc-runtime/x64/$dll"
+}
 
 if ($missing.Count -gt 0) {
     $ids = ($manifest.profiles | ForEach-Object { $_.id }) -join ', '

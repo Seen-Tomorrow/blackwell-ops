@@ -149,7 +149,7 @@ pub struct ToolchainInstallInfo {
     pub runtime_versions: Vec<RuntimeVersionInfo>,
     /// Split pack registry as offered by this build (identity from the embedded manifest).
     pub packs: Vec<PackOffering>,
-    /// x64 MSVC C runtime (vcruntime140 / vcruntime140_1 / msvcp140) resolvable for every
+    /// x64 MSVC runtime (vcruntime140 / vcruntime140_1 / msvcp140 / vcomp140) resolvable for every
     /// profile — app-local, in the portable toolchain, or installed system-wide. Every
     /// shipped engine binary imports these; absent means LoadLibrary dies before any log.
     pub msvc_crt_ready: bool,
@@ -828,13 +828,15 @@ fn cuda_bin_dirs(cuda_root: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 // ── MSVC C runtime (CRT) ───────────────────────────────────────────────
 
-/// The x64 MSVC runtime DLLs every shipped engine binary imports. Verified with
-/// `dumpbin //DEPENDENTS` across all 40 `.dll`/`.exe` under `runtime/`: the complete
-/// surface is exactly these three — no `concrt140`, no `vccorlib140`, no `_threads`.
-pub const MSVC_CRT_DLLS: [&str; 3] = [
+/// The x64 MSVC runtime DLLs every shipped engine binary imports. `ggml-base.dll`
+/// additionally imports `vcomp140.dll` (OpenMP). The toolchain carries all four as one
+/// version-matched set under `{toolchain}/msvc-runtime/x64`; engine packs stage that set
+/// beside the exe.
+pub const MSVC_CRT_DLLS: [&str; 4] = [
     "vcruntime140.dll",
     "vcruntime140_1.dll",
     "msvcp140.dll",
+    "vcomp140.dll",
 ];
 
 /// `{toolchain}/vs/{year}/VC/Tools/MSVC/{msvc_version}/bin/Hostx64/x64` — the directory
@@ -850,6 +852,13 @@ pub fn msvc_hostx64_bin_dir(vs_year: &str, msvc_version: &str) -> PathBuf {
         .join("bin")
         .join("Hostx64")
         .join("x64")
+}
+
+/// `{toolchain}/msvc-runtime/x64` — the complete four-DLL runtime set, sourced from one
+/// VC Redist version by the toolchain populate/pack step. This is the canonical set; the
+/// per-toolset `bin/Hostx64/x64` carries only the core three and no `vcomp140`.
+pub fn msvc_runtime_dir() -> PathBuf {
+    toolchain_dir().join("msvc-runtime").join("x64")
 }
 
 /// Resolve the CRT directory for a binary profile via the manifest (profile → VS key →
@@ -903,13 +912,17 @@ pub fn msvc_crt_present(binary_profile: &str, engine_dir: Option<&std::path::Pat
             return true;
         }
     }
-    // 2. Portable toolchain (the common case: toolchain is a hard onboarding gate).
+    // 2. The portable toolchain's complete single-source runtime set.
+    if missing_crt_in(&msvc_runtime_dir()).is_empty() {
+        return true;
+    }
+    // 3. Legacy per-toolset bin, only if a future toolset happens to carry all four.
     if let Some(dir) = msvc_crt_dir_for_profile(binary_profile) {
         if missing_crt_in(&dir).is_empty() {
             return true;
         }
     }
-    // 3. System-wide install (VS/BuildTools or a standalone redist put it in System32).
+    // 4. System-wide install (VS/BuildTools or a standalone redist put it in System32).
     let sys32 = std::env::var_os("SystemRoot")
         .map(|r| PathBuf::from(r).join("System32"))
         .unwrap_or_else(|| PathBuf::from("C:\\Windows\\System32"));
@@ -922,14 +935,12 @@ pub fn msvc_crt_missing_message(binary_profile: &str, engine_dir: Option<&std::p
         return None;
     }
     let need = MSVC_CRT_DLLS.join(", ");
-    let where_ = msvc_crt_dir_for_profile(binary_profile)
-        .map(|d| d.display().to_string())
-        .unwrap_or_else(|| "{toolchain}/vs/<year>/VC/Tools/MSVC/<ver>/bin/Hostx64/x64".to_string());
+    let where_ = msvc_runtime_dir().display().to_string();
     Some(format!(
-        "Missing the x64 MSVC C runtime ({need}) required by the engine binaries. \
-         It normally ships inside the portable toolchain at {where_}. \
-         Re-install the portable toolchain (FORECAST: setup → CUDA runtime), or install \
-         the 'Microsoft Visual C++ 2015-2022 Redistributable (x64)'."
+        "Missing the x64 MSVC runtime ({need}) required by the engine binaries. \
+         The portable toolchain ships the four-DLL set at {where_}; engine packs also \
+         stage it beside the exe. Re-install the toolchain or engine pack, or install the \
+         'Microsoft Visual C++ 2015-2022 Redistributable (x64)'."
     ))
 }
 
@@ -951,12 +962,17 @@ pub fn apply_msvc_crt_to_command(cmd: &mut std::process::Command, binary_profile
             return;
         }
     }
-    let Some(dir) = msvc_crt_dir_for_profile(binary_profile) else {
+    let runtime = msvc_runtime_dir();
+    let dir = if missing_crt_in(&runtime).is_empty() {
+        runtime
+    } else if let Some(bin) = msvc_crt_dir_for_profile(binary_profile) {
+        if !missing_crt_in(&bin).is_empty() {
+            return;
+        }
+        bin
+    } else {
         return;
     };
-    if !missing_crt_in(&dir).is_empty() {
-        return;
-    }
     let dir_s = dir.to_string_lossy();
     let old = match cmd
         .get_envs()
@@ -2049,7 +2065,12 @@ mod crt_tests {
     fn crt_allowlist_is_the_measured_surface() {
         assert_eq!(
             MSVC_CRT_DLLS,
-            ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"]
+            [
+                "vcruntime140.dll",
+                "vcruntime140_1.dll",
+                "msvcp140.dll",
+                "vcomp140.dll"
+            ]
         );
     }
 
@@ -2069,8 +2090,10 @@ mod crt_tests {
         let d = tmp_tree("gaps");
         touch(&d, "vcruntime140.dll");
         touch(&d, "vcruntime140_1.dll");
-        assert_eq!(missing_crt_in(&d), vec!["msvcp140.dll"]);
+        assert_eq!(missing_crt_in(&d), vec!["msvcp140.dll", "vcomp140.dll"]);
         touch(&d, "msvcp140.dll");
+        assert_eq!(missing_crt_in(&d), vec!["vcomp140.dll"]);
+        touch(&d, "vcomp140.dll");
         assert!(missing_crt_in(&d).is_empty());
         let _ = fs::remove_dir_all(&d);
     }
@@ -2094,7 +2117,7 @@ mod crt_tests {
     fn partial_app_local_set_is_not_present() {
         let d = tmp_tree("partial");
         touch(&d, "vcruntime140.dll");
-        assert_eq!(missing_crt_in(&d).len(), 2);
+        assert_eq!(missing_crt_in(&d).len(), 3);
         let _ = fs::remove_dir_all(&d);
     }
 

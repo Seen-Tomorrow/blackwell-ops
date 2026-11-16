@@ -217,8 +217,10 @@ function Test-RuntimeDistributionFile {
 
 # ── MSVC C runtime (CRT) staging ───────────────────────────────────────
 # Every shipped engine binary imports vcruntime140.dll, vcruntime140_1.dll and
-# msvcp140.dll (verified with `dumpbin //DEPENDENTS` over all 40 .dll/.exe under
-# runtime/ — that is the complete CRT surface; no concrt140, no vccorlib140).
+# msvcp140.dll; ggml-base.dll additionally imports vcomp140.dll (OpenMP). All four are
+# staged from ONE complete runtime set, never mixed across redist versions. The build
+# toolchain carries the canonical set at {toolchain}/msvc-runtime/x64; the packer falls
+# back to one VC Redist x64 tree (CRT + OpenMP), then System32.
 # On a machine that never had VC++ 2015-2022 x64, LoadLibrary fails before the engine
 # writes a single log line, so the failure looks like an app bug, not a missing runtime.
 # App-local copies win the OS DLL search order, touch no system state, need no admin and
@@ -226,60 +228,158 @@ function Test-RuntimeDistributionFile {
 # vc_redist.exe (which can also refuse with 1638 when another app already put a different
 # CRT version on the machine).
 $script:MsvcCrtDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
+$script:MsvcOpenMpDll = 'vcomp140.dll'
+$script:MsvcRuntimeDlls = @($script:MsvcCrtDlls + $script:MsvcOpenMpDll)
 
-function Find-MsvcCrtSourceDir {
-    <#
-    .SYNOPSIS
-        Locates a directory containing all three x64 CRT release DLLs.
-        Prefers the portable toolchain (ships with the app, version-matched to the
-        toolset that built the engines), then a local BuildTools install.
-    #>
-    param(
-        [string]$ToolchainRoot = ''
-    )
-    # Layout is {toolchain}/vs/{vsYear}/VC/Tools/MSVC/{msvcVersion}/bin/Hostx64/x64 — note the
-    # extra `vs` level and that vsYear is a key ('2022'/'2026'), not a version dir. Enumerate
-    # it explicitly: globbing the toolchain root would probe cuda/ and Windows Kits/ instead.
-    # Newest toolset first, so a multi-VS tree prefers the one that built the current engines.
-    $candidates = @()
-    $vs_root = if ($ToolchainRoot) { Join-Path $ToolchainRoot 'vs' } else { '' }
-    if ($vs_root -and (Test-Path -LiteralPath $vs_root)) {
-        $years = Get-ChildItem -LiteralPath $vs_root -Directory -ErrorAction SilentlyContinue |
-            Sort-Object Name -Descending
-        foreach ($year in $years) {
-            $msvc_root = Join-Path $year.FullName 'VC\Tools\MSVC'
-            if (-not (Test-Path -LiteralPath $msvc_root)) { continue }
-            $candidates += Get-ChildItem -LiteralPath $msvc_root -Directory -ErrorAction SilentlyContinue |
-                Sort-Object Name -Descending |
-                ForEach-Object { Join-Path $_.FullName 'bin\Hostx64\x64' }
+function Get-MsvcRuntimeSetFromDir {
+    param([string]$Directory)
+    $files = @{}
+    if (-not $Directory) { return $files }
+    foreach ($dll in $script:MsvcRuntimeDlls) {
+        $path = Join-Path $Directory $dll
+        if (Test-Path -LiteralPath $path -PathType Leaf) { $files[$dll] = $path }
+    }
+    return $files
+}
+
+function Test-MsvcRuntimeSet {
+    param([hashtable]$Files)
+    if (-not $Files) { return $false }
+    foreach ($dll in $script:MsvcRuntimeDlls) {
+        if (-not $Files.ContainsKey($dll)) { return $false }
+        if (-not (Test-Path -LiteralPath $Files[$dll] -PathType Leaf)) { return $false }
+    }
+    return $true
+}
+
+function Get-MsvcRuntimeSetFromRedist {
+    param([string]$X64Directory)
+    $files = @{}
+    if (-not (Test-Path -LiteralPath $X64Directory)) { return $files }
+    $crt = Get-ChildItem -LiteralPath $X64Directory -Directory -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($crt) {
+        foreach ($dll in $script:MsvcCrtDlls) {
+            $path = Join-Path $crt.FullName $dll
+            if (Test-Path -LiteralPath $path -PathType Leaf) { $files[$dll] = $path }
+        }
+    }
+    $omp = Get-ChildItem -LiteralPath $X64Directory -Directory -Filter 'Microsoft.VC*.OpenMP' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($omp) {
+        $path = Join-Path $omp.FullName $script:MsvcOpenMpDll
+        if (Test-Path -LiteralPath $path -PathType Leaf) { $files[$script:MsvcOpenMpDll] = $path }
+    }
+    return $files
+}
+
+function Get-MsvcRedistX64Dirs {
+    param([string]$ToolchainRoot = '')
+    $dirs = @()
+    if ($ToolchainRoot) {
+        $vs_root = Join-Path $ToolchainRoot 'vs'
+        if (Test-Path -LiteralPath $vs_root) {
+            foreach ($year in Get-ChildItem -LiteralPath $vs_root -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending) {
+                $redist = Join-Path $year.FullName 'VC\Redist\MSVC'
+                if (-not (Test-Path -LiteralPath $redist)) { continue }
+                foreach ($ver in Get-ChildItem -LiteralPath $redist -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending) {
+                    $x64 = Join-Path $ver.FullName 'x64'
+                    if (Test-Path -LiteralPath $x64) { $dirs += $x64 }
+                }
+            }
         }
     }
     foreach ($probe in @(
-        'C:\BuildTools\VC\Tools\MSVC',
-        'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC',
-        'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC'
+        'C:\BuildTools\VC\Redist\MSVC',
+        'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC',
+        'C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC',
+        'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Redist\MSVC'
     )) {
-        if (Test-Path -LiteralPath $probe) {
-            $candidates += Get-ChildItem -LiteralPath $probe -Directory -ErrorAction SilentlyContinue |
-                ForEach-Object { Join-Path $_.FullName 'bin\Hostx64\x64' }
+        if (-not (Test-Path -LiteralPath $probe)) { continue }
+        foreach ($ver in Get-ChildItem -LiteralPath $probe -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending) {
+            $x64 = Join-Path $ver.FullName 'x64'
+            if (Test-Path -LiteralPath $x64) { $dirs += $x64 }
         }
     }
-    foreach ($dir in $candidates) {
-        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
-        $ok = $true
-        foreach ($dll in $script:MsvcCrtDlls) {
-            if (-not (Test-Path -LiteralPath (Join-Path $dir $dll) -PathType Leaf)) { $ok = $false; break }
-        }
-        if ($ok) { return $dir }
+    return $dirs
+}
+
+function Get-MsvcRuntimeSetVersion {
+    param([hashtable]$Files)
+    if (-not $Files) { return [version]'0.0.0.0' }
+    $candidate = $Files[$script:MsvcRuntimeDlls[0]]
+    if (-not $candidate) { return [version]'0.0.0.0' }
+    try {
+        $raw = (Get-Item -LiteralPath $candidate).VersionInfo.FileVersion
+        if ($raw) { return [version]$raw }
+    } catch {}
+    return [version]'0.0.0.0'
+}
+
+function Find-MsvcRuntimeSet {
+    <#
+    .SYNOPSIS
+        Returns the newest complete four-DLL runtime set from ONE source, or $null.
+        Candidates: toolchain/msvc-runtime/x64, one VC Redist tree (CRT + OpenMP),
+        and the installed redist in System32. Never mixes a CRT from one version with
+        vcomp140 from another; the highest vcruntime140 version wins.
+    #>
+    param([string]$ToolchainRoot = '')
+    $sets = [System.Collections.Generic.List[hashtable]]::new()
+    if ($ToolchainRoot) {
+        $files = Get-MsvcRuntimeSetFromDir (Join-Path $ToolchainRoot 'msvc-runtime\x64')
+        if (Test-MsvcRuntimeSet $files) { $sets.Add($files) }
     }
-    return $null
+    foreach ($x64 in Get-MsvcRedistX64Dirs -ToolchainRoot $ToolchainRoot) {
+        $files = Get-MsvcRuntimeSetFromRedist $x64
+        if (Test-MsvcRuntimeSet $files) { $sets.Add($files) }
+    }
+    if ($env:SystemRoot) {
+        $files = Get-MsvcRuntimeSetFromDir (Join-Path $env:SystemRoot 'System32')
+        if (Test-MsvcRuntimeSet $files) { $sets.Add($files) }
+    }
+    if ($sets.Count -eq 0) { return $null }
+    $best = $sets[0]
+    $bestVersion = Get-MsvcRuntimeSetVersion $best
+    foreach ($set in $sets) {
+        $version = Get-MsvcRuntimeSetVersion $set
+        if ($version -gt $bestVersion) {
+            $best = $set
+            $bestVersion = $version
+        }
+    }
+    return $best
+}
+
+function Install-MsvcRuntimeSet {
+    <#
+    .SYNOPSIS
+        Materialises toolchain/msvc-runtime/x64 from the newest complete source set.
+        This is the canonical runtime shipped in the build pack and staged beside engines.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$ToolchainRoot
+    )
+    $files = Find-MsvcRuntimeSet -ToolchainRoot $ToolchainRoot
+    if (-not $files) {
+        throw "No complete x64 MSVC runtime set found ($($script:MsvcRuntimeDlls -join ', ')). Install the VC++ 2015-2022 x64 redistributable or expose one VC Redist x64 tree, then re-populate the toolchain."
+    }
+    $dest = Join-Path $ToolchainRoot 'msvc-runtime\x64'
+    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    foreach ($dll in $script:MsvcRuntimeDlls) {
+        Copy-Item -LiteralPath $files[$dll] -Destination $dest -Force
+    }
+    $sources = ($script:MsvcRuntimeDlls | ForEach-Object { Split-Path -Parent $files[$_] } | Select-Object -Unique) -join ' + '
+    Write-Host ("[crt] toolchain runtime set <- {0} ({1} DLLs)" -f $sources, $script:MsvcRuntimeDlls.Count) -ForegroundColor DarkGray
+    return $dest
 }
 
 function Install-MsvcCrtIntoDirs {
     <#
     .SYNOPSIS
-        Copies the three x64 CRT DLLs into every directory that holds a llama-server.exe.
-        Idempotent; overwrites so a toolset bump refreshes them. Returns files written.
+        Copies the four x64 MSVC runtime DLLs from ONE set into every directory that
+        holds a llama-server.exe. Idempotent; overwrites so a toolset bump refreshes
+        them. Returns files written.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -287,9 +387,9 @@ function Install-MsvcCrtIntoDirs {
         [switch]$Quiet
     )
     if (-not (Test-Path -LiteralPath $Root)) { return 0 }
-    $src = Find-MsvcCrtSourceDir -ToolchainRoot $ToolchainRoot
-    if (-not $src) {
-        throw "MSVC C runtime not found (looked for $($script:MsvcCrtDlls -join ', ') in the portable toolchain and local BuildTools installs). Engines will not start on a machine without VC++ 2015-2022 x64. Install the toolchain or the VC++ redistributable, then re-pack."
+    $files = Find-MsvcRuntimeSet -ToolchainRoot $ToolchainRoot
+    if (-not $files) {
+        throw "No complete x64 MSVC runtime set found ($($script:MsvcRuntimeDlls -join ', ')). Engines will not start on a machine without VC++ 2015-2022 x64. Install the toolchain or the VC++ redistributable, then re-pack."
     }
     $written = 0
     # Do NOT use -Recurse here: it follows junctions/symlinks (the hazard
@@ -304,13 +404,14 @@ function Install-MsvcCrtIntoDirs {
         }
     }
     foreach ($dir in $server_dirs) {
-        foreach ($dll in $script:MsvcCrtDlls) {
-            Copy-Item -LiteralPath (Join-Path $src $dll) -Destination $dir -Force
+        foreach ($dll in $script:MsvcRuntimeDlls) {
+            Copy-Item -LiteralPath $files[$dll] -Destination $dir -Force
             $written++
         }
     }
     if (-not $Quiet) {
-        Write-Host ("[crt] staged {0} DLL(s) into {1} engine dir(s) from {2}" -f $written, @($server_dirs).Count, $src) -ForegroundColor DarkGray
+        $sources = ($script:MsvcRuntimeDlls | ForEach-Object { Split-Path -Parent $files[$_] } | Select-Object -Unique) -join ' + '
+        Write-Host ("[crt] staged {0} DLL(s) into {1} engine dir(s) from {2}" -f $written, @($server_dirs).Count, $sources) -ForegroundColor DarkGray
     }
     return $written
 }
