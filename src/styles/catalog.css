@@ -17,16 +17,23 @@
   background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
 }
 
-/* ── Model catalog / engine config split handle (grip only — no grey bar) ─── */
+/* ── Model catalog / engine config split handle — a machined groove between two blocks ──
+   The handle is the only place a light source is self-evident: two surfaces meet, so each
+   side of the channel gets its own edge (shadow on the left wall, catch-light on the right).
+   That is what makes the panes read as separate slabs without either one needing a gradient. */
 .catalog-split-handle {
   position: relative;
   flex-shrink: 0;
-  width: 10px;
+  width: 12px;
   margin: 0 -1px;
   cursor: col-resize;
   touch-action: none;
   z-index: 2;
-  background: transparent;
+  background: var(--theme-panel-accent);
+  box-shadow:
+    inset 1px 0 0 var(--fixed-black-a52),
+    inset 3px 0 4px color-mix(in srgb, var(--fixed-black-a35) 100%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--fixed-white) 9%, transparent);
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -421,13 +428,13 @@
   background: var(--theme-panel-accent);
 }
 
-/* List column = same face as right config panel (no grit, no extra shell) */
+/* List column — flat matte. The depth lives in the joint (see .catalog-split-handle), not in
+   the pane: a fill gradient has to invent a light source to justify itself, while a groove
+   is a physical detail the eye already knows how to read. */
 [data-model-catalog] .catalog-list-panel,
 [data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
   isolation: auto;
-  background: transparent;
-  background-color: transparent;
-  background-image: none;
+  background: var(--theme-panel-accent);
   border: none;
   box-shadow: none;
 }
@@ -437,9 +444,14 @@
 }
 
 /* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
+/* The workspace pane is the sheet laid OVER the catalog: it gets a left-edge shadow and a
+   catch-light, so the two blocks are stacked slabs rather than two halves of one plate. The
+   shadow is what carries the stacking; the groove behind it is only the gap it falls into. */
 [data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
   border-left: none;
-  box-shadow: none;
+  box-shadow:
+    inset 1px 0 0 color-mix(in srgb, var(--fixed-white) 7%, transparent),
+    -10px 0 18px -12px var(--fixed-black-a52);
 }
 
 [data-model-catalog] .catalog-list-scroll {

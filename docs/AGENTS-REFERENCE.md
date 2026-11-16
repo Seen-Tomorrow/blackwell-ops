@@ -106,6 +106,15 @@ this tree, so there is no CRLF checkout to manage — one form means `git diff` 
 
 **Themes law** — Color lives in `src/themes/app-themes.ts` + `src/styles/tokens-base.css`. CSS/TSX only *name* tokens. To recolor an element: grep the class → if it’s a `var(--token)`, edit the token (all three themes, or base if shared); if it’s a hex, that site is the source of truth until someone wires a token. Frozen set: MATRIX / SLATE / ARCTIC × DOTTED / CLEAN. Do not add themes, faces, `[data-theme="…"]` forks, or `var(--x, #hex)` “just in case.”
 
+**A texture token cannot go in a `background-image` list.** `--theme-industrial-texture-active`
+(resolved from `sandblast` / `diamond` / `brush`) ends in `1.5px 1.5px / 3px 3px` — a position/size
+pair, which is `background` **shorthand**-only syntax. Put it inside `background-image: …,
+var(--theme-industrial-texture-active)` and the declaration is invalid at computed-value time, so the
+browser drops the *entire* property to `none` with no console error and no cascade fallback — the
+element simply paints flat while CSSOM still shows your rule (a `.matches()` sweep confirms the rule
+fired, which is why this reads as "my CSS is ignored"). Either use the `background` shorthand with it,
+or match the colour (`--theme-industrial-bg` is what the header bezel paints) and skip the texture.
+
 **`var(--x, <literal>)` fallbacks are a decoy, not defense** — if the token is undefined there the
 literal *is* the paint and the theme switch silently does nothing; if defined it is never read and only
 pollutes a hex grep. Meter: `python scripts/fb-triage.py` (`DEAD` / `DEAD-CHAIN` unreachable → strip to
