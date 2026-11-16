@@ -571,7 +571,7 @@ export default function MultiAgentBooster({
               MTP needs a head in your library
             </div>
             <div className="full-auto-cockpit__dflash-get-sub">
-              Pick mtp-*.gguf via Change draft
+              Pick MTP draft via Change draft
             </div>
           </>
         ) : displayBoost === "dspark" && !dflashLibraryReady && !dflashDraftLabel ? (
