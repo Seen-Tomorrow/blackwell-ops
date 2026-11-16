@@ -81,6 +81,8 @@ export function useLayerPlan(
     /** Changes on every engine state change, so a finished launch is picked up without
      *  nudging the ctx slider (`LOADING -> RUNNING -> IDLE`). */
     stackSig?: string;
+    /** Vision projector bytes, when the launch loads mmproj (fixed on device 0). */
+    visionMib?: number;
     modelMeta?: ModelMetadata | null;
   },
   /**
@@ -317,11 +319,13 @@ export function useLayerPlan(
       ),
       overheadMib,
       overheadTotalMib,
+      // Vision projector is a fixed CUDA0 allocation the engine's inventory does not report.
+      gpu0ExtraMib: knobs?.visionMib ?? 0,
       // rs + vision buffers belong to the launch inventory too (598 + 248 MiB on the 27B).
       calibration,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- slotsKey stands in for the array
-  }, [layerBytes, gpus, slotsKey, calibration, kvPerBlock, measuredKv, cold, weightScale, overheadMib, overheadTotalMib]);
+  }, [layerBytes, gpus, slotsKey, calibration, kvPerBlock, measuredKv, cold, weightScale, overheadMib, overheadTotalMib, knobs?.visionMib]);
 
   const kvSource: "measured" | "profile" | "geometry" | "none" =
     measuredKv && measuredKv.kvMib > 0

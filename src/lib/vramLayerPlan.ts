@@ -25,6 +25,8 @@ export type LayerPlanInput = {
   kvMibPerLayer?: number;
   /** Per-device overhead the launch will also allocate (compute graph buffers), MiB. */
   overheadMib?: number[];
+  /** Fixed bytes the launch also puts on device 0 (e.g. the vision projector). */
+  gpu0ExtraMib?: number;
   /** The same overhead as one total, split by layer count. A cold forecast knows the shape
    *  total but not where the boundaries will land, and compute buffers follow layers. */
   overheadTotalMib?: number;
@@ -229,6 +231,7 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
   const other = Math.max(0, input.otherMib ?? 0);
   const kvPerLayer = Math.max(0, input.kvMibPerLayer ?? 0);
   const shapeOverhead = Math.max(0, input.overheadTotalMib ?? 0);
+  const gpu0Extra = Math.max(0, input.gpu0ExtraMib ?? 0);
   const otherPerDevice = other / devices;
 
   // Prefix sums keep every segment cost O(1).
@@ -245,9 +248,10 @@ export function planLayerSplit(input: LayerPlanInput): LayerPlan | null {
     const kvMib = kvPerLayer * layers;
     const measuredOverhead = input.overheadMib?.[device];
     const overheadMib =
-      measuredOverhead != null && Number.isFinite(measuredOverhead) && measuredOverhead >= 0
+      (measuredOverhead != null && Number.isFinite(measuredOverhead) && measuredOverhead >= 0
         ? measuredOverhead
-        : (shapeOverhead * layers) / layerCount;
+        : (shapeOverhead * layers) / layerCount)
+      + (device === 0 ? gpu0Extra : 0);
     return { layers, weightsMib, kvMib, totalMib: weightsMib + kvMib + overheadMib };
   };
 
@@ -345,6 +349,8 @@ export function planFromLive(args: {
   kvMibPerLayer?: number;
   /** Per-device overhead the launch also allocates (compute graph buffers), MiB. */
   overheadMib?: number[];
+  /** Fixed bytes the launch also puts on device 0 (e.g. the vision projector), MiB. */
+  gpu0ExtraMib?: number;
   /** Same overhead as one total, split by layer count - for a cold forecast, which knows
    *  the shape total but not how the boundaries will land. */
   overheadTotalMib?: number;
@@ -361,6 +367,7 @@ export function planFromLive(args: {
     kvMibPerLayer: args.kvMibPerLayer,
     overheadMib: args.overheadMib,
     overheadTotalMib: args.overheadTotalMib,
+    gpu0ExtraMib: args.gpu0ExtraMib,
     budgetsMib,
   });
 }

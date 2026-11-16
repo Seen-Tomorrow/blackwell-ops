@@ -97,6 +97,21 @@ def launch_config(args) -> dict:
         # An empty string is a real value: it overrides the provider's saved -ts row and means
         # "engine chooses", which is what a no-placement measurement needs.
         extra["tensor_split"] = args.ts
+    # Spec / vision are launch params, not script-side filters: the same extra_params shape the
+    # cockpit sends, so the learned key and the forecast see the same identity.
+    if args.spec_type and args.spec_type != "none":
+        extra["spec_type"] = args.spec_type
+    if args.draft_model:
+        key = (
+            "dflash_draft_model"
+            if "dflash" in args.spec_type
+            else "mtp_draft_model"
+            if "mtp" in args.spec_type
+            else "spec_draft_model"
+        )
+        extra[key] = args.draft_model
+    if args.vision:
+        extra["vision"] = args.vision
     # The cockpit's launches use --load-mode mlock; the engine default is mmap, which boots the
     # same model roughly 3x slower (and timed the readiness check out at 63 s on DeepSeek-V4.1).
     extra["load_mode"] = args.load_mode
@@ -171,6 +186,9 @@ def main() -> int:
     )
     ap.add_argument("--mode", default="assisted", help="__memory_mode (assisted|full_auto)")
     ap.add_argument("--topo", default="96", help="__vram_topo token (manufactured GB per card)")
+    ap.add_argument("--spec-type", default="none", help="spec_type (none|draft-mtp|draft-dflash|draft-dspark)")
+    ap.add_argument("--draft-model", default="", help="external draft GGUF path")
+    ap.add_argument("--vision", default="", help="vision param (auto=on, off=off)")
     ap.add_argument("--port", type=int, default=8899)
     ap.add_argument("--alias")
     ap.add_argument("--provider", default="ggml-master")

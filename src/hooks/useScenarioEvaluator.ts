@@ -15,7 +15,8 @@ import { sanitizeLearnedCurve } from "../services/vram/shared";
 import type { GpuCalibrationRow } from "../lib/vramLayerPlan";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorKind, errorMessage } from "../lib/blackwellError";
-import { isExternalDraftOnly } from "../lib/specDraft";
+import { isExternalDraftOnly, draftRoleForSpecType, resolveExternalDraftPath } from "../lib/specDraft";
+import { normalizeDraftPath } from "../lib/spec/adapters";
 import { useTauriListen } from "./useTauriListen";
 type ProbeSession = {
   modelPath: string;
@@ -266,28 +267,26 @@ function effectiveSpecTypeFromConfig(config: Record<string, unknown>): string {
 
 function externalDraftWanted(config: Record<string, unknown>): boolean {
   const st = effectiveSpecTypeFromConfig(config);
+  // A draft PATH left over from another model/boost is not an active spec. Only the spec
+  // identity decides: spec off means no draft is emitted, even if a path is still stored.
+  if (st === "none" || st === "off") return false;
   if (st.includes("mtp") && !st.includes("dflash") && !st.includes("dspark") && !st.includes("eagle")) {
     return false;
   }
-  if (st.includes("dflash") || st.includes("dspark") || st.includes("eagle")) return true;
-  // Draft path alone (Boost on, spec_type not yet flattened into config row).
-  const draft = String(config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "").trim();
-  if (draft && draft.toLowerCase() !== "auto" && draft.toLowerCase() !== "off" && /\.gguf$/i.test(draft)) {
-    return true;
-  }
-  return false;
+  return st.includes("dflash") || st.includes("dspark") || st.includes("eagle");
 }
 
 /** Resolve external draft path + size (MiB) for dflash/dspark forecast (sync path). */
 function resolveDraftSizeMib(
   config: Record<string, unknown>,
   catalog: ModelEntry[] | undefined,
+  draftOverride?: string,
 ): number | undefined {
-  if (!externalDraftWanted(config)) return undefined;
-  const draftRaw = String(
-    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "",
-  ).trim();
-  if (!draftRaw || draftRaw.toLowerCase() === "auto" || draftRaw.toLowerCase() === "off") {
+  if (!draftOverride && !externalDraftWanted(config)) return undefined;
+  const draftRaw = draftOverride ?? normalizeDraftPath(
+    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
+  ) ?? "";
+  if (!draftRaw) {
     return undefined;
   }
   const norm = draftRaw.replace(/\\/g, "/").toLowerCase();
@@ -303,16 +302,18 @@ function resolveDraftSizeMib(
 
 function draftPathForLearned(config: Record<string, unknown>): string {
   if (!externalDraftWanted(config)) return "";
-  return String(config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "").trim();
+  return normalizeDraftPath(
+    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
+  ) ?? "";
 }
 
 /** Raw draft path used by the learned spec identity (mirrors Rust draft_key_for_learn). */
 function specDraftForLearned(config: Record<string, unknown>): string {
   const spec = effectiveSpecTypeFromConfig(config);
   if (spec === "none") return "";
-  const raw = String(
-    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "",
-  ).trim();
+  const raw = normalizeDraftPath(
+    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
+  ) ?? "";
   const usesExternal = spec.includes("mtp")
     && !spec.includes("dflash")
     && !spec.includes("dspark")
@@ -323,12 +324,42 @@ function specDraftForLearned(config: Record<string, unknown>): string {
 }
 
 /** Mirror Rust spec key: normalized spec type + external draft basename. */
-function specKeyForLearned(config: Record<string, unknown>): string {
+function specKeyForLearned(
+  config: Record<string, unknown>,
+  draftOverride?: string,
+): string {
   const spec = effectiveSpecTypeFromConfig(config);
-  const draft = specDraftForLearned(config);
+  const draft = draftOverride ?? specDraftForLearned(config);
   if (!draft) return spec;
   const base = draft.split(/[/\\]/).pop()?.trim().toLowerCase();
   return `${spec}|${base || draft.toLowerCase()}`;
+}
+
+/**
+ * Draft path that actually pairs with the selected main model.
+ *
+ * A path left over from another model (Boost selection is global) must not become this
+ * model's spec identity: MoE MTP with a stale 27B DFlash path silently fell back to the
+ * boost-off row. The pairing helpers own the model/family validation.
+ */
+function validDraftForForecast(
+  config: Record<string, unknown>,
+  model: ModelEntry | null,
+  catalog: ModelEntry[] | undefined,
+): string {
+  const spec = effectiveSpecTypeFromConfig(config);
+  if (spec === "none" || spec === "off") return "";
+  const raw = normalizeDraftPath(
+    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
+  ) ?? "";
+  const role = draftRoleForSpecType(spec, raw);
+  if (!role) return "";
+  if (!model || !catalog?.length) return raw;
+  return resolveExternalDraftPath(model, catalog, role, {
+    currentPath: raw || null,
+    specType: spec,
+    allowAutoPair: true,
+  }) ?? "";
 }
 
 // Shared scenarios-tab emission helper to avoid duplicating IPC calls to Blackwell Output Console
@@ -654,8 +685,15 @@ export function useScenarioEvaluator({
       ramAvailableGb: sysInfo.available_memory_mib / 1024,
       ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
       mmprojSizeMib: model.mmproj_size_mib,
+      visionOn:
+        String(curConfig.vision ?? "auto").trim().toLowerCase() !== "off"
+        && (model.mmproj_size_mib ?? 0) > 0,
       draftSizeMib:
-        resolveDraftSizeMib(curConfig, catalogModelsRef.current)
+        resolveDraftSizeMib(
+          curConfig,
+          catalogModelsRef.current,
+          validDraftForForecast(curConfig, model, catalogModelsRef.current),
+        )
         ?? draftDiskSizeRef.current,
       autoVramLaunch: autoVramLaunchRef.current,
       fullAutoMode: fullAutoModeRef.current,
@@ -800,7 +838,7 @@ export function useScenarioEvaluator({
     const queryCtx = parseCtx(curConfig.ctx ?? "32768");
     const kvQuant = String(curConfig["kv_quant"] ?? "f16");
     const specType = effectiveSpecTypeFromConfig(curConfig);
-    const draftModel = specDraftForLearned(curConfig) || null;
+    const draftModel = validDraftForForecast(curConfig, model, catalogModelsRef.current) || null;
     const vramTopo = vramTopoTag(gpusRef.current, curConfig.device);
     void Promise.all([
       invoke<LearnedVramEntry | null>("get_learned_vram", {
@@ -835,7 +873,7 @@ export function useScenarioEvaluator({
     ])
       .then(([entry, curve]) => {
         if (fetchGen !== learnedFetchGenRef.current) return;
-        const specKey = specKeyForLearned(curConfig);
+        const specKey = specKeyForLearned(curConfig, draftModel ?? undefined);
         const specMatch = Boolean(
           entry
           && (entry.reference_spec_key === specKey || entry.spec_deltas?.[specKey]),
@@ -932,7 +970,7 @@ export function useScenarioEvaluator({
   // Draft GGUF often lives outside catalog scan — fall back to on-disk size for measured forecast.
   useEffect(() => {
     const cfg = configRef.current;
-    const draftPath = draftPathForLearned(cfg);
+    const draftPath = validDraftForForecast(cfg, model, catalogModelsRef.current);
     if (!externalDraftWanted(cfg) || !draftPath || !/\.gguf$/i.test(draftPath)) {
       draftDiskSizeRef.current = undefined;
       draftDiskPathRef.current = "";
@@ -961,7 +999,7 @@ export function useScenarioEvaluator({
           draftDiskSizeRef.current = undefined;
         }
       });
-  }, [configKey, model?.path]);
+  }, [configKey, model?.path, catalogModels]);
 
   // Re-fetch after launch learn persists (model loaded / exit tables) without switching models
   useTauriListen<{ model_path?: string; provider_id?: string }>(
@@ -1174,8 +1212,15 @@ export function useScenarioEvaluator({
         ramAvailableGb: sysInfo.available_memory_mib / 1024,
         ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
         mmprojSizeMib: model.mmproj_size_mib,
+        visionOn:
+          String(curConfig.vision ?? "auto").trim().toLowerCase() !== "off"
+          && (model.mmproj_size_mib ?? 0) > 0,
         draftSizeMib:
-          resolveDraftSizeMib(curConfig, catalogModelsRef.current)
+          resolveDraftSizeMib(
+            curConfig,
+            catalogModelsRef.current,
+            validDraftForForecast(curConfig, model, catalogModelsRef.current),
+          )
           ?? draftDiskSizeRef.current,
         autoVramLaunch: autoVramLaunchRef.current,
         fullAutoMode: fullAutoModeRef.current,

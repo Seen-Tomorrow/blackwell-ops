@@ -416,13 +416,30 @@ fn normalize_spec_type(spec_type: &str) -> String {
 /// fingerprint or filter LEARNED rows. `draft-mtp` **with** a draft path is an
 /// external MTP head: a different launch with a different VRAM footprint, so it
 /// must carry its own draft in the identity key.
+/// `off` / `auto` / `none` are file-picker sentinels, not a draft model. Treating them as a
+/// path gave built-in MTP the identity `draft-mtp|off`, so it never matched the measured
+/// `draft-mtp` row and the overlay silently fell back to the boost-off total.
+fn normalize_draft_key(raw: &str) -> String {
+    let value = raw.trim();
+    if value.is_empty()
+        || value.eq_ignore_ascii_case("off")
+        || value.eq_ignore_ascii_case("none")
+        || value.eq_ignore_ascii_case("auto")
+    {
+        String::new()
+    } else {
+        value.to_string()
+    }
+}
+
 fn spec_uses_external_draft(spec_type: &str, draft_key: &str) -> bool {
     let s = normalize_spec_type(spec_type);
+    let draft = normalize_draft_key(draft_key);
     if s == "none" {
         return false;
     }
     if s.contains("mtp") && !s.contains("dflash") && !s.contains("dspark") && !s.contains("eagle") {
-        return s == "draft-mtp" && !draft_key.trim().is_empty();
+        return s == "draft-mtp" && !draft.is_empty();
     }
     s.contains("dflash") || s.contains("dspark") || s.contains("eagle")
 }
@@ -431,16 +448,14 @@ fn draft_key_for_learn(spec_type: &str, draft_key: &str) -> String {
     if !spec_uses_external_draft(spec_type, draft_key) {
         return String::new();
     }
-    draft_key.trim().to_string()
+    normalize_draft_key(draft_key)
 }
 
-fn optional_launch_suffix(_spec_type: &str, cache_ram: &str, _draft_key: &str) -> String {
-    let mut out = String::new();
-    let ram = cache_ram.trim();
-    if !ram.is_empty() && ram != "0" {
-        out.push_str(&format!("|cache_ram={ram}"));
-    }
-    out
+fn optional_launch_suffix(_spec_type: &str, _cache_ram: &str, _draft_key: &str) -> String {
+    // `cache_ram` is the HOST prompt-cache budget, not a VRAM knob. Keying it split rows that
+    // need the same GPU measurement and made the overlay miss a row when the panel used the
+    // factory 8192 and the launch used 16384.
+    String::new()
 }
 
 fn param_suffix(
@@ -592,7 +607,7 @@ fn draft_path_from_config(config: &EngineConfig) -> String {
     if !spec_uses_external_draft(&spec, &draft) {
         return String::new();
     }
-    draft
+    normalize_draft_key(&draft)
 }
 
 /// Launch-time fingerprint — survives slot clear on stop (memory breakdown prints at exit).
@@ -1545,6 +1560,10 @@ pub fn record_launch_memory_snapshot(
     }
     let batch_matches = batch_reference_matches(entry, batch, ubatch);
     let spec_matches = spec_reference_matches(entry, spec_key);
+    // The by-design PLE / lookup table is host-mapped and reported separately as `engram`;
+    // the parsed spec snapshot includes it in host_mib while the core ledger does not.
+    // Store the host total NET of it, so the forecast does not count the table twice.
+    let host_net_mib = (snapshot.host_mib - snapshot.engram_mib.unwrap_or(0.0)).max(0.0);
     if !batch_matches || !spec_matches {
         if !batch_matches && !spec_matches {
             record_joint_delta(
@@ -1553,7 +1572,7 @@ pub fn record_launch_memory_snapshot(
                 &batch_pair(batch, ubatch),
                 spec_key,
                 snapshot.vram_mib,
-                Some(snapshot.host_mib),
+                Some(host_net_mib),
             );
         } else {
             if !batch_matches {
@@ -1562,7 +1581,7 @@ pub fn record_launch_memory_snapshot(
                     batch,
                     ubatch,
                     snapshot.vram_mib,
-                    Some(snapshot.host_mib),
+                    Some(host_net_mib),
                 );
             }
             if !spec_matches {
@@ -1571,18 +1590,24 @@ pub fn record_launch_memory_snapshot(
                     ctx_from_learn_key(key).unwrap_or(0),
                     spec_key,
                     snapshot.vram_mib,
-                    Some(snapshot.host_mib),
+                    Some(host_net_mib),
                 );
             }
         }
         save_store(&store)?;
         drop(_guard);
+        crate::forecast_log::record_measured(
+            key,
+            snapshot.vram_mib,
+            Some(host_net_mib),
+            "launch",
+        );
         return Ok(());
     }
 
     let measured_mib = snapshot.vram_mib;
-    let measured_host = snapshot.host_mib;
-    let spill = is_spill_downgrade(entry.vram_mib, entry.host_mib, snapshot.vram_mib, snapshot.host_mib);
+    let measured_host = host_net_mib;
+    let spill = is_spill_downgrade(entry.vram_mib, entry.host_mib, snapshot.vram_mib, host_net_mib);
     entry.launch_snapshot = Some(snapshot.clone());
     entry.measured_at = snapshot.measured_at.clone();
     if spill {
@@ -1590,12 +1615,12 @@ pub fn record_launch_memory_snapshot(
             "[vram_learn] launch snapshot keep primary {:.1} MiB GPU (new {:.1}, host {:.1}) — spill/low-free not promoted",
             entry.vram_mib,
             snapshot.vram_mib,
-            snapshot.host_mib
+            host_net_mib
         );
     } else {
         entry.vram_mib = snapshot.vram_mib;
         entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
-        entry.host_mib = Some(snapshot.host_mib);
+        entry.host_mib = Some(host_net_mib);
         entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
         entry.host_components_mib = snapshot.host_components_mib.clone();
     }
@@ -3180,7 +3205,15 @@ mod cuda_device_tests {
 
 #[cfg(test)]
 mod spec_delta_tests {
-    use super::{spec_delta_is_additive, spec_measurement_is_additive};
+    use super::{draft_key_for_learn, spec_delta_is_additive, spec_measurement_is_additive};
+
+    #[test]
+    fn a_file_picker_sentinel_is_not_a_draft_path() {
+        assert_eq!(draft_key_for_learn("draft-mtp", "off"), "");
+        assert_eq!(draft_key_for_learn("draft-mtp", "auto"), "");
+        assert_eq!(draft_key_for_learn("draft-mtp", ""), "");
+        assert_eq!(draft_key_for_learn("draft-dflash", "C:/drafts/x.gguf"), "C:/drafts/x.gguf");
+    }
 
     /// The spec launch loads a second model. The engine ledger keys buffers by
     /// (device, kind, tag), so the draft overwrites the main model and `/memory` reports
@@ -3325,10 +3358,10 @@ mod compute_model_tests {
 
     #[test]
     fn the_family_key_drops_only_the_ctx_token() {
-        let key = "m.gguf|ggml-master|ctx=262144|kv=q8_0|topo=96|split=layer|offload=regular|cache_ram=16384";
+        let key = "m.gguf|ggml-master|ctx=262144|kv=q8_0|topo=96|split=layer|offload=regular";
         assert_eq!(
             compute_family_key(key),
-            "m.gguf|ggml-master|kv=q8_0|topo=96|split=layer|offload=regular|cache_ram=16384"
+            "m.gguf|ggml-master|kv=q8_0|topo=96|split=layer|offload=regular"
         );
     }
 }

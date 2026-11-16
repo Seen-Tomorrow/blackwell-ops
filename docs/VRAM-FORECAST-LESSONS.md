@@ -61,6 +61,47 @@ A model shipped 202 tensors of ggml type 42 that the table did not know, silentl
   extrapolating: linear extrapolation of the total under-reads above the top point, which is the
   direction that lets a launch spill.
 
+## Measured spec / vision / PLE table (2026-11-16, Qwen3.8-27B + Flash-Next)
+
+Fixed knobs: split layer, `-ts 0.492,0.508`, batch 2048 / ubatch 1024, cache-ram 8192.
+
+| model | ctx / kv | base GPU | built-in MTP | external DFlash2 | vision on |
+|---|---|---|---|---|---|
+| Qwen3.8-27B UD-IQ3_XXS | 65536 / bf16 | 16,079 MiB | +1,996 MiB | +3,508 MiB | +888 MiB |
+| Qwen3.8-27B UD-IQ3_XXS | 262144 / bf16 | 32,975 MiB | +4,300 MiB | +3,508 MiB | +888 MiB |
+
+- MTP adds a nextn head (~335 MiB), its KV (256 MiB at 64K), recurrent state (+449 MiB at
+  64K) and its own compute (~916 MiB). The delta GROWS with ctx; do not reuse the 64K number.
+- DFlash2's draft is 1.06 GiB on disk but ~3.5 GiB on the GPUs (draft model + compute +
+  layer-input buffer); the old `1.55 x file size` addon under-read by ~1.9 GiB. Measure it.
+- Vision costs exactly `mmproj_size_mib` (888.01 MiB measured as +888), all on CUDA0. The
+  engine's `/memory` and stderr buffer inventory do not report mtmd; add the file size to the
+  first card in the forecast and to the plan's `gpu0ExtraMib`.
+- Qwen3.8-Flash-Next UD-Q4_K_XL (MoE) at 65536/q4_0: 80,138 MiB GPU. Its PLE table is
+  27,466 MiB and lives in `CPU_Mapped` host memory: it belongs in RAM need, never VRAM.
+  External MTP head adds 5,012 MiB GPU (and ~949 MiB host net of PLE).
+
+### Why spec on/off looked identical
+
+1. The `/memory` ledger keys buffers by `(device, kind, tag)`. A spec launch's draft/nextn
+   context overwrites the main model's entries, so the endpoint reports a partial total
+   (10.2 GiB for a 186 GiB launch). Use the stderr inventory for spec launches; it sees every
+   `load_tensors` section. The parser must start at the LAUNCH marker, not the last
+   `llama_model_loader` line (that cut off the main model for DFlash), dedup an identical
+   re-reserve, and count `h_nextn` / `layer_input`.
+2. A learned spec row has no host component breakdown, so the spill test used the whole host
+   figure (draft buffers included) and discarded the exact row for a probe. Only a host MODEL
+   row is spill; fall back to the host figure only for legacy curve rows.
+3. A low-vram probe masked the exact learned row at the same ctx. Exact launch first, probe
+   second.
+4. `draftModel` file-picker sentinels (`off`, `auto`, `none`) were treated as paths, so
+   built-in MTP had the identity `draft-mtp|off` and never matched `draft-mtp`.
+5. `cache_ram` (host prompt cache) was in the learned VRAM key; panel 8192 vs launch 16384
+   missed the row. Removed from the key.
+6. A stale external draft path from another model made spec-off add a draft and spec-on use
+   the wrong identity. Gate the path on the active spec and resolve it against the selected
+   main model's pairing.
+
 ## Spec / draft launches: the ledger collapses two models
 
 Measured 2026-11-15 on DSV4.1 + DSpark. A spec launch loads the draft model **after** the main

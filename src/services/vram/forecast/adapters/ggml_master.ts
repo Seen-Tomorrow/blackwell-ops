@@ -81,10 +81,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
   const tgt = targetGpuIdx(input, gpuAvailable);
   const userSplitMultiGpu = splitActive(input) && input.gpus.length > 1;
-  const draftAddon = draftAddonGb(input);
-  // The configured path, not the draft size, decides which adapter owns the memory
-  // semantics — a size of 0 must not silently reclassify an external head as baked-in.
   const draftPathConfigured = specDraftPathConfigured(input);
+  // A draft SIZE without a draft IDENTITY (spec off, stale path from another model, or a
+  // file-picker sentinel) is not a launch component.
+  const draftAddon = draftPathConfigured ? draftAddonGb(input) : 0;
   const adapter = resolveSpecAdapter(
     cfgStr(input.engineConfig, "spec_type", "") || null,
     draftPathConfigured,
@@ -111,15 +111,26 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   /** A launch that put weight-class bytes on the host is an outcome, not a need. */
   const hostLooksSpilled = (
     modelMib: number | null | undefined,
-    hostMib: number | null | undefined,
+    _hostMib: number | null | undefined,
     engramMib?: number | null,
+    allowHostFallback = false,
   ): boolean => {
-    const baseGb =
-      modelMib != null && modelMib > 0 ? modelMib / 1024 : (hostMib ?? 0) / 1024;
-    // Prefer the launch's own measured lookup table; the GGUF header can be missing.
-    const engram =
-      engramMib != null && engramMib > 0 ? engramMib / 1024 : engramGb;
-    return isWeightClassHostSpill(Math.max(0, baseGb - engram));
+    // Only a host MODEL row is evidence of weight spill. Falling back to the whole host
+    // figure classified a normal spec launch (which adds draft host buffers and has no
+    // component breakdown) as spilled, so the exact learned row was dropped for a probe.
+    if (modelMib != null && modelMib > 0) {
+      const baseGb = modelMib / 1024;
+      // Prefer the launch's own measured lookup table; the GGUF header can be missing.
+      const engram =
+        engramMib != null && engramMib > 0 ? engramMib / 1024 : engramGb;
+      return isWeightClassHostSpill(Math.max(0, baseGb - engram));
+    }
+    // Legacy curve rows have no component breakdown; a huge host figure is still a spill.
+    // Do not apply this to an exact spec row: draft host buffers are a few GB.
+    if (!allowHostFallback) return false;
+    const hostGb = (_hostMib ?? 0) / 1024;
+    const engram = engramMib != null && engramMib > 0 ? engramMib / 1024 : engramGb;
+    return isWeightClassHostSpill(Math.max(0, hostGb - engram));
   };
 
   type ForecastPoint = {
@@ -196,7 +207,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   // Launch points: measured launches only, and never one that pushed weights to the host.
   const launchPoints: ForecastPoint[] = sanitizeLearnedCurve(input.learnedCurve)
-    .filter((p) => !hostLooksSpilled(undefined, p.hostMib, p.engramMib))
+    .filter((p) => !hostLooksSpilled(p.hostModelMib, p.hostMib, p.engramMib, true))
     .map((p) => ({
       ctx: p.ctx,
       gb: p.vramMib / 1024,
@@ -260,14 +271,16 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   let baseGb: number | null = null;
   let chosenHostGb: number | null = null;
   let chosenCtx = liveCtx;
-  if (probePoint && probePoint.ctx === liveCtx && input.fitProbeMode === "low_vram") {
-    source = "probe_exact";
-    baseGb = probePoint.gb;
-    chosenHostGb = probePoint.hostGb;
-  } else if (exactLaunch) {
+  if (exactLaunch) {
+    // A measured launch at this CTX is the config's real footprint, including spec/draft.
+    // A low-vram probe is a spill outcome; it must not mask an exact row that already exists.
     source = "launch_exact";
     baseGb = exactLaunch.gb;
     chosenHostGb = exactLaunch.hostGb;
+  } else if (probePoint && probePoint.ctx === liveCtx && input.fitProbeMode === "low_vram") {
+    source = "probe_exact";
+    baseGb = probePoint.gb;
+    chosenHostGb = probePoint.hostGb;
   } else if (curveHit) {
     source = "launch_curve";
     baseGb = curveHit.vramGb;
@@ -324,15 +337,18 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     needsDraftAdd || source === "probe_exact" || source === "probe_curve";
   const withDraft = (gb: number | null): number | null =>
     gb == null ? null : addDraft ? gb + draftAddon : gb;
-  const mmprojAddonGb =
-    source === "probe_exact" || source === "probe_curve"
-      ? Math.max(0, input.mmprojSizeMib ?? 0) / 1024
+  // The vision projector is a separate model load that the engine's buffer inventory does not
+  // report (it loads after the main model, through mtmd). Measured on the 27B: +888 MiB, exactly
+  // `mmproj_size_mib`, on CUDA0. Add the file size to that card; do not split it across cards.
+  const visionAddonGb =
+    input.visionOn && (input.mmprojSizeMib ?? 0) > 0
+      ? (input.mmprojSizeMib as number) / 1024
       : 0;
   const baseWithDraft = withDraft(baseGb);
   if (baseWithDraft == null || !Number.isFinite(baseWithDraft) || baseWithDraft <= 0) {
     return null;
   }
-  const estimateGb = baseWithDraft + mmprojAddonGb;
+  const estimateGb = baseWithDraft;
 
   const learnedGb = source.startsWith("launch") ? estimateGb : null;
   const hostMeasuredGb = chosenHostGb;
@@ -343,7 +359,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   // ASSISTED: NONE means this GPU + offload, never auto-promote to layer.
   // FULL AUTO may still shift when need exceeds the best single card.
   const autoSplit =
-    input.fullAutoMode === true && needsAutoLayerSplit(estimateGb, gpuAvailable);
+    input.fullAutoMode === true && needsAutoLayerSplit(estimateGb + visionAddonGb, gpuAvailable);
   const targetAvail = autoSplit || userSplitMultiGpu
     ? multiTotalAvailable
     : (gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0));
@@ -420,6 +436,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       perGpuLoad = input.layerSplitMib.map(
         (mib) => (estimateGb * Math.max(0, mib)) / splitSum,
       );
+    }
+  }
+
+  if (visionAddonGb > 0) {
+    const mmprojGpu = autoSplit || userSplitMultiGpu ? 0 : tgt;
+    if (perGpuLoad[mmprojGpu] != null) {
+      perGpuLoad[mmprojGpu] += visionAddonGb;
     }
   }
 
@@ -585,7 +608,12 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     realSpill: spill,
   });
 
-  const hostTotalGb = hostMeasuredGb ?? 0;
+  // The lookup table is host by design and is deliberately absent from the engine's host
+  // buffer ledger. Put it back into the RAM total; it is not VRAM and not a weight spill.
+  const hostMeasuredPlusEngramGb =
+    (hostMeasuredGb ?? 0)
+    + (engramNeedGb > 0 && (hostMeasuredGb ?? 0) < engramNeedGb ? engramNeedGb : 0);
+  const hostTotalGb = hostMeasuredPlusEngramGb;
   const hostSplit = splitHostRamGb({
     hostGb: hostTotalGb,
     hostModelGb:
@@ -600,7 +628,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   });
   // No host figure and the paint expects offload: the host side is unknown, not zero.
   const ramHostUnknown =
-    !overSystemMemory && hostMeasuredGb == null && (launchPaint === "offload" || spill || insets.needsReprobe);
+    !overSystemMemory
+    && hostMeasuredGb == null
+    && engramNeedGb <= 0
+    && (launchPaint === "offload" || spill || insets.needsReprobe);
   if (!overSystemMemory) {
     if (ramHostUnknown) {
       insets.ramInset = "UNKNOWN SO FAR - RE-PROBE FIRST";

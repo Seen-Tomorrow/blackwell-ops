@@ -250,6 +250,20 @@ fn push_buffer(
     mib: f64,
     source: &str,
 ) {
+    // A second context re-runs `sched_reserve` for the same device with the same size; summing
+    // both would invent a duplicate allocation. A different size is kept (a real second context
+    // has its own value), so only an identical repeat is skipped.
+    if category == "compute" {
+        if let Some(last) = buffers
+            .iter()
+            .rev()
+            .find(|b| b.device == device && b.category == "compute" && b.source == source)
+        {
+            if (last.mib - mib).abs() < 0.01 {
+                return;
+            }
+        }
+    }
     buffers.push(BufferLine {
         device: device.to_string(),
         category: category.to_string(),
@@ -532,15 +546,16 @@ pub(crate) fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
 /// and the parser returned the 65536 buffers for both — a flat learned curve.
 fn last_launch_start(text: &str) -> Option<usize> {
     let lower = text.to_lowercase();
-    // Any of these starts one engine process. The latest one that appears wins, so a loader
-    // that prints per-shard lines still cannot cut a launch in half.
-    const MARKERS: [&str; 3] = [
+    // Launch-level markers. Do NOT include the per-model `llama_model_loader: loaded meta data`:
+    // a spec launch loads the draft model after the main one, and that marker would move the
+    // parse start onto the draft, discarding the main model's buffers.
+    const LAUNCH_MARKERS: [&str; 3] = [
         "llama_server: initializing",
         "ggml_cuda_init: found",
-        "llama_model_loader: loaded meta data",
+        "load_model: loading model",
     ];
     let mut last = None;
-    for marker in MARKERS {
+    for marker in LAUNCH_MARKERS {
         let mut from = 0;
         while let Some(pos) = lower[from..].find(marker) {
             let at = from + pos;
@@ -548,7 +563,11 @@ fn last_launch_start(text: &str) -> Option<usize> {
             from = at + marker.len();
         }
     }
-    last
+    if last.is_some() {
+        return last;
+    }
+    // Truncated/dev logs that contain only the loader line: best effort.
+    lower.rfind("llama_model_loader: loaded meta data")
 }
 
 pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot> {
@@ -631,6 +650,12 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
             ("rs", "llama_dsv4_comp_state")
         } else if lower.contains("reserve_compute_meta:") {
             ("vision_compute", "reserve_compute_meta")
+        } else if lower.contains("layer_inp_dev_alloc:") && lower.contains("layer input buffer") {
+            // DFlash target-feature buffer: a real per-device allocation.
+            ("compute", "layer_input")
+        } else if lower.contains("h_nextn_dev_alloc:") && lower.contains("h_nextn buffer") {
+            // Baked-MTP head rows handed to the draft context.
+            ("compute", "h_nextn")
         } else if lower.contains("sched_reserve:") {
             ("compute", "sched_reserve")
         } else if lower.contains("llama_context:") && lower.contains("output buffer") {
@@ -853,6 +878,26 @@ mod tests {
         assert!(snap.vram_mib > 27_000.0);
         assert!(snap.vram_mib < 28_000.0);
         assert!(snap.host_mib > 1400.0);
+    }
+
+    #[test]
+    fn a_spec_launch_keeps_both_models_and_dedups_a_re_reserve() {
+        const SPEC: &str = r#"0.00 I srv    load_model: loading model 'main.gguf'
+0.00 I load_tensors:        CUDA0 model buffer size = 1000.00 MiB
+0.01 I llama_kv_cache:      CUDA0 KV buffer size =  100.00 MiB
+0.01 I sched_reserve:      CUDA0 compute buffer size =   50.00 MiB
+0.02 I common_speculative_init_result: loading draft model 'draft.gguf'
+0.02 I load_tensors:        CUDA0 model buffer size =  200.00 MiB
+0.03 I llama_kv_cache:      CUDA0 KV buffer size =   10.00 MiB
+0.03 I sched_reserve:      CUDA0 compute buffer size =   10.00 MiB
+0.04 I layer_inp_dev_alloc:      CUDA0 layer input buffer size =    5.00 MiB (1 layers)
+0.04 I sched_reserve:      CUDA0 compute buffer size =   10.00 MiB
+0.05 I srv  server_run_i: model loaded
+"#;
+        let snap = parse_launch_memory_snapshot(SPEC).expect("spec snapshot");
+        // Main + draft model/KV/compute; the re-reserve is the same 10 MiB, not an extra 10.
+        assert!((snap.vram_mib - 1375.0).abs() < 0.1, "vram {}", snap.vram_mib);
+        assert_eq!(snap.gpu_breakdown_mib, vec![1375.0]);
     }
 
     /// A slot's stderr is appended across relaunches into the same slot. The snapshot must

@@ -26,6 +26,8 @@ export interface ForecastInput {
    */
   gpuCalibration?: GpuCalibrationRow[];
   mmprojSizeMib?: number;
+  /** Vision projector is actually loaded for this launch. */
+  visionOn?: boolean;
   /** External draft GGUF size (MiB) — FIT probe never loads draft. */
   draftSizeMib?: number;
   autoVramLaunch?: boolean;

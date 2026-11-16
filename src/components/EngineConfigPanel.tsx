@@ -1078,6 +1078,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // VramBadge) lets the manifest take its per-card split from the same numbers the plan
   // prints. `-ts` names a fraction of LAYERS, and layer bytes are not that fraction.
   const { calibration: gpuCalibration } = useGpuCalibration();
+  // The vision projector is loaded by mtmd after the main model; the engine's buffer inventory
+  // never reports it. Its file size is the measured GPU0 cost (+888 MiB on the 27B).
+  const visionOn =
+    String(config.vision ?? "auto").trim().toLowerCase() !== "off"
+    && (model?.mmproj_size_mib ?? 0) > 0;
+  const visionMib = visionOn ? (model?.mmproj_size_mib ?? 0) : 0;
   const planKnobs = useMemo(
     () => ({
       ctxTokens:
@@ -1089,6 +1095,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       batch: Number(config.batch ?? 0) || undefined,
       ubatch: Number(config.ubatch ?? 0) || undefined,
       parallel: Number(config.parallel ?? 0) || 1,
+      visionMib,
       modelMeta: model?.metadata,
     }),
     [
@@ -1098,6 +1105,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       config.batch,
       config.ubatch,
       config.parallel,
+      visionMib,
       model?.metadata,
     ],
   );

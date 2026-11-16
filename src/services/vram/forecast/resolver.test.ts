@@ -68,6 +68,27 @@ describe("forecast resolver states", () => {
     expect(m?.vramTotalGb).toBeCloseTo(40.5, 1);
   });
 
+  it("a stale draft path with spec off adds nothing", () => {
+    const m = evaluate(
+      input({
+        learnedVramMib: 20 * GIB,
+        learnedHostMib: GIB,
+        draftSizeMib: 2048,
+        engineConfig: {
+          ...input({}).engineConfig,
+          extra_params: {
+            ctx: 65_536,
+            split: "none",
+            device: "GPU-0",
+            spec_type: "none",
+            dflash_draft_model: "C:/models/draft.gguf",
+          },
+        },
+      }),
+    );
+    expect(m?.vramTotalGb).toBeCloseTo(20.5, 1);
+  });
+
   it("a learned row that excludes the draft gets the draft addon", () => {
     const withDraft = input({
       learnedVramMib: 40 * GIB,
@@ -89,6 +110,49 @@ describe("forecast resolver states", () => {
     // 10 GiB of draft + its measured overhead, not a confidence trick.
     expect(evaluate(withDraft)!.vramTotalGb).toBeGreaterThan(50);
     expect(withoutDraft!.vramTotalGb).toBeCloseTo(40.5, 1);
+  });
+
+  it("vision projector is charged to one card and disappears when off", () => {
+    const base = {
+      learnedVramMib: 20 * GIB,
+      learnedHostMib: GIB,
+      mmprojSizeMib: 888,
+    };
+    const off = evaluate(input({ ...base, visionOn: false }))!;
+    const on = evaluate(input({ ...base, visionOn: true }))!;
+    // 888 MiB on one card, not spread across the pool.
+    expect(on.vramTotalGb - off.vramTotalGb).toBeCloseTo(888 / 1024, 2);
+    expect(on.gpuAllocations[0].projectedLoadGb - off.gpuAllocations[0].projectedLoadGb)
+      .toBeCloseTo(888 / 1024, 2);
+  });
+
+  it("a PLE lookup table is host need, not VRAM", () => {
+    const m = evaluate(
+      input({
+        learnedVramMib: 80 * GIB,
+        learnedHostMib: 0.9 * GIB,
+        modelEngramMib: 27_466,
+      }),
+    )!;
+    // The 27.4 GB PLE table is mapped on the host; it must not inflate the GPU bars or read
+    // as a weight spill.
+    expect(m.vramTotalGb).toBeCloseTo(80.5, 1);
+    expect(m.ramTotalGb).toBeGreaterThan(27);
+    expect(m.ramSpillGb).toBeCloseTo(0, 1);
+  });
+
+  it("draft host buffers are not a weight spill", () => {
+    // A spec row has no host component breakdown; 5 GB of host buffers is normal, not a
+    // reason to throw away the exact learned row and fall back to a base-only probe.
+    const m = evaluate(
+      input({
+        learnedVramMib: 40 * GIB,
+        learnedHostMib: 5 * GIB,
+        learnedHostModelMib: undefined,
+      }),
+    );
+    expect(m?.memorySourceState).toBe("launch_exact");
+    expect(m?.vramTotalGb).toBeCloseTo(40.5, 1);
   });
 
   it("INCOMPLETE: a lone launch is scaled by its own measured KV", () => {
@@ -276,11 +340,12 @@ describe("forecast resolver states", () => {
     expect(m?.style.uiTemplate.launchSummary).toMatch(/^Won't run/);
   });
 
-  it("a probe adds the vision projector; an anchored curve does not double it", () => {
+  it("a probe adds the vision projector; an anchored launch adds it once", () => {
     // 50 GB probe + 2 GB mmproj.
     const probe = evaluate(
       input({
         mmprojSizeMib: 2048,
+        visionOn: true,
         fitProbeVramMib: 50 * GIB,
         fitProbeAnchorCtx: 65_536,
         fitProbeMode: "full",
@@ -289,10 +354,12 @@ describe("forecast resolver states", () => {
     );
     expect(probe?.vramTotalGb).toBeCloseTo(52.5, 1);
 
-    // Anchored: the launch level included the projector, the probe delta did not — no add.
+    // Anchored: the learned launch level is engine-self and excludes the projector, so the
+    // launch needs the same +2 GB exactly once (not once per source).
     const anchored = evaluate(
       input({
         mmprojSizeMib: 2048,
+        visionOn: true,
         learnedCurve: [launchPoint(65_536, 40)],
         fitProbeCurve: [
           { ctx: 65_536, vramMib: 30 * GIB },
@@ -305,7 +372,7 @@ describe("forecast resolver states", () => {
       }),
     );
     expect(anchored?.memorySourceState).toBe("probe_anchored");
-    expect(anchored?.vramTotalGb).toBeCloseTo(55.5, 1);
+    expect(anchored?.vramTotalGb).toBeCloseTo(57.5, 1);
   });
 
   it("a probe adds the external draft head on our side", () => {
@@ -313,6 +380,16 @@ describe("forecast resolver states", () => {
     const m = evaluate(
       input({
         draftSizeMib: 2048,
+        engineConfig: {
+          ...input({}).engineConfig,
+          extra_params: {
+            ctx: 65_536,
+            split: "none",
+            device: "GPU-0",
+            spec_type: "draft-dflash",
+            dflash_draft_model: "C:/models/draft.gguf",
+          },
+        },
         fitProbeVramMib: 50 * GIB,
         fitProbeAnchorCtx: 65_536,
         fitProbeMode: "full",

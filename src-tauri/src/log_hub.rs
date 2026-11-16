@@ -905,16 +905,16 @@ impl LogHub {
         };
         let snapshot = match (core, parsed) {
             (Some(core), Some(parsed)) => {
-                // A spec launch loads a second (draft) model. The engine ledger keys buffers by
+                // A spec launch loads another model/context. The engine ledger keys buffers by
                 // (device, kind, tag), so the draft overwrites the main model and `/memory`
-                // reports only the draft. The stderr parse sees both model sections, so it is
-                // the only complete total until the ledger carries an owner id.
-                let spec_ledger_collapsed = learn_snapshot.spec_key != "none"
-                    && core.vram_mib + 1.0 < parsed.vram_mib * 0.5;
+                // reports a partial total. The stderr parse sees every section; use it whenever
+                // it is larger than the endpoint for a spec launch.
+                let spec_ledger_partial = learn_snapshot.spec_key != "none"
+                    && parsed.vram_mib > core.vram_mib + 1.0;
                 let agrees = crate::engine_memory_view::log_source_comparison(slot_idx, &core, &parsed);
-                if spec_ledger_collapsed {
+                if spec_ledger_partial {
                     log::warn!(
-                        "[memory] slot={} ledger reports {:.0} MiB (draft only), stderr has {:.0} MiB - using stderr for the spec launch",
+                        "[memory] slot={} ledger reports {:.0} MiB, stderr has {:.0} MiB - using stderr for the spec launch",
                         slot_idx,
                         core.vram_mib,
                         parsed.vram_mib

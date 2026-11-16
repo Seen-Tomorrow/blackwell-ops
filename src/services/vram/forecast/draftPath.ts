@@ -12,9 +12,18 @@ import { normalizeDraftPath } from "../../../lib/spec/adapters";
  */
 export function specDraftPathConfigured(input: ForecastInput): boolean {
   const cfg = input.engineConfig;
-  return (
-    normalizeDraftPath(cfg.extra_params?.dflash_draft_model) !== null
-    || normalizeDraftPath(cfg.extra_params?.mtp_draft_model) !== null
-    || normalizeDraftPath(cfg.extra_params?.spec_draft_model) !== null
-  );
+  const spec = (
+    cfgStr(cfg, "spec_type", "")
+    || cfgStr(cfg, "__boost_spec_type", "")
+  ).trim().toLowerCase();
+  if (!spec || spec === "none" || spec === "off") return false;
+  const draft =
+    normalizeDraftPath(cfg.extra_params?.dflash_draft_model)
+    ?? normalizeDraftPath(cfg.extra_params?.mtp_draft_model)
+    ?? normalizeDraftPath(cfg.extra_params?.spec_draft_model);
+  if (!draft) return false;
+  if (spec.includes("mtp") && !spec.includes("dflash") && !spec.includes("dspark") && !spec.includes("eagle")) {
+    return spec === "draft-mtp";
+  }
+  return spec.includes("dflash") || spec.includes("dspark") || spec.includes("eagle");
 }
