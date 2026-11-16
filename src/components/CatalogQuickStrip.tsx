@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ModelEntry } from "../lib/types";
 import {
   CATALOG_ENGINE_SEAT_ROLES,
+  CATALOG_PINS_MAX,
   CATALOG_SEAT_LABEL,
   CATALOG_SEAT_SET_COUNT,
   catalogPathChipLabel,
@@ -105,10 +106,17 @@ function QuickModelChip({
       onClick={onSelect}
       onContextMenu={onContextMenu}
     >
-      <span className="catalog-quick-chip__name">
-        {catalogPathChipLabel(model.path, model.name)}
+      <span className="catalog-quick-chip__text">
+        <span className="catalog-quick-chip__name">
+          {catalogPathChipLabel(model.path, model.name)}
+        </span>
+        <span className="catalog-quick-chip__meta">
+          <span className="catalog-quick-chip__quant">{modelQuantLabel(model)}</span>
+          {model.size_str ? (
+            <span className="catalog-quick-chip__size">{model.size_str}</span>
+          ) : null}
+        </span>
       </span>
-      <span className="catalog-quick-chip__quant">{modelQuantLabel(model)}</span>
       {onUnpin && (
         <button
           type="button"
@@ -380,47 +388,6 @@ export default function CatalogQuickStrip({
               </button>
             ) : null}
           </div>
-          {!seatEditing ? (
-            <div className="catalog-quick-section__head-row catalog-quick-section__head-row--actions">
-              <div className="catalog-quick-section__actions">
-                <div className="catalog-quick-section__launch-actions">
-                  <button
-                    type="button"
-                    className="catalog-quick-section__action catalog-quick-section__action--mode"
-                    title="Switch SOLO / TWIN launch"
-                    onClick={() => setLaunchMode((m) => (m === "twin" ? "solo" : "twin"))}
-                  >
-                    {launchMode === "twin" ? "TWIN" : "SOLO"}
-                  </button>
-                  <button
-                    type="button"
-                    className="catalog-quick-section__action catalog-quick-section__action--launch"
-                    disabled={launchMode === "twin" ? !canLaunchTwin : !canLaunchSolo}
-                    title={
-                      launchMode === "twin"
-                        ? canLaunchTwin
-                          ? "Launch BRAIN + WORKER (needs saved bags on both)"
-                          : "Assign BRAIN and WORKER first"
-                        : canLaunchSolo
-                          ? "Launch BRAIN seat as solo"
-                          : "Assign BRAIN seat first"
-                    }
-                    onClick={launchSeats}
-                  >
-                    ▶
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  className="catalog-quick-section__action"
-                  title="Open harness connect veil"
-                  onClick={() => dispatchAppEvent(EVENTS.harnessConnectOpen)}
-                >
-                  HARNESS CONNECT
-                </button>
-              </div>
-            </div>
-          ) : null}
         </header>
         <div
           id="catalog-quick-seat-bank"
@@ -451,7 +418,7 @@ export default function CatalogQuickStrip({
                   </button>
                 </div>
                 <p className="catalog-seats-help__blurb">
-                  Saved model + knobs bags for the agentic harness — not just favorites.
+                  Saved model + knobs bags for the agentic harness.
                 </p>
                 <div className="catalog-seats-help__flow" aria-hidden>
                   <div className="catalog-seats-help__step">
@@ -478,7 +445,7 @@ export default function CatalogQuickStrip({
                   <div className="catalog-seats-help__step">
                     <span className="catalog-seats-help__n">3</span>
                     <span className="catalog-seats-help__step-title">CONNECT</span>
-                    <span className="catalog-seats-help__connect">HARNESS CONNECT</span>
+                    <span className="catalog-seats-help__connect">HARNESS</span>
                     <span className="catalog-seats-help__step-copy">open pi on those seats</span>
                   </div>
                 </div>
@@ -514,8 +481,8 @@ export default function CatalogQuickStrip({
                   const pendingHere =
                     pending && pending.role === role ? pending.kind : null;
                   const label = filled
-                    ? catalogPathChipLabel(slot!.path, model?.name)
-                    : "— empty";
+                    ? model?.name || catalogPathChipLabel(slot!.path)
+                    : "No model seated";
 
                   return (
                     <div
@@ -532,26 +499,6 @@ export default function CatalogQuickStrip({
                         .join(" ")}
                     >
                       {isEditing ? <SeatLiveRim /> : null}
-                      {filled && !seatEditing && learnedMem[role] ? (
-                        <div
-                          className="catalog-quick-seat__mem catalog-quick-seat__mem--vram"
-                          title={`LEARNED VRAM for ${CATALOG_SEAT_LABEL[role]} at saved knobs`}
-                        >
-                          <span className="catalog-quick-seat__mem-val">
-                            {vramValueText(learnedMem[role])}
-                          </span>
-                          <span className="catalog-quick-seat__mem-unit">GB VRAM</span>
-                          {ramValueText(learnedMem[role]) && (
-                            <>
-                              <span className="catalog-quick-seat__mem-unit">·</span>
-                              <span className="catalog-quick-seat__mem-val">
-                                {ramValueText(learnedMem[role])}
-                              </span>
-                              <span className="catalog-quick-seat__mem-unit">GB RAM</span>
-                            </>
-                          )}
-                        </div>
-                      ) : null}
                       <div className="catalog-quick-seat__body">
                         <button
                           type="button"
@@ -574,13 +521,33 @@ export default function CatalogQuickStrip({
                             tryAssignEmpty(role);
                           }}
                         >
-                          <span className="catalog-quick-seat__role">
-                            {CATALOG_SEAT_LABEL[role]}
+                          <span className="catalog-quick-seat__top">
+                            <span className="catalog-quick-seat__role">
+                              {CATALOG_SEAT_LABEL[role]}
+                            </span>
+                            <span className="catalog-quick-seat__state">
+                              {filled ? (isEditing ? "EDITING" : "SAVED BAG") : "EMPTY"}
+                            </span>
                           </span>
                           <span className="catalog-quick-seat__name">{label}</span>
-                          {filled && model ? (
-                            <span className="catalog-quick-seat__quant">{modelQuantLabel(model)}</span>
-                          ) : null}
+                          <span className="catalog-quick-seat__sub">
+                            {filled && model ? (
+                              <>
+                                <span className="catalog-quick-seat__quant">
+                                  {modelQuantLabel(model)}
+                                </span>
+                                {model.size_str ? (
+                                  <span className="catalog-quick-seat__size">{model.size_str}</span>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span className="catalog-quick-seat__hint">
+                                {hasSelection
+                                  ? "Click to seat the selected model"
+                                  : "Select a model in the list first"}
+                              </span>
+                            )}
+                          </span>
                         </button>
 
                         <div className="catalog-quick-seat__actions">
@@ -595,7 +562,7 @@ export default function CatalogQuickStrip({
                                   confirmPending();
                                 }}
                               >
-                                Y
+                                YES
                               </button>
                               <button
                                 type="button"
@@ -606,7 +573,7 @@ export default function CatalogQuickStrip({
                                   setPending(null);
                                 }}
                               >
-                                N
+                                NO
                               </button>
                             </>
                           ) : isEditing ? (
@@ -649,7 +616,7 @@ export default function CatalogQuickStrip({
                                     setPending({ kind: "replace", role });
                                   }}
                                 >
-                                  R
+                                  REPLACE
                                 </button>
                               ) : null}
                               {filled ? (
@@ -662,7 +629,7 @@ export default function CatalogQuickStrip({
                                     beginSeatEdit(role);
                                   }}
                                 >
-                                  E
+                                  EDIT
                                 </button>
                               ) : null}
                               {filled ? (
@@ -675,7 +642,7 @@ export default function CatalogQuickStrip({
                                     setPending({ kind: "clear", role });
                                   }}
                                 >
-                                  X
+                                  CLEAR
                                 </button>
                               ) : null}
                             </>
@@ -686,38 +653,93 @@ export default function CatalogQuickStrip({
                   );
                 })}
               </div>
-              {sum && !seatEditing ? (
-                <div
-                  className="catalog-quick-mem catalog-quick-mem--combo"
-                  title={
-                    soloSeats
-                      ? "LEARNED VRAM+RAM for the SOLO seat at saved knobs (re-read, not stored on the bag)"
-                      : "LEARNED total for both seats at saved knobs (re-read, not stored on the bags)"
-                  }
-                >
-                  <span className="catalog-quick-mem__cell catalog-quick-mem__cell--vram">
-                    <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
-                    <span className="catalog-quick-mem__val">{vramValueText(sum)}</span>
-                    <span className="catalog-quick-mem__unit">GB VRAM</span>
-                  </span>
-                  <span className="catalog-quick-mem__cell catalog-quick-mem__cell--ram">
-                    <span className="catalog-quick-mem__sigma" aria-hidden>Σ</span>
-                    <span className="catalog-quick-mem__val">{ramValueText(sum) ?? "0.0"}</span>
-                    <span className="catalog-quick-mem__unit">GB RAM</span>
-                  </span>
-                </div>
-              ) : null}
             </>
           ) : null}
         </div>
+        {seatsExpanded && !seatEditing && !seatsHelpOpen ? (
+          <div className="catalog-quick-section__actions-row">
+            <div className="catalog-quick-section__launch-actions">
+              <button
+                type="button"
+                className="catalog-quick-section__action catalog-quick-section__action--mode"
+                title="Switch SOLO / TWIN launch"
+                onClick={() => setLaunchMode((m) => (m === "twin" ? "solo" : "twin"))}
+              >
+                {launchMode === "twin" ? "TWIN" : "SOLO"}
+              </button>
+              <button
+                type="button"
+                className="catalog-quick-section__action catalog-quick-section__action--launch"
+                disabled={launchMode === "twin" ? !canLaunchTwin : !canLaunchSolo}
+                title={
+                  launchMode === "twin"
+                    ? canLaunchTwin
+                      ? "Launch BRAIN + WORKER (needs saved bags on both)"
+                      : "Assign BRAIN and WORKER first"
+                    : canLaunchSolo
+                      ? "Launch BRAIN seat as solo"
+                      : "Assign BRAIN seat first"
+                }
+                onClick={launchSeats}
+              >
+                ▶
+              </button>
+            </div>
+            {sum ? (
+              <div
+                className="catalog-quick-section__sum"
+                title={
+                  soloSeats
+                    ? `LEARNED VRAM+RAM for the SOLO seat: ${vramValueText(sum)} GB VRAM · ${ramValueText(sum) ?? "0.0"} GB RAM`
+                    : `LEARNED total for both seats: ${vramValueText(sum)} GB VRAM · ${ramValueText(sum) ?? "0.0"} GB RAM`
+                }
+              >
+                <span className="catalog-quick-section__sum-part">
+                  <span className="catalog-quick-section__sum-sigma" aria-hidden>
+                    Σ
+                  </span>
+                  <span className="catalog-quick-section__sum-val">{vramValueText(sum)}</span>
+                </span>
+                <span className="catalog-quick-section__sum-unit">VRAM</span>
+                <span className="catalog-quick-section__sum-sep" aria-hidden>
+                  //
+                </span>
+                <span className="catalog-quick-section__sum-part">
+                  <span className="catalog-quick-section__sum-sigma" aria-hidden>
+                    Σ
+                  </span>
+                  <span className="catalog-quick-section__sum-val">
+                    {ramValueText(sum) ?? "0.0"}
+                  </span>
+                </span>
+                <span className="catalog-quick-section__sum-unit">RAM</span>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className="catalog-quick-section__action catalog-quick-section__action--connect"
+              title="Open harness connect veil"
+              onClick={() => dispatchAppEvent(EVENTS.harnessConnectOpen)}
+            >
+              HARNESS
+            </button>
+          </div>
+        ) : null}
       </section>
       )}
 
       {pinModels.length > 0 && (
         <section className="catalog-quick-section catalog-quick-section--pins">
-          <header className="catalog-quick-section__head">
-            <span className="catalog-quick-section__title">FAVORITE</span>
-            <span className="catalog-quick-section__count">MAX 6</span>
+          <header className="catalog-quick-section__head catalog-quick-section__head--pins">
+            <span className="catalog-quick-section__count">
+              {pinModels.length} / {CATALOG_PINS_MAX}
+            </span>
+            <span className="catalog-quick-section__title">
+              <span className="catalog-quick-section__star" aria-hidden>
+                ★
+              </span>
+              FAVORITE
+            </span>
           </header>
           <div className="catalog-quick-section__grid">
             {pinModels.map((m) => (

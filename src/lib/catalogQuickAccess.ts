@@ -70,7 +70,9 @@ type CatalogQuickStoreV1 = {
   seats: CatalogSeatsState;
 };
 
-const PINS_MAX = 6;
+/** Four keeps FAVORITE at two rows; a sixth chip squeezed the seat bank/summary. */
+export const CATALOG_PINS_MAX = 4;
+const PINS_MAX = CATALOG_PINS_MAX;
 const RECENTS_MAX = 8;
 
 function emptySeats(): CatalogSeatsState {

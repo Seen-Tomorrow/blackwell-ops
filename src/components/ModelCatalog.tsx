@@ -102,6 +102,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const splitRailRef = useRef<HTMLDivElement>(null);
   const catalogSearchInputRef = useRef<HTMLInputElement>(null);
   const [toggleTopPx, setToggleTopPx] = useState<number | null>(null);
+  /**
+   * Head height override: the quick-access strip + search/sort bar end exactly on
+   * the VRAM glass's bottom bezel, so both columns share one seam. The strip is the
+   * flex child that absorbs the difference; content stays naturally sized.
+   */
+  const [headMinPx, setHeadMinPx] = useState(0);
   /** Floating search palette — only when full list is closed. */
   const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
 
@@ -215,12 +221,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         return;
       }
       const railRect = rail.getBoundingClientRect();
+      // The DEV text scale is an ancestor transform: divide it back out before
+      // writing a layout offset (see the head-anchor measurement below).
+      const scale =
+        workspace.offsetHeight > 0
+          ? workspace.getBoundingClientRect().height / workspace.offsetHeight
+          : 1;
       const firstCard =
         workspace.querySelector(".catalog-list-card-wrap") ??
         workspace.querySelector(".model-catalog-card");
       if (firstCard) {
         setToggleTopPx(
-          Math.max(0, Math.round(firstCard.getBoundingClientRect().top - railRect.top)),
+          Math.max(0, Math.round((firstCard.getBoundingClientRect().top - railRect.top) / scale)),
         );
         return;
       }
@@ -228,7 +240,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       const scroll = workspace.querySelector(".catalog-list-scroll");
       if (scroll) {
         setToggleTopPx(
-          Math.max(0, Math.round(scroll.getBoundingClientRect().top + 12 - railRect.top)),
+          Math.max(
+            0,
+            Math.round((scroll.getBoundingClientRect().top - railRect.top) / scale + 12),
+          ),
         );
         return;
       }
@@ -254,6 +269,132 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       window.removeEventListener("resize", measureToggleTop);
     };
   }, [splitContainerRef, catalogCollapsed, catalogModels.length]);
+
+  /**
+   * Align the catalog head with the VRAM glass. The right column owns the measured
+   * height (its bezel is the anchor); the left head only reads it. Fusion mode is a
+   * different screen with a tall glass, so it keeps the natural head height.
+   */
+  const stackSignature = stack.map((entry) => `${entry.idx}:${entry.status}`).join("|");
+  useEffect(() => {
+    const workspace = splitContainerRef.current;
+    if (!workspace) return;
+
+    let raf = 0;
+    let observedFrame: HTMLElement | null = null;
+    let observedTopChrome: HTMLElement | null = null;
+    let observedSections: Element[] = [];
+    let observedStrip: HTMLElement | null = null;
+    let stripObserver: MutationObserver | null = null;
+
+    const measure = () => {
+      raf = 0;
+      const frame = workspace.querySelector<HTMLElement>(".industrial-display-frame");
+      if (frame !== observedFrame) {
+        if (observedFrame) observer.unobserve(observedFrame);
+        observedFrame = frame;
+        if (frame) observer.observe(frame);
+      }
+      // The CTX strip can dock above the glass or inside the cockpit. That moves
+      // the glass without resizing it, so watch the chrome that gives up the height.
+      const topChrome = workspace.querySelector<HTMLElement>(".config-panel-top-chrome");
+      if (topChrome !== observedTopChrome) {
+        if (observedTopChrome) observer.unobserve(observedTopChrome);
+        observedTopChrome = topChrome;
+        if (topChrome) observer.observe(topChrome);
+      }
+
+      const strip = workspace.querySelector<HTMLElement>(".catalog-quick-strip");
+      const tools = workspace.querySelector<HTMLElement>(".catalog-list-panel__chrome-tools");
+      if (strip !== observedStrip) {
+        stripObserver?.disconnect();
+        stripObserver = null;
+        observedStrip = strip;
+        if (strip) {
+          stripObserver = new MutationObserver(schedule);
+          stripObserver.observe(strip, { childList: true });
+        }
+      }
+      const sections = strip
+        ? Array.from(strip.children).filter((child) =>
+            child.classList.contains("catalog-quick-section"),
+          )
+        : [];
+      if (sections !== observedSections) {
+        for (const section of observedSections) {
+          if (!sections.includes(section)) observer.unobserve(section);
+        }
+        for (const section of sections) {
+          if (!observedSections.includes(section)) observer.observe(section);
+        }
+        observedSections = sections;
+      }
+
+      const bottomChrome = workspace.querySelector<HTMLElement>(
+        ".industrial-display-frame__bottom-chrome",
+      );
+      const fusion = workspace.querySelector(".vram-badge-forecast[data-fusion-only]");
+      if (!bottomChrome || fusion || !strip || !tools || sections.length === 0) {
+        setHeadMinPx(0);
+        return;
+      }
+      const ws = workspace.getBoundingClientRect();
+      // DEV text scale applies a transform to the frame: rects are scaled, the CSS
+      // property we write is not. Convert the anchor back into layout pixels.
+      const scale = workspace.offsetHeight > 0 ? ws.height / workspace.offsetHeight : 1;
+      const target = Math.round((bottomChrome.getBoundingClientRect().bottom - ws.top) / scale);
+      // Short windows keep a usable list: never spend more than ~2/3 of the column.
+      const cap = Math.round((ws.height / scale) * 0.65);
+      const anchored = Math.max(0, Math.min(target, cap));
+
+      // Only anchor when quick access can actually fill the space. A library with
+      // no seats and no pins keeps its natural height instead of a huge void.
+      const stripStyle = getComputedStyle(strip);
+      const gap = Number.parseFloat(stripStyle.rowGap || stripStyle.gap) || 0;
+      const padTop = Number.parseFloat(stripStyle.paddingTop) || 0;
+      const padBottom = Number.parseFloat(stripStyle.paddingBottom) || 0;
+      const contentH =
+        sections.reduce(
+          (sum, section) => sum + section.getBoundingClientRect().height / scale,
+          0,
+        ) +
+        gap * Math.max(0, sections.length - 1) +
+        padTop +
+        padBottom;
+      const toolsH = tools.getBoundingClientRect().height / scale;
+      const slack = anchored - toolsH - contentH;
+      const next = slack <= 96 ? anchored : 0;
+      setHeadMinPx((prev) => (prev === next ? prev : next));
+    };
+    const schedule = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(measure);
+    };
+
+    const observer = new ResizeObserver(schedule);
+    observer.observe(workspace);
+    schedule();
+    const late = window.setTimeout(schedule, 250);
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      window.clearTimeout(late);
+      observer.disconnect();
+      stripObserver?.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [
+    splitContainerRef,
+    panelActiveModel?.path,
+    selectedSlotIdx,
+    catalogCollapsed,
+    stackSignature,
+    catalogPins.length,
+    catalogSeats.brain?.path,
+    catalogSeats.worker?.path,
+    activeSeatSet,
+    setupGuide.active,
+  ]);
 
   const startScan = (concurrency: number) => {
     setShowScanMenu(false);
@@ -604,10 +745,47 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     </button>
   );
 
+  // ── List toolbar — search is contextual with the sort + library tools, so it
+  // sits directly above the list instead of floating at the top of the panel. ──
+  const renderSearchField = () => (
+    <div className="catalog-search-wrap min-w-0">
+      <div className="catalog-search-field">
+        <input
+          ref={catalogSearchInputRef}
+          type="text"
+          placeholder="▶  SEARCH MODELS..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value.replace(/\//g, ""))}
+          onKeyDown={(e) => {
+            // `/` is the focus/open shortcut — never type into the query
+            if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              e.preventDefault();
+            }
+          }}
+          autoFocus
+          className="catalog-search-input theme-input w-full text-xs font-mono rounded-sm"
+        />
+        <div className="catalog-search-field__rail">
+          {renderKindCycler()}
+          <span
+            className="catalog-search-count"
+            aria-hidden="true"
+            title={`${catalogModels.length} shown / ${models.length} total`}
+          >
+            {catalogModels.length} / {models.length}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
   // ── Sort + tools bar — one compact row above the list. Per-model checks live
   // on the cards; only library-wide actions stay here. ──
   const renderToolsBar = () => (
     <div className="catalog-list-panel__chrome-tools">
+      <div className="catalog-chrome-row catalog-chrome-row--search">
+        {renderSearchField()}
+      </div>
       <div className="catalog-chrome-row catalog-chrome-row--filters">
         <div className="catalog-sort-compact">
           <span className="catalog-sort-compact__label">SORT</span>
@@ -711,41 +889,38 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         {!catalogCollapsed && (
         <div
           className="catalog-list-panel flex flex-col eink-panel-wrapper flex-shrink-0 min-h-0 min-w-0 overflow-hidden"
-          style={{ width: catalogWidth }}
+          data-head-compact={headMinPx > 0 && headMinPx < 420 ? "1" : undefined}
+          data-head-anchor={headMinPx > 0 ? "1" : undefined}
+          style={
+            {
+              width: catalogWidth,
+              ...(headMinPx > 0
+                ? { "--catalog-head-min": `${headMinPx}px` }
+                : {}),
+            } as React.CSSProperties
+          }
         >
-          {/* Chrome header — search (row 1) + filter/sort (row 2) + dialogs. Full opacity. */}
-          <div className="catalog-list-panel__chrome">
-            <div className="catalog-list-panel__chrome-search">
-              <div className="catalog-search-wrap min-w-0">
-                <div className="catalog-search-field">
-                  <input
-                    ref={catalogSearchInputRef}
-                    type="text"
-                    placeholder="▶  SEARCH MODELS..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value.replace(/\//g, ""))}
-                    onKeyDown={(e) => {
-                      // `/` is the focus/open shortcut — never type into the query
-                      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                        e.preventDefault();
-                      }
-                    }}
-                    autoFocus
-                    className="catalog-search-input theme-input w-full text-xs font-mono rounded-sm"
-                  />
-                  <div className="catalog-search-field__rail">
-                    {renderKindCycler()}
-                    <span
-                      className="catalog-search-count"
-                      aria-hidden="true"
-                      title={`${catalogModels.length} shown / ${models.length} total`}
-                    >
-                      {catalogModels.length} / {models.length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Head — seats / favorites sit above a contextual search + sort toolbar.
+              The toolbar's bottom border is the seam shared with the VRAM glass. */}
+          <div className="catalog-list-panel__head">
+          {/* Quick access — HARNESS SEATS then FAVORITE (favorites below seats).
+              Seats stay hidden through first-run setup: they need models to seat. */}
+          <CatalogQuickStrip
+            models={models}
+            seats={catalogSeats}
+            activeSeatSet={activeSeatSet}
+            pins={catalogPins}
+            selectedPath={catalogSelectedModel?.path ?? null}
+            showSeats={!setupGuide.active}
+            onSelectPath={handleSelectPath}
+            onAssignSeat={(role) => handleAssignSeat(role)}
+            onClearSeat={handleClearSeat}
+            onSelectSeatSet={handleSelectSeatSet}
+            onTogglePinPath={handleTogglePinPath}
+          />
+
+          {(fileEditError || (renameOpen && editTarget) || fullConfirm || (deleteConfirmOpen && editTarget)) && (
+          <div className="catalog-list-panel__alerts">
             {fileEditError && (
               <p className="catalog-list-panel__chrome-msg type-micro font-mono cat-dng--soft break-all">
                 {fileEditError}
@@ -853,26 +1028,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               </div>
             )}
           </div>
+          )}
 
-          {/* Quick access — HARNESS SEATS then FAVORITE (favorites below seats).
-              Seats stay hidden through first-run setup: they need models to seat. */}
-          <CatalogQuickStrip
-            models={models}
-            seats={catalogSeats}
-            activeSeatSet={activeSeatSet}
-            pins={catalogPins}
-            selectedPath={catalogSelectedModel?.path ?? null}
-            showSeats={!setupGuide.active}
-            onSelectPath={handleSelectPath}
-            onAssignSeat={(role) => handleAssignSeat(role)}
-            onClearSeat={handleClearSeat}
-            onSelectSeatSet={handleSelectSeatSet}
-            onTogglePinPath={handleTogglePinPath}
-          />
-
-
-          {/* Filter/sort bar — above the card list (seats · favorites above it). */}
+          {/* Contextual list toolbar — search, sort and library tools. */}
           {renderToolsBar()}
+          </div>
+
           <div className="catalog-list-panel__body">
           <div
             ref={catalogScrollRef}

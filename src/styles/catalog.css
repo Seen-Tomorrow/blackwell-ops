@@ -106,43 +106,88 @@
 }
 
 /*
- * Catalog chrome header — industrial panel face (same stack as app header /
- * provider bar / bezel frame).
- * Row 1: search · Row 2: sort + MAIN/DRAFT/ALL
+ * Catalog head — quick access (seats + favorites) above one contextual list
+ * toolbar. The head's min-height is measured against the VRAM glass: the
+ * toolbar's bottom border lands on the glass bezel, and the quick strip is the
+ * flexible child that absorbs the difference so the two columns share a seam.
  */
-.catalog-list-panel__chrome {
+.catalog-list-panel__head {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: var(--catalog-head-min, 0px);
+  min-width: 0;
+  position: relative;
+}
+
+/* Anchored: the head is exactly the glass height, and quick access scrolls
+   inside it rather than pushing the search/sort bar past the bezel. */
+.catalog-list-panel[data-head-anchor="1"] .catalog-list-panel__head {
+  height: var(--catalog-head-min);
+  min-height: 0;
+}
+
+.catalog-list-panel__head > .catalog-quick-strip {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.catalog-list-panel__head > .catalog-quick-strip::-webkit-scrollbar {
+  width: 4px;
+}
+
+.catalog-list-panel__head > .catalog-quick-strip::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
+  border-radius: 2px;
+}
+
+/* Fewer pins / no favorites: centre the quick-access group instead of leaving
+   one dead band above the toolbar. Auto margins collapse when content is full. */
+.catalog-list-panel__head > .catalog-quick-strip > .catalog-quick-section:first-child {
+  margin-top: auto;
+}
+
+.catalog-list-panel__head > .catalog-quick-strip > .catalog-quick-section:last-child {
+  margin-bottom: auto;
+}
+
+.catalog-list-panel__head
+  > .catalog-quick-strip
+  > .catalog-quick-section:only-child {
+  margin-block: auto;
+}
+
+.catalog-list-panel__head > .catalog-list-panel__chrome-tools {
+  flex: 0 0 auto;
+}
+
+/* Inline rename / update / delete dialogs — overlay the list, never the anchor. */
+.catalog-list-panel__alerts {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 6;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex-shrink: 0;
-  padding: 8px 12px 8px;
-  position: relative;
-  z-index: 2;
-  isolation: isolate;
-  overflow: hidden;
-  /* Gunmetal industrial face — not flat panel-accent */
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent),
-    0 2px 10px color-mix(in srgb, var(--theme-panel) 45%, transparent);
-}
-
-.catalog-list-panel__chrome > * {
-  position: relative;
-  z-index: 1;
-}
-
-.catalog-list-panel__chrome-search {
+  padding: 8px 10px;
   min-width: 0;
-  width: 100%;
+  background: var(--theme-panel);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--fixed-black) 45%, transparent);
 }
 
-.catalog-list-panel__chrome-search .catalog-search-wrap {
+.catalog-list-panel__alerts .catalog-list-panel__chrome-msg {
+  margin: 0;
+}
+
+/* Search field — full-width input with a fused right rail:
+   kind cycler (MAIN/DRAFT/ALL) on top, model count below. */
+.catalog-list-panel__chrome-tools .catalog-search-wrap {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -151,13 +196,11 @@
   min-width: 0;
 }
 
-/* Search field — full-width input with a fused right rail:
-   kind cycler (MAIN/DRAFT/ALL) on top, model count below. */
-.catalog-list-panel__chrome-search .catalog-search-field {
+.catalog-list-panel__chrome-tools .catalog-search-field {
   position: relative;
   flex: 1 1 10rem;
   min-width: 0;
-  height: 38px;
+  height: 40px;
   display: block;
 }
 
@@ -205,13 +248,13 @@
   pointer-events: none;
 }
 
-.catalog-list-panel__chrome-search .catalog-search-input {
+.catalog-list-panel__chrome-tools .catalog-search-input {
   display: block;
   width: 100%;
   height: 100%;
   min-width: 0;
   padding: 0 3.95rem 0 0.75rem;
-  line-height: 36px;
+  line-height: 38px;
   box-sizing: border-box;
 }
 
@@ -238,9 +281,13 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   width: 100%;
+}
+
+.catalog-chrome-row--search {
+  align-items: stretch;
 }
 
 /* ── Alt-B: filter/sort bar — same gunmetal chrome as the search bar, flush full width ── */
@@ -414,14 +461,6 @@
 
 [data-model-catalog] .catalog-list-panel .gunmetal-card {
   filter: saturate(1.35) brightness(1.04);
-}
-
-/* Override any flat transparent wipe so industrial face sticks */
-[data-model-catalog] .catalog-list-panel__chrome {
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
 }
 
 [data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
@@ -844,16 +883,70 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 8px 8px 10px;
+  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 55%, transparent);
+}
+
+/*
+ * CTX docked inside the cockpit lifts the VRAM glass. The head gives back a
+ * little air instead of hanging the sort bar below the bezel: seats tighten one
+ * notch and FAVORITE becomes a horizontal quick strip (scrolls past two chips).
+ */
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-strip {
   gap: 6px;
   padding: 6px 6px 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle, var(--theme-border)) 70%, transparent);
-  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 55%, transparent);
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__head {
+  min-height: 1.15rem;
+  padding-bottom: 3px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__head--seats {
+  padding-bottom: 4px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat {
+  min-height: 58px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat__main {
+  gap: 2px;
+  padding: 4px 4px 4px 8px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat__actions {
+  bottom: 3px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__actions-row {
+  padding-top: 0;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-section__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-chip {
+  min-height: 28px;
+  padding: 2px 16px 2px 6px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-chip__meta {
+  display: none;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-section__head {
+  padding-bottom: 2px;
 }
 
 /* Twin seats + optional Σ footer in one frame */
 .catalog-quick-seat-bank {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   min-width: 0;
   border-radius: 5px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
@@ -1068,19 +1161,11 @@
   }
 }
 
+/* Seats stack full width: a 394px rail never had room for two readable cards. */
 .catalog-quick-strip__seats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-}
-
-.catalog-quick-strip__seats--editing {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* SOLO launches the BRAIN seat alone — one full-width seat, no split seam. */
-.catalog-quick-strip__seats--solo {
-  grid-template-columns: minmax(0, 1fr);
 }
 
 /* Seat cell inside bank — face only; bank owns the outer frame */
@@ -1089,14 +1174,14 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 42px;
+  min-height: 70px;
   overflow: hidden;
   isolation: isolate;
   background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
 }
 
 .catalog-quick-seat + .catalog-quick-seat {
-  border-left: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
 }
 
 .catalog-quick-seat--brain.catalog-quick-seat--filled {
@@ -1139,112 +1224,91 @@
     0 0 16px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 26%, transparent);
 }
 
-/* Per-seat VRAM strip — VramBadge VRAM-total label tokens */
-.catalog-quick-seat__mem {
+/* Seat top line: role on the left, learned footprint / state on the right. */
+.catalog-quick-seat__top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.catalog-quick-seat__state {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-radius: 2px;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat--filled .catalog-quick-seat__state {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+}
+
+/* Σ total — one compact readout in the launch footer, always whole. */
+.catalog-quick-section__sum {
+  flex: 1 1 auto;
   display: flex;
   align-items: baseline;
   justify-content: center;
   gap: 4px;
   min-width: 0;
-  padding: 3px 6px;
+  padding: 0 2px;
+  overflow: hidden;
+  white-space: nowrap;
   font-family: ui-monospace, "JetBrains Mono", monospace;
+  line-height: 1.2;
+}
+
+.catalog-quick-section__sum-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  min-width: 0;
+}
+
+.catalog-quick-section__sum-sigma {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-size: var(--type-body);
+  font-weight: 800;
+  opacity: 0.9;
+}
+
+.catalog-quick-section__sum-val {
+  color: var(--theme-text);
   font-size: var(--type-body);
   font-weight: 700;
-  letter-spacing: 0.03em;
-  line-height: 1.2;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
-}
-
-.catalog-quick-seat__mem--vram {
-  color: var(--display-face-fc-label-fg, var(--display-face-text));
-  background: var(
-    --display-face-fc-label-bg,
-    color-mix(in srgb, var(--theme-accent) 16%, transparent)
-  );
-}
-
-.catalog-quick-seat__mem-val {
   font-variant-numeric: tabular-nums;
 }
 
-.catalog-quick-seat__mem-unit,
-.catalog-quick-mem__unit {
+.catalog-quick-section__sum-unit {
+  color: var(--theme-text-muted);
   font-size: var(--type-micro);
   font-weight: 600;
   letter-spacing: 0.06em;
-  opacity: 0.78;
-  text-transform: uppercase;
+  opacity: 0.85;
 }
 
-/* Σ footer — 50:50 VRAM | RAM, same wells as VramBadge totals */
-.catalog-quick-mem--combo {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: stretch;
-  min-width: 0;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  font-family: ui-monospace, "JetBrains Mono", monospace;
-}
-
-.catalog-quick-mem__cell {
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 6px 8px;
-  font-size: var(--type-md);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  line-height: 1.15;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.catalog-quick-mem__cell + .catalog-quick-mem__cell {
-  border-left: 1px solid var(
-    --display-face-fc-label-border,
-    color-mix(in srgb, var(--theme-accent) 28%, transparent)
-  );
-}
-
-.catalog-quick-mem__cell--vram {
-  color: var(--display-face-fc-label-fg, var(--display-face-text));
-  background: var(
-    --display-face-fc-label-bg,
-    color-mix(in srgb, var(--theme-accent) 16%, transparent)
-  );
-}
-
-.catalog-quick-mem__cell--ram {
-  color: var(--display-face-fc-label-ram-fg);
-  background: var(
-    --display-face-fc-label-ram-bg,
-    var(--fixed-blue-400-a14)
-  );
-  border-left-color: var(
-    --display-face-fc-label-ram-border,
-    var(--fixed-blue-400-a3)
-  );
-}
-
-.catalog-quick-mem__sigma {
-  flex: 0 0 auto;
-  font-size: 0.92em;
-  font-weight: 800;
-  opacity: 0.88;
-  letter-spacing: 0;
-}
-
-.catalog-quick-mem__val {
-  font-variant-numeric: tabular-nums;
+.catalog-quick-section__sum-sep {
+  color: var(--theme-text-muted);
+  font-size: var(--type-micro);
+  letter-spacing: -0.04em;
+  opacity: 0.65;
 }
 
 .catalog-quick-seat__body {
+  position: relative;
   flex: 1 1 auto;
-  display: flex;
-  align-items: stretch;
+  display: block;
+  width: 100%;
   min-height: 0;
 }
 
@@ -1257,14 +1321,14 @@
 }
 
 .catalog-quick-seat__main {
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 2px;
-  padding: 6px 8px;
+  gap: 3px;
+  padding: 7px 10px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -1274,6 +1338,7 @@
 }
 
 .catalog-quick-seat__role {
+  flex: 0 0 auto;
   font-family: ui-monospace, monospace;
   font-size: var(--type-label);
   letter-spacing: 0.14em;
@@ -1293,11 +1358,28 @@
   white-space: nowrap;
 }
 
+.catalog-quick-seat__sub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* The action strip overlays the last line, so the name above it keeps full width. */
+.catalog-quick-seat--filled .catalog-quick-seat__sub {
+  padding-right: 128px;
+}
+
 .catalog-quick-seat__quant {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  border-radius: 2px;
   font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  line-height: 1.1;
-  letter-spacing: 0.04em;
+  font-size: var(--type-hairline);
+  line-height: 1.2;
+  letter-spacing: 0.06em;
   color: var(--theme-text-muted);
   max-width: 100%;
   overflow: hidden;
@@ -1305,11 +1387,53 @@
   white-space: nowrap;
 }
 
-.catalog-quick-seat--empty .catalog-quick-seat__name {
+.catalog-quick-seat__size {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.03em;
   color: var(--theme-text-muted);
-  opacity: 0.7;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat__hint {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  line-height: 1.2;
+  color: var(--theme-text-muted);
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__name {
+  color: var(--theme-text);
+  opacity: 0.8;
   font-size: var(--type-body);
   font-weight: 500;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__name::before {
+  content: "+";
+  margin-right: 5px;
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-weight: 700;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__role {
+  color: var(--theme-text);
+  opacity: 0.85;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__hint {
+  color: var(--theme-text-muted);
+  opacity: 0.95;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__main:hover .catalog-quick-seat__name,
+.catalog-quick-seat--empty .catalog-quick-seat__main:hover .catalog-quick-seat__hint {
+  color: var(--theme-text);
 }
 
 .catalog-quick-seat--editing .catalog-quick-seat__role {
@@ -1317,28 +1441,32 @@
 }
 
 .catalog-quick-seat--editing .catalog-quick-seat__name {
-  font-size: 13px;
+  font-size: var(--type-md);
 }
 
 .catalog-quick-seat__actions {
-  flex: 0 0 auto;
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
   z-index: 2;
 }
 
 .catalog-quick-seat__btn {
   margin: 0;
-  padding: 0 7px;
-  border: 0;
-  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 60%, transparent);
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
   background: transparent;
   color: var(--theme-text-muted);
   font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.06em;
-  line-height: 1;
+  line-height: 1.2;
   cursor: pointer;
   text-transform: uppercase;
   white-space: nowrap;
@@ -1346,19 +1474,9 @@
 
 .catalog-quick-seat__btn:hover {
   color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 70%, transparent);
   background: color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
-
-/* R / E / X / Y / N — shared glyph tile; clear + no are danger text only */
-.catalog-quick-seat__btn--replace,
-.catalog-quick-seat__btn--edit,
-.catalog-quick-seat__btn--clear,
-.catalog-quick-seat__btn--yes,
-.catalog-quick-seat__btn--no {display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 0 8px; font-size: var(--type-md); font-weight: 800; letter-spacing: 0}
-
-.catalog-quick-seat__btn--replace:hover,
-.catalog-quick-seat__btn--edit:hover,
-.catalog-quick-seat__btn--yes:hover {}
 
 .catalog-quick-seat__btn--clear,
 .catalog-quick-seat__btn--no {
@@ -1368,6 +1486,7 @@
 .catalog-quick-seat__btn--clear:hover,
 .catalog-quick-seat__btn--no:hover {
   color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
   background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
 }
 
@@ -1376,6 +1495,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  border-color: color-mix(in srgb, var(--theme-text) 30%, transparent);
   background: color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
@@ -1464,8 +1584,8 @@
 }
 
 .catalog-quick-section--seats-collapsed .catalog-quick-section__sets,
-.catalog-quick-section--seats-collapsed .catalog-quick-section__head-row--actions,
-.catalog-quick-section--seats-collapsed .catalog-quick-seat-bank {
+.catalog-quick-section--seats-collapsed .catalog-quick-seat-bank,
+.catalog-quick-section--seats-collapsed .catalog-quick-section__actions-row {
   display: none;
 }
 
@@ -1623,6 +1743,7 @@
 .catalog-quick-section {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 5px;
   min-width: 0;
 }
@@ -1644,37 +1765,28 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
-  min-height: 1.15rem;
-  padding: 3px 10px;
+  min-height: 1.35rem;
+  padding: 0 3px 5px;
   isolation: isolate;
-  overflow: hidden;
-  border-radius: 2px;
-  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 50%, var(--theme-border));
-  background-color: var(--theme-industrial-bg);
-  background-image:
-    var(--theme-industrial-texture-active),
-    var(--theme-industrial-face-gradient, none);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 45%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 40%, transparent);
+  border: 0;
+  border-bottom: 1px solid color-mix(
+    in srgb,
+    var(--theme-border-subtle, var(--theme-border)) 55%,
+    transparent
+  );
+  background: none;
+  box-shadow: none;
 }
 
-.catalog-quick-section__head > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* Seats: label row + left-aligned actions row */
 .catalog-quick-section__head--seats {
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 4px;
-  padding: 4px 6px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 3px 6px;
   overflow: visible;
   min-height: 0;
 }
@@ -1683,19 +1795,23 @@
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 6px;
   min-width: 0;
-  min-height: 1.575rem;
-  padding: 0 2.6rem;
+  min-height: 1.55rem;
+  padding: 0 2.4rem 0 0;
+  flex: 1 1 auto;
 }
 
 .catalog-quick-section__title-cluster {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
+  justify-content: flex-start;
+  gap: 6px;
   min-width: 0;
   max-width: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .catalog-quick-section__help {
@@ -1722,21 +1838,25 @@
   background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
 }
 
-.catalog-quick-section__head-row--actions {
+/* Launch row — its own footer under the seat bank, not a second header row. */
+.catalog-quick-section__actions-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  gap: 8px;
   min-width: 0;
+  padding: 2px 3px 0;
 }
 
-.catalog-quick-section__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  width: 100%;
-  max-width: 100%;
+.catalog-quick-section__head--pins {
+  justify-content: space-between;
+}
+
+.catalog-quick-section__star {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-size: var(--type-body);
+  line-height: 1;
+  transform: translateY(-0.02em);
 }
 
 /* Mode + launch sit far left; HARNESS CONNECT keeps the far right.
@@ -1746,18 +1866,17 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  margin-right: auto;
+  flex: 0 0 auto;
 }
 
 .catalog-quick-section__sets {
-  position: absolute;
-  left: 2px;
-  top: 50%;
-  transform: translateY(-50%);
+  position: static;
+  transform: none;
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
+  flex: 0 0 auto;
 }
 
 .catalog-quick-set-btn {
@@ -1790,11 +1909,14 @@
 }
 
 .catalog-quick-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: ui-monospace, monospace;
   font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.2em;
-  text-align: center;
+  text-align: left;
   color: var(--theme-industrial-text, var(--theme-text-muted));
   /* Two-tone label bevel via per-theme token (see app-themes.ts). Zero blur, so it is a
      crisp edge, never a blurred ghost. Dark themes resolve to none; ARCTIC gets a
@@ -1862,29 +1984,30 @@
   cursor: not-allowed;
 }
 
-/* Mode + launch share one control size so the pair reads as a unit. */
+/* Mode + launch share one control size and one amber treatment, so the pair reads as a unit. */
 .catalog-quick-section__action--mode,
 .catalog-quick-section__action--launch {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1px 7px;
-  font-size: var(--type-md);
-  text-align: center;
-}
-
-/* Launch seats — the attention amber that used to live on the disclosure tile. */
-.catalog-quick-section__action--launch {
   min-width: 1.4rem;
+  padding: 1px 7px;
   border-color: color-mix(in srgb, var(--theme-provider-pill-border) 55%, transparent);
   background: color-mix(in srgb, var(--theme-provider-pill-bg) 75%, transparent);
   color: var(--theme-provider-pill-text);
+  font-size: var(--type-md);
+  text-align: center;
 }
 
 .catalog-quick-section__action--mode {
   letter-spacing: 0.08em;
 }
 
+.catalog-quick-section__action--connect {
+  margin-left: auto;
+}
+
+.catalog-quick-section__action--mode:hover:not(:disabled),
 .catalog-quick-section__action--launch:hover:not(:disabled) {
   color: var(--theme-provider-pill-hover-text);
   border-color: var(--theme-provider-pill-hover-border);
@@ -1893,8 +2016,8 @@
 
 .catalog-quick-section__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.4rem, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
   min-width: 0;
   align-items: stretch;
 }
@@ -1907,11 +2030,11 @@
   justify-content: flex-start;
   gap: 6px;
   min-width: 0;
-  min-height: 1.65rem;
+  min-height: 46px;
   margin: 0;
   /* Right gutter reserves room for the corner unpin star. */
-  padding: 2px 17px 2px 6px;
-  border-radius: 3px;
+  padding: 5px 18px 5px 8px;
+  border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
   color: var(--theme-text-muted);
@@ -1919,11 +2042,35 @@
   text-align: left;
 }
 
+.catalog-quick-chip__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.catalog-quick-chip__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.catalog-quick-chip__size {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.02em;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
 /* Filled star in the chip corner — click to unpin without hunting the catalog. */
 .catalog-quick-chip__unpin {
   position: absolute;
-  top: 1px;
-  right: 2px;
+  top: 4px;
+  right: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1933,9 +2080,15 @@
   border: 0;
   background: transparent;
   color: var(--theme-accent-bright, var(--theme-accent));
-  font-size: var(--type-body);
+  font-size: var(--type-tiny);
   line-height: 1;
+  opacity: 0.7;
   cursor: pointer;
+}
+
+.catalog-quick-chip:hover .catalog-quick-chip__unpin,
+.catalog-quick-chip__unpin:hover {
+  opacity: 1;
 }
 
 .catalog-quick-chip__unpin:hover {
@@ -2445,6 +2598,8 @@
 }
 
 .catalog-list-rows .catalog-list-card-wrap {
+  /* Keep the list's top padding when a favorite/pin is scrolled to the seam. */
+  scroll-margin-top: 0.75rem;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 32%, transparent);
 }
 
