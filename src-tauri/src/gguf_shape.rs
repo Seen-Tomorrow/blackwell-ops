@@ -17,7 +17,7 @@ use crate::gguf_patch;
 
 /// Header-only facts about a GGUF file, read from the tensor-info table.
 /// No tensor data touched, no engine spawned.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GgufShape {
     /// Architecture name (e.g. "qwen35", "dflash", "dflash-draft").
     #[serde(default)]
@@ -62,6 +62,27 @@ pub struct GgufShape {
     /// marks it `TENSOR_READ_LAZY`: it lives on the host by design, never in VRAM.
     #[serde(default, rename = "lookupTableBytes")]
     pub lookup_table_bytes: u64,
+    /// Dims of the lookup table tensor. This is the table's **identity across
+    /// precisions and publishers**: DeepSeek-V4.1 ships 256 x 768,022,850 at IQ4_NL,
+    /// Q5_K, Q6_K and MXFP8, and Qwen3.8-Flash-Next ships 160 x 320,001,536 at four
+    /// other precisions — same geometry, different quant.
+    #[serde(default, rename = "lookupDims", skip_serializing_if = "Option::is_none")]
+    pub lookup_dims: Option<Vec<u64>>,
+    /// `general.type` when the file declares one (`model`, `mmproj`, `adapter`).
+    /// Absent on PLE/Engram tables and on some converter output — never required.
+    #[serde(default, rename = "generalType", skip_serializing_if = "Option::is_none")]
+    pub general_type: Option<String>,
+    /// `split.no` — this file's 0-based index inside a sharded set.
+    #[serde(default, rename = "splitNo", skip_serializing_if = "Option::is_none")]
+    pub split_no: Option<u32>,
+    /// `split.count` — how many files the set declares. Authoritative over the
+    /// `-0000i-of-0000N` filename, which is what the old completeness check read.
+    #[serde(default, rename = "splitCount", skip_serializing_if = "Option::is_none")]
+    pub split_count: Option<u32>,
+    /// `split.tensors.count` — tensors across the whole set. A set is complete when
+    /// the registered tensors match this, which survives renamed/renumbered shards.
+    #[serde(default, rename = "tensorsDeclared", skip_serializing_if = "Option::is_none")]
+    pub tensors_declared: Option<u64>,
     /// Author sampler recommendation from `general.sampling.*`, when the file has one.
     /// Read in-process so the M DEFAULTS preset never depends on the catalog scan.
     #[serde(default, rename = "samplingTemp")]
@@ -191,6 +212,24 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
                     .is_some_and(|a| a != architecture)
         });
 
+    // Split bookkeeping: the file's own statement of where it belongs. Present on
+    // metadata-only shards AND on a standalone PLE/Engram table (which declares
+    // `split.no` = its slot in the set it was cut from), absent on single-file models
+    // and on drafts/projectors. Filenames are not consulted — see `shard_sets`.
+    let int_kv = |key: &str| match facts.kv_all.get(key) {
+        Some(gguf_patch::KvValue::Int(n)) if *n >= 0 => Some(*n as u64),
+        _ => None,
+    };
+    let general_type = match facts.kv_all.get("general.type") {
+        Some(gguf_patch::KvValue::Str(s)) if !s.trim().is_empty() => Some(s.clone()),
+        _ => None,
+    };
+    let lookup_dims = facts
+        .tensors
+        .iter()
+        .find(|t| t.name.contains(LOOKUP_TABLE_TENSOR))
+        .map(|t| t.dims.clone());
+
     GgufShape {
         architecture,
         block_count,
@@ -209,6 +248,11 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
             .filter(|t| t.name.contains(LOOKUP_TABLE_TENSOR))
             .map(tensor_bytes)
             .sum(),
+        lookup_dims,
+        general_type,
+        split_no: int_kv("split.no").map(|n| n as u32),
+        split_count: int_kv("split.count").map(|n| n as u32),
+        tensors_declared: int_kv("split.tensors.count"),
         sampling_temp: facts.sampling_temp,
         sampling_top_p: facts.sampling_top_p,
         sampling_top_k: facts.sampling_top_k,
@@ -282,6 +326,13 @@ fn merge_into(base: &mut GgufShape, split: GgufShape) {
     base.lookup_table_bytes = base
         .lookup_table_bytes
         .saturating_add(split.lookup_table_bytes);
+    // Split bookkeeping describes the SET, not one file: a metadata-only shard carries
+    // it and the data shards repeat it. Keep the first non-empty answer.
+    base.general_type = base.general_type.take().or(split.general_type);
+    base.split_no = base.split_no.or(split.split_no);
+    base.split_count = base.split_count.or(split.split_count);
+    base.tensors_declared = base.tensors_declared.or(split.tensors_declared);
+    base.lookup_dims = base.lookup_dims.take().or(split.lookup_dims);
     // Sampling KVs are declared once (first shard); keep the first shard that has them.
     base.sampling_temp = base.sampling_temp.or(split.sampling_temp);
     base.sampling_top_p = base.sampling_top_p.or(split.sampling_top_p);
@@ -697,6 +748,7 @@ pub(crate) mod tests {
             sampling_top_p: None,
             sampling_top_k: None,
             sampling_min_p: None,
+            ..Default::default()
         };
         let json = serde_json::to_string(&shape).expect("serialize");
         for key in [

@@ -249,6 +249,15 @@ pub fn build_fit_command_base(
         model_path.into(),
     ];
 
+    // A set whose tail is a separately published PLE/Engram table cannot load without
+    // it — `llama-fit-params` shares llama.cpp's common args, so `--ple` applies here
+    // exactly as it does at launch. Without this the probe dies on
+    // "failed to load model" and the memory glass has nothing to show.
+    let externals = crate::shard_sets::launch_externals(model_path);
+    if !externals.is_empty() {
+        args.extend(["--ple".into(), externals.join(",")]);
+    }
+
     if use_fit_print {
         // Direct memory estimate to stdout — avoids the fitting path that can exit 1
         // (e.g. tensor split) before any breakdown is printed.

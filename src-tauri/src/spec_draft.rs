@@ -587,6 +587,7 @@ mod tests {
             sampling_top_p: None,
             sampling_top_k: None,
             sampling_min_p: None,
+            ..Default::default()
         };
         let path = r"C:\models\DFlash\Qwen3.6-27B\Qwen3.6-27B-UD-Q4_K_XL.gguf";
         let (role, facts) = classify_draft_role(Some(&shape), path, "", None, None);
@@ -648,6 +649,7 @@ mod tests {
             sampling_top_p: None,
             sampling_top_k: None,
             sampling_min_p: None,
+            ..Default::default()
         };
         let (role, facts) = classify_draft_role(
             Some(&shape),
@@ -691,6 +693,7 @@ mod tests {
             sampling_top_p: None,
             sampling_top_k: None,
             sampling_min_p: None,
+            ..Default::default()
         };
         let (role, facts) = classify_draft_role(
             Some(&full_stack),

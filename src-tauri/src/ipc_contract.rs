@@ -161,6 +161,7 @@ ipc_registry! {
     "GgufFile" => crate::types::GgufFile,
     "GgufShard" => crate::types::GgufShard,
     "CatalogScanReport" => crate::types::CatalogScanReport,
+    "ExtraFileEntry" => crate::types::ExtraFileEntry,
     "CatalogUpdateEntry" => crate::types::CatalogUpdateEntry,
     "ModelPathEntry" => crate::types::ModelPathEntry,
     "ModelPathScan" => crate::types::ModelPathScan,

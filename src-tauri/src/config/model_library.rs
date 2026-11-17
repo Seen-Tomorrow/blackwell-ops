@@ -483,6 +483,19 @@ pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
         .collect()
 }
 
+/// Resolved extras roots — the shared store for drafts, projectors and PLE tables.
+pub fn get_extras_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
+    config
+        .extras_paths
+        .iter()
+        .map(|p| ModelPathEntry {
+            path: resolve_stored_model_path(&p.path),
+            label: p.label.clone(),
+            is_default: false,
+        })
+        .collect()
+}
+
 pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String>) {
     let resolved = resolve_stored_model_path(&path);
     if resolved.is_empty() || find_model_path_index(&config.model_paths, &resolved).is_some() {

@@ -152,6 +152,31 @@ pub struct ModelEntry {
     /// Path/name-derived draft role — set at catalog merge, works without GGUF scan.
     #[serde(default, rename = "draftRoleHint")]
     pub draft_role_hint: String,
+    /// The model itself supports image input — from header/HF tags, not from whether a
+    /// projector happens to sit beside it. `vision` stays "a projector is on disk";
+    /// this is "this model could use one", which is what the catalog badge means now
+    /// that projectors can live in the shared extras store.
+    #[serde(default, rename = "visionCapable")]
+    pub vision_capable: bool,
+    /// File-level role from the header classifier (`model`, `draft`, `ple`, `mmproj`).
+    #[serde(default, rename = "fileRole")]
+    pub file_role: String,
+    /// Which evidence decided the role (`header_type`, `tensor_signature`, …).
+    #[serde(default, rename = "roleEvidence")]
+    pub role_evidence: String,
+    /// Shard-set state: `complete`, `external` (a file outside the folder fills a
+    /// missing index) or `incomplete`.
+    #[serde(default)]
+    pub completeness: String,
+    /// `split.count` the set declares (1 for a single file).
+    #[serde(default, rename = "declaredShards")]
+    pub declared_shards: u32,
+    /// Shard indices with no file anywhere — the set cannot launch.
+    #[serde(default, rename = "missingShards")]
+    pub missing_shards: Vec<u32>,
+    /// Files outside the model folder that complete the set. Passed to `--ple`/`--shard`.
+    #[serde(default, rename = "externalShards")]
+    pub external_shards: Vec<String>,
 }
 
 /// Duplicate model found across multiple configured paths during catalog merge.
@@ -1023,6 +1048,39 @@ pub struct CatalogScanReport {
     pub models: Vec<ModelEntry>,
     /// One entry per configured model path, in configuration order.
     pub paths: Vec<ModelPathScan>,
+    /// Attachment files discovered in the extras roots — drafts, vision projectors and
+    /// PLE/Engram tables. Never model rows; offered to the models that need them.
+    #[serde(default)]
+    pub extras: Vec<ExtraFileEntry>,
+}
+
+/// One attachment GGUF found in an extras root or beside a model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtraFileEntry {
+    pub path: String,
+    #[serde(rename = "fileName")]
+    pub file_name: String,
+    /// `draft` / `ple` / `mmproj` / `adapter` / `unknown`.
+    pub role: String,
+    /// Which evidence decided the role.
+    #[serde(rename = "roleEvidence")]
+    pub role_evidence: String,
+    #[serde(rename = "sizeBytes")]
+    pub size_bytes: u64,
+    #[serde(rename = "sizeStr")]
+    pub size_str: String,
+    /// Lookup-table geometry — the identity of a PLE/Engram table across precisions.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "lookupDims")]
+    pub lookup_dims: Option<Vec<u64>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "splitNo")]
+    pub split_no: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "splitCount")]
+    pub split_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "tensorsDeclared")]
+    pub tensors_declared: Option<u64>,
+    /// Configured extras root this came from (empty when found beside a model).
+    #[serde(default, rename = "rootLabel")]
+    pub root_label: String,
 }
 
 /// Response from search_hf_models IPC command.

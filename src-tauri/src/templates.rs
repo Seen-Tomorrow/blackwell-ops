@@ -549,6 +549,19 @@ impl ProviderTemplate {
             args.extend([flag.clone(), config.model_path.clone()]);
         }
 
+        // External shard tail (PLE/Engram) that the catalog paired to this model: the
+        // set on disk is deliberately short one `split.no`, and `--ple`/`--shard` is how
+        // llama.cpp is told where that index lives. llama.cpp-style providers only —
+        // the flag pair is `-m`, which the spawn profile already proved.
+        if sp.model_flag.first().map(|f| f == "-m").unwrap_or(false)
+            && !args.iter().any(|a| a == "--ple" || a == "--shard")
+        {
+            let externals = crate::shard_sets::launch_externals(&config.model_path);
+            if !externals.is_empty() {
+                args.extend(["--ple".to_string(), externals.join(",")]);
+            }
+        }
+
         // Companion mmproj file — inject right after model for clean CMD readability
         let vision_param = user_params.iter().find(|p| p.key == "vision");
         if let Some(vp) = vision_param {

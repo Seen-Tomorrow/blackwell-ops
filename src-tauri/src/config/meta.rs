@@ -11,6 +11,11 @@ fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 pub struct AppConfig {
     #[serde(default)]
     pub model_paths: Vec<ModelPathEntry>,
+    /// Folders holding shared attachment GGUFs — drafts, vision projectors and
+    /// PLE/Engram tables. Scanned like model paths, but their files never become
+    /// model rows; they are offered to models that need them.
+    #[serde(default)]
+    pub extras_paths: Vec<ModelPathEntry>,
     /// HuggingFace API token — stored in app_config.json. Empty string if not set.
     #[serde(default)]
     pub hf_token: String,
@@ -29,6 +34,7 @@ impl Default for AppConfig {
         let entry = default_model_path_entry();
         Self {
             model_paths: vec![entry.clone()],
+            extras_paths: Vec::new(),
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(entry.path),

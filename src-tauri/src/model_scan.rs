@@ -89,6 +89,9 @@ pub async fn scan_model_metadata_cmd(
         hf_id.as_deref(),
         None,
     );
+    let role_verdict = crate::file_role::classify(shape.as_ref(), &draft_role_hint, &model_path);
+    let vision_capable =
+        crate::model_catalog::tags_claim_vision(&metadata.general_tags);
     Ok(crate::types::ModelEntry {
         path: model_path,
         author: "unknown".to_string(),
@@ -105,6 +108,13 @@ pub async fn scan_model_metadata_cmd(
         hf_meta: hf_meta_for_entry,
         hf_model_id: hf_id,
         draft_role_hint,
+        vision_capable,
+        file_role: role_verdict.role.as_str().to_string(),
+        role_evidence: role_verdict.evidence.as_str().to_string(),
+        completeness: "complete".to_string(),
+        declared_shards: 1,
+        missing_shards: Vec::new(),
+        external_shards: Vec::new(),
     })
 }
 

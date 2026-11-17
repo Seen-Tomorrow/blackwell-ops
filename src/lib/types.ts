@@ -17,8 +17,43 @@ export interface ModelEntry {
   hfModelId?: string;
   /** Path/name-derived draft role from catalog scan — works without GGUF metadata. */
   draftRoleHint?: string;
+  /**
+   * The model itself accepts image input (header/HF tags). Independent of whether a
+   * projector is on disk — projectors can live in the shared extras store.
+   */
+  visionCapable?: boolean;
   /** Header-only GGUF facts from the tensor-info walk. Absent means "not scanned yet". */
   ggufShape?: GgufShape;
+  /** File-level role from the header classifier: `model` / `draft` / `ple` / `mmproj` / `adapter` / `unknown`. */
+  fileRole?: string;
+  /** Which evidence decided `fileRole` (`header_type`, `tensor_signature`, `filename`, …). */
+  roleEvidence?: string;
+  /** Shard-set state: `complete`, `external` (a file outside the folder fills a gap) or `incomplete`. */
+  completeness?: "complete" | "external" | "incomplete";
+  /** `split.count` the set declares (1 for a single file). */
+  declaredShards?: number;
+  /** Shard indices with no file anywhere — the set cannot launch. */
+  missingShards?: number[];
+  /** Files outside the model folder that complete the set; passed to `--ple` at launch. */
+  externalShards?: string[];
+}
+
+/** An attachment GGUF (draft head, vision projector, PLE/Engram table) from an extras root. */
+export interface ExtraFileEntry {
+  path: string;
+  fileName: string;
+  /** `draft` / `ple` / `mmproj` / `adapter` / `unknown`. */
+  role: string;
+  roleEvidence?: string;
+  sizeBytes: number;
+  sizeStr: string;
+  /** Lookup-table geometry — identity of a PLE/Engram table across precisions. */
+  lookupDims?: number[];
+  splitNo?: number;
+  splitCount?: number;
+  tensorsDeclared?: number;
+  /** Configured extras root this came from. */
+  rootLabel?: string;
 }
 
 export interface ModelPathEntry {
@@ -63,6 +98,8 @@ export interface CatalogScanReport {
   models: ModelEntry[];
   /** One entry per configured model path, in configuration order. */
   paths: ModelPathScan[];
+  /** Attachment GGUFs from extras roots — never model rows. */
+  extras?: ExtraFileEntry[];
 }
 
 export interface SecretStatus {

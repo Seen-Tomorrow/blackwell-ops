@@ -586,6 +586,7 @@ mod tests {
             sampling_top_p: None,
             sampling_top_k: None,
             sampling_min_p: None,
+            ..Default::default()
         };
 
         // Fresh mtime → the entry survives, both halves present.

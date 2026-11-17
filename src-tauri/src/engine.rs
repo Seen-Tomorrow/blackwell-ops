@@ -336,6 +336,7 @@ pub async fn list_models(
         return Ok(crate::types::CatalogScanReport {
             models: Vec::new(),
             paths: Vec::new(),
+            extras: Vec::new(),
         });
     }
 
@@ -407,9 +408,82 @@ pub async fn list_models(
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
 
+    // ── Shard-set completeness + attachment pool ─────────────────────────
+    // Header-derived, filename-independent: a set is complete when every declared
+    // `split.no` is present; a PLE/Engram table found elsewhere can fill the tail and
+    // is handed to the engine as `--ple`. Attachment files leave the model grid.
+    let extras_paths = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        crate::config::get_extras_paths(&cfg)
+    };
+    let (entries, extras) = tokio::task::spawn_blocking(move || {
+        let resolution = crate::shard_sets::resolve_catalog(&entries, &extras_paths);
+        let mut models: Vec<crate::types::ModelEntry> = Vec::new();
+        let mut extras: Vec<crate::types::ExtraFileEntry> = resolution.extras.clone();
+        let mut seen: std::collections::HashSet<String> = extras
+            .iter()
+            .map(|e| crate::shard_sets::normalize_key(&e.path))
+            .collect();
+        let mut with_external = 0usize;
+        let mut incomplete = 0usize;
+        for mut entry in entries {
+            let key = crate::shard_sets::normalize_key(&entry.path);
+            if let Some(status) = resolution.statuses.get(&key) {
+                entry.completeness = status.completeness.as_str().to_string();
+                entry.declared_shards = status.declared;
+                entry.missing_shards = status.missing.clone();
+                entry.external_shards = status.external.clone();
+                match status.completeness {
+                    crate::shard_sets::Completeness::External => {
+                        with_external += 1;
+                        log::info!(
+                            "[list_models] '{}' completes with an external tail: --ple {}",
+                            entry.name,
+                            status.shard_arg().unwrap_or_default()
+                        );
+                    }
+                    crate::shard_sets::Completeness::Incomplete => {
+                        incomplete += 1;
+                        log::debug!(
+                            "[list_models] '{}' cannot launch: missing shard(s) {:?} of {}",
+                            entry.name,
+                            status.missing,
+                            status.declared
+                        );
+                    }
+                    crate::shard_sets::Completeness::Complete => {}
+                }
+                debug_assert_eq!(
+                    status.is_launchable(),
+                    status.missing.is_empty(),
+                    "launchable must mean every declared shard index is covered"
+                );
+            }
+            if crate::shard_sets::is_attachment_role(&entry.file_role) {
+                if seen.insert(key) {
+                    extras.push(crate::shard_sets::extra_entry_from_model(&entry));
+                }
+                continue;
+            }
+            models.push(entry);
+        }
+        if with_external > 0 || incomplete > 0 {
+            log::info!(
+                "[list_models] shard sets: {} complete via an external table, {} incomplete",
+                with_external,
+                incomplete
+            );
+        }
+        crate::shard_sets::persist_pairs(&models, &resolution);
+        (models, extras)
+    })
+    .await
+    .map_err(|e| format!("shard resolution task failed: {}", e))?;
+
     Ok(crate::types::CatalogScanReport {
         models: entries,
         paths: path_scans,
+        extras,
     })
 }
 

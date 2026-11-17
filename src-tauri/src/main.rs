@@ -50,6 +50,8 @@ mod gguf_shape;
 mod model_cache;
 mod download_manager;
 mod model_catalog;
+mod file_role;
+mod shard_sets;
 mod spec_draft;
 mod engine_utils;
 mod engine_deps;

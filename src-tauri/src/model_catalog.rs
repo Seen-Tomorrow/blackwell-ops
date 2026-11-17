@@ -21,14 +21,6 @@ fn has_gguf_ext(name: &str) -> bool {
     name.len() >= 5 && name[name.len() - 5..].eq_ignore_ascii_case(".gguf")
 }
 
-/// Drop shard sets whose file count does not match what the name declares.
-/// Returns how many entries were dropped.
-fn drop_incomplete_shard_sets(entries: &mut Vec<ModelEntryInternal>) -> usize {
-    let before = entries.len();
-    entries.retain(|entry| !is_incomplete_shard_entry(entry));
-    before.saturating_sub(entries.len())
-}
-
 /// Drop entries that belong to an in-progress download. Returns how many were dropped.
 fn drop_in_progress_downloads(
     entries: &mut Vec<ModelEntryInternal>,
@@ -46,6 +38,19 @@ fn drop_in_progress_downloads(
         !ex.shard_groups.contains(&group)
     });
     before.saturating_sub(entries.len())
+}
+
+/// Vision capability is a property of the model, not of a file sitting next to it.
+/// Publishers tag it `image-text-to-text` (HF) and the converter copies `general.tags`
+/// into the header, so the information survives being separated from its projector.
+pub(crate) fn tags_claim_vision(tags: &[String]) -> bool {
+    tags.iter().any(|tag| {
+        let t = tag.to_ascii_lowercase();
+        t == "vision"
+            || t == "image-text-to-text"
+            || t.contains("multimodal")
+            || t.contains("image-text")
+    })
 }
 
 /// One catalog progress line. Every scan/merge/dedup message is Utils-category; only the
@@ -128,17 +133,20 @@ pub fn parse_shard_expected_total(filename: &str) -> Option<u32> {
     None
 }
 
-fn is_incomplete_shard_entry(entry: &ModelEntryInternal) -> bool {
-    let Some(fname) = Path::new(&entry.path)
-        .file_name()
-        .and_then(|s| s.to_str())
-    else {
-        return false;
-    };
-    let Some(expected) = parse_shard_expected_total(fname) else {
-        return false;
-    };
-    (entry.shards as u32) < expected
+/// Parse the `i` out of a `-0000i-of-0000N` suffix → 0-based shard index.
+/// The header's `split.no` wins; this is the filename fallback for files whose
+/// converter wrote no split KVs (they exist).
+pub fn parse_shard_index(filename: &str) -> Option<u32> {
+    let without_ext = filename.trim_end_matches(".gguf");
+    let of_pos = find_case_insensitive_rfind(without_ext, "-of-")?;
+    let before_of = &without_ext[..of_pos];
+    let shard_pos = before_of.rfind('-')?;
+    let digits = &before_of[shard_pos + 1..];
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let one_based: u32 = digits.parse().ok()?;
+    one_based.checked_sub(1)
 }
 
 /// Scan a directory for mmproj companion files. Returns the one with largest filesize.
@@ -447,16 +455,10 @@ pub fn merge_catalogs(
         }
     }
 
-    let skipped_incomplete = drop_incomplete_shard_sets(&mut all_internal);
-    if skipped_incomplete > 0 {
-        if let Some(lh) = log_hub {
-            say(
-                lh,
-                BlackwellOutputConsoleLineStyle::Normal,
-                &format!("[MERGE] Skipped {skipped_incomplete} incomplete shard set(s) from catalog"),
-            );
-        }
-    }
+    // Note: a set short of a shard is NOT dropped here any more. Completeness is
+    // decided by header bookkeeping in `shard_sets`, which can pair an external
+    // PLE/Engram tail; dropping first was why the DeepSeek-V4.1 Coder never reached
+    // that resolver at all.
 
     if let Some(ex) = exclusions {
         if !ex.is_empty() {
@@ -633,6 +635,29 @@ pub fn merge_catalogs(
                 Some(internal.source_path_label.as_str()).filter(|s| !s.is_empty()),
             );
 
+            let role_verdict = crate::file_role::classify(
+                cached_shape.as_ref(),
+                &draft_role_hint,
+                &internal.path,
+            );
+            let vision_capable = internal.vision
+                || cached_meta
+                    .as_ref()
+                    .map(|m| tags_claim_vision(&m.general_tags))
+                    .unwrap_or(false)
+                || hf_meta
+                    .as_ref()
+                    .map(|h| tags_claim_vision(&h.tags))
+                    .unwrap_or(false);
+            if !role_verdict.is_confident() {
+                log::debug!(
+                    "[catalog] weak role evidence for '{}': {} ({})",
+                    internal.path,
+                    role_verdict.role.as_str(),
+                    role_verdict.evidence.as_str()
+                );
+            }
+
             ModelEntry {
                 path: internal.path,
                 author,
@@ -649,6 +674,13 @@ pub fn merge_catalogs(
                 hf_meta,
                 hf_model_id: resolved_hf_model_id,
                 draft_role_hint,
+                vision_capable,
+                file_role: role_verdict.role.as_str().to_string(),
+                role_evidence: role_verdict.evidence.as_str().to_string(),
+                completeness: "complete".to_string(),
+                declared_shards: 1,
+                missing_shards: Vec::new(),
+                external_shards: Vec::new(),
             }
         })
         .collect();
@@ -1348,6 +1380,11 @@ mod tests {
             Some(4)
         );
         assert_eq!(parse_shard_expected_total("single.gguf"), None);
+        // 0-based index from the same suffix — the filename fallback for files whose
+        // header carries no `split.no`.
+        assert_eq!(parse_shard_index("Model-00001-of-00004.gguf"), Some(0));
+        assert_eq!(parse_shard_index("Model-00004-of-00004.gguf"), Some(3));
+        assert_eq!(parse_shard_index("single.gguf"), None);
     }
 
     #[test]
@@ -1396,26 +1433,6 @@ mod tests {
             extract_quant("DeepSeek-V4.1-Flash-1017-engram-MXFP8.gguf_file"),
             "MXFP8"
         );
-    }
-
-    #[test]
-    fn is_incomplete_shard_entry_detects_partial_set() {
-        let entry = ModelEntryInternal {
-            path: "D:/models/Minima-M3-00001-of-00004.gguf".to_string(),
-            author: "a".to_string(),
-            name: "Minima".to_string(),
-            quant: "Q4".to_string(),
-            size_str: "1GB".to_string(),
-            vision: false,
-            mmproj: None,
-            mmproj_size_mib: 0.0,
-            model_bytes: 1_000_000_000,
-            total_bytes: 1_000_000_000,
-            shards: 1,
-            source_path_label: String::new(),
-            hf_model_id: None,
-        };
-        assert!(is_incomplete_shard_entry(&entry));
     }
 
     #[test]
