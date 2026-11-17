@@ -28,13 +28,11 @@
   margin: 0 -1px;
   cursor: col-resize;
   touch-action: none;
-  /* Below the panes, and shaded from the glass side. On light faces this strip is just the
-     app background showing between two clipped boxes, so a neighbouring shadow can never
-     reach it — the gap has to carry its own falloff or it reads as a white lane cut into the
-     bezel. On dark faces a 16% black inset is invisible, which is what we want. */
+  /* Below the panes, and no shadow of its own: the glass now stands 6px off the rail, so an
+     inset here only doubled its bezel shadow into a dirty edge. The 1px grip does the work. */
   z-index: 0;
   background: transparent;
-  box-shadow: inset -5px 0 8px -4px var(--fixed-black-a24);
+  box-shadow: none;
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -1192,10 +1190,13 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 70px;
+  min-height: 44px;
   overflow: hidden;
   isolation: isolate;
-  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+  /* No role wash: the seats are two rows of one table, so the role is a 2px edge plus its
+     chip. A filled card read as a different material per role instead of a different job. */
+  background: transparent;
+  border-left: 2px solid transparent;
 }
 
 .catalog-quick-seat + .catalog-quick-seat {
@@ -1203,19 +1204,11 @@
 }
 
 .catalog-quick-seat--brain.catalog-quick-seat--filled {
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
-    var(--theme-eject-card-bg, var(--theme-panel)) 78%
-  );
+  border-left-color: var(--role-brain);
 }
 
 .catalog-quick-seat--worker.catalog-quick-seat--filled {
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
-    var(--theme-eject-card-bg, var(--theme-panel)) 76%
-  );
+  border-left-color: var(--role-worker);
 }
 
 .catalog-quick-seat--selected {
@@ -1331,11 +1324,11 @@
 }
 
 .catalog-quick-seat--brain .catalog-quick-seat__role {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-accent-bright)));
+  color: var(--role-brain-ink);
 }
 
 .catalog-quick-seat--worker .catalog-quick-seat__role {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-nv-green)));
+  color: var(--role-worker-ink);
 }
 
 .catalog-quick-seat__main {

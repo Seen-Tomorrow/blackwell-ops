@@ -10,7 +10,6 @@ import { isDevBuild } from "../lib/build";
 import type { HarnessBinding } from "../lib/harnessBinding";
 import type { StackEntry } from "../lib/types";
 import HarnessConnectPanel from "./HarnessConnectPanel";
-import MatrixAsciiRain from "./MatrixAsciiRain";
 
 const DEV_TWIN_BINDING: HarnessBinding = {
   mode: "twin",
@@ -43,10 +42,6 @@ export default function HarnessVeilPreview() {
       role="dialog"
       aria-label="Harness connect (dev preview)"
     >
-      <div className="harness-connect-veil__fx" aria-hidden>
-        <MatrixAsciiRain className="harness-connect-veil__matrix" opacity={0.8} />
-        <span className="harness-connect-veil__corners" />
-      </div>
       <HarnessConnectPanel
         binding={DEV_TWIN_BINDING}
         onDismiss={() => setOpen(false)}

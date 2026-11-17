@@ -15,7 +15,6 @@ import {
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import type { StackEntry } from "../lib/types";
 import HarnessConnectPanel from "./HarnessConnectPanel";
-import MatrixAsciiRain from "./MatrixAsciiRain";
 export type HarnessConnectRelaunch = (opts: {
   slotIdx: number;
   port: number;
@@ -138,11 +137,6 @@ export function useHarnessConnectHost(opts: {
         role="dialog"
         aria-label="Harness connect"
       >
-        {/* Canvas rain — no CSS keyframe loops (those pegged iGPU). */}
-        <div className="harness-connect-veil__fx" aria-hidden>
-          <MatrixAsciiRain className="harness-connect-veil__matrix" opacity={0.8} />
-          <span className="harness-connect-veil__corners" />
-        </div>
         <HarnessConnectPanel
           binding={binding}
           parallelValues={parallelValues}

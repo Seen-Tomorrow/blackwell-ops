@@ -630,6 +630,13 @@
   --theme-harness-brain-raw: var(--theme-provider-pill-active-bg);
   --theme-harness-worker-raw: var(--theme-pair-secondary-bg);
   --theme-harness-brain-text: var(--theme-secondary-bright, var(--theme-provider-pill-hover-text));
+  /* Role identity, one pair for the whole app. Used as a 2px edge or a chip — never as a row
+     or card fill: the role is a label, and painting surfaces with it made BRAIN and WORKER
+     read as two different materials instead of two jobs. */
+  --role-brain: var(--theme-harness-brain-raw);
+  --role-brain-ink: var(--theme-harness-brain-text);
+  --role-worker: var(--theme-harness-worker-raw);
+  --role-worker-ink: var(--theme-harness-worker-text);
   --theme-dflash-strip-bg: color-mix(in srgb, #0a0612 88%, #a78bfa 12%);
   --theme-dflash-strip-border: color-mix(in srgb, #a78bfa 50%, transparent);
   --theme-dflash-strip-text: var(--theme-dflash-strip-btn-ghost-text);

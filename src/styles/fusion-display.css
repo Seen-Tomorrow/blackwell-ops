@@ -5,6 +5,13 @@
   background: var(--theme-panel-accent);
 }
 
+/* The glass carries the only bezel left on the canvas, so it needs air on both flanks: flush
+   against the rail its left corner reads as cut and the divider's grip sits on top of it. */
+.config-display-stack > .industrial-display-area > .industrial-display-frame {
+  margin-left: 6px;
+  margin-right: 6px;
+}
+
 /* ── Industrial display unit — parent surface behind bezel corners + eject sides ─── */
 .industrial-display-area {
   background: var(--theme-panel-accent);
@@ -2763,7 +2770,7 @@
   left: auto;
   right: 0;
   z-index: 2;
-  background-color: color-mix(in srgb, var(--fixed-c-64748b) 55%, #0f172a);
+  background-color: color-mix(in srgb, var(--theme-text) 26%, transparent);
   background-image: repeating-linear-gradient(
     -45deg,
     transparent,
@@ -3260,7 +3267,9 @@
   color: var(--fixed-orange-400);
 }
 .gpu-card__bar-fill--os {
-  color: #585858;
+  /* OS overhead reads as a neutral slab on every face: theme ink at 45% is charcoal on the
+     light card and grey on the dark one, instead of a fixed #585858 that only worked on dark. */
+  color: color-mix(in srgb, var(--theme-text) 45%, transparent);
 }/* LIGHT — GPU names + memory readout (tokenized accent; no glow halo) */ /* * EINK + PAPER face — TG micro-stats,
 ctx slots,
 mult chip. * (Do not chain unfinished selectors — a prior strip accidentally painted * box-shadow rings on every listed surface.) */ .phosphor-screen-inner .fusion-readout-emphasis{
@@ -6158,12 +6167,14 @@ html[data-industrial-bezel="brush"] {
   align-items: center;
   gap: 6px;
   padding: 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--display-face-text) 10%, transparent);
-  background: color-mix(in srgb, var(--display-face-bg-dark) 88%, black);
+  /* Theme surface + theme ink: it was the glass's dark well on every face, so on ARCTIC it
+     was a black chip on a white bezel. dark faces still resolve to a dark chip. */
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 22%, transparent);
+  background: var(--theme-panel-accent);
   box-shadow:
-    inset 0 1px 2px color-mix(in srgb, black 55%, transparent),
-    inset 0 -1px 0 color-mix(in srgb, var(--display-face-text) 7%, transparent);
-  color: color-mix(in srgb, var(--display-face-text-muted) 78%, transparent);
+    inset 0 1px 2px color-mix(in srgb, var(--theme-text) 10%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 68%, transparent);
   border-radius: 0.125rem;
   font-size: var(--type-label);
   letter-spacing: 0.06em;

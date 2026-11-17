@@ -187,6 +187,8 @@ const ARCTIC: AppTheme = {
     "--theme-harness-brain-raw": "#0284c7",
     "--theme-harness-worker-raw": "#ea580c",
     "--theme-harness-brain-text": "#0284c7",
+    /* Worker ink must be dark on the light face; the base formula mixes toward white. */
+    "--theme-harness-worker-text": "#c2410c",
 
     /* ── CLEAN phosphor face ── cool porcelain */
     "--display-face-bg": "#f7fafc",
@@ -235,10 +237,10 @@ const ARCTIC: AppTheme = {
     "--display-face-source-kind-border": "color-mix(in srgb, #94a3b8 32%, transparent)",
     "--display-face-plate-wash-start": "color-mix(in srgb, #0b1220 52%, transparent)",
     "--display-face-plate-wash-mid": "color-mix(in srgb, #0f172a 36%, transparent)",
-    "--display-face-gpu-trough-wash-start": "color-mix(in srgb, #0b1220 48%, transparent)",
-    "--display-face-gpu-trough-wash-mid": "color-mix(in srgb, #0f172a 28%, transparent)",
+    "--display-face-gpu-trough-wash-start": "color-mix(in srgb, var(--display-face-text-muted) 14%, transparent)",
+    "--display-face-gpu-trough-wash-mid": "color-mix(in srgb, var(--display-face-text-muted) 5%, transparent)",
     /* SOURCE hover recap — SLATE panel + dotted text (readable on paper UI) */
-    "--display-face-recap-bg": "#121218",
+    "--display-face-recap-bg": "#f8fafc",
     "--display-face-recap-text": "#d0d0d8",
     "--display-face-recap-text-muted": "#5a5a6a",
 
@@ -334,7 +336,10 @@ const ARCTIC: AppTheme = {
     "--theme-bezel-bottom-shade": "color-mix(in srgb, #64748b 7%, transparent)",
     "--theme-bezel-dot-shade": "color-mix(in srgb, #64748b 5%, transparent)",
     "--theme-bezel-inset-hi": "rgba(255, 255, 255, 0.55)",
-    "--theme-bezel-inset-lo": "rgba(15, 40, 70, 0.14)",
+    /* No inset fill on the light face: a well on ARCTIC is a *hairline* recess, not a fill.
+       The doubled inset gradient in `.full-auto-cockpit__ctx-hero` then paints nothing, so the
+       CTX strip sits on the canvas and its ruler/track carry the contrast by themselves. */
+    "--theme-bezel-inset-lo": "transparent",
     "--display-face-inset-top": "rgba(15, 40, 70, 0.18)",
     "--display-face-inset-bottom": "rgba(15, 40, 70, 0.1)",
     /* Eject panel (running engines) — stronger, longer cast than the frame so
@@ -410,7 +415,7 @@ const ARCTIC: AppTheme = {
     "--theme-industrial-face-gradient":
       "linear-gradient(168deg, #d8e2ec 0%, #c8d6e4 20%, #b4c4d4 46%, #c2d0de 70%, #dce6f0 100%)",
     "--theme-cockpit-well-shadow":
-      "inset 0 1px 3px color-mix(in srgb, #64748b 8%, transparent), inset 0 1px 0 color-mix(in srgb, #ffffff 70%, transparent), inset 0 -1px 0 color-mix(in srgb, #ffffff 40%, transparent)",
+      "inset 0 2px 5px color-mix(in srgb, #1b2a3d 22%, transparent), inset 0 1px 0 color-mix(in srgb, #1b2a3d 12%, transparent), inset 0 -1px 0 color-mix(in srgb, #ffffff 55%, transparent)",
     "--theme-cockpit-header-shadow":
       "inset 0 1px 0 color-mix(in srgb, #ffffff 75%, transparent), inset 0 -1px 0 color-mix(in srgb, #94a3b8 10%, transparent)",
     /* Semantic alert set — glacier ink: copper warn / rose danger / teal info */

@@ -106,12 +106,11 @@
 /* Launch dock — pinned to bottom of engine config panel, clears fixed footer/console */
 /* Owner: .config-launch-dock base surface (background/texture/border). Contextual overrides: run `npm run css:locate -- .config-launch-dock`. */
 [data-config-panel] .config-launch-dock {
+  /* Flat, like the rest of the canvas: the glass is the only thing that gets to float. The
+     1.5px bezel edge and the two stacked black shadows made this strip read as a shelf. */
   background: transparent;
-  /* Crisp separation edge — bezel-edge-hi is white on ARCTIC → invisible top line */
-  border-top: 1.5px solid var(--theme-frame-border);
-  box-shadow:
-    0 -2px 6px var(--fixed-black-a3),
-    0 -10px 24px var(--fixed-black-a16);
+  border-top: 1px solid color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+  box-shadow: none;
   position: relative;
   z-index: 4;
   isolation: isolate;

@@ -1150,22 +1150,16 @@
   color: var(--theme-text);
 }
 
+/* Role identity on the engine cards, matching the seats: a 2px edge in the role colour, no
+   wash and no glow. The card already names the role; the edge is what maps it to its seat. */
 .running-engine-card.harness-engine--brain,
 .launch-rail-engine-chip.harness-engine--brain {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-brain-raw) 22%, var(--theme-eject-card-bg) 78%);
+  border-left: 2px solid var(--role-brain);
 }
 
 .running-engine-card.harness-engine--worker,
 .launch-rail-engine-chip.harness-engine--worker {
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 22%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-worker-raw) 22%, var(--theme-eject-card-bg) 78%);
+  border-left: 2px solid var(--role-worker);
 }
 
 /* ── Running engines highlight while harness wizard open ─── */
@@ -1190,21 +1184,21 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--live {
 html[data-harness-open="1"] .running-engine-card.harness-engine--brain,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 1;
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw) 70%, transparent);
+  /* Role identity stays a single edge; the wizard's "look here" signal is the ring, not a
+     wash, so the card keeps one material and the edge does the pointing. */
+  border-left: 2px solid var(--role-brain);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw) 22%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-brain-raw) 28%, var(--theme-eject-card-bg) 72%);
+    0 0 0 1px color-mix(in srgb, var(--role-brain) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--role-brain) 18%, transparent);
 }
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--worker,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
   opacity: 1;
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw) 70%, transparent);
+  border-left: 2px solid var(--role-worker);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw) 20%, transparent);
-  background: color-mix(in srgb, var(--theme-harness-worker-raw) 30%, var(--theme-eject-card-bg) 70%);
+    0 0 0 1px color-mix(in srgb, var(--role-worker) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--role-worker) 18%, transparent);
 }
 
 
@@ -1248,47 +1242,36 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--picked {
   transition: opacity 0.22s ease, filter 0.22s ease;
 }
 
-/* Engine cards while harness open — tint from theme solids */
+/* Engine cards while harness open — the wizard points with a ring, never a fill. Two copies of
+   these blocks existed (one per token family), which is why the wash survived the first fix. */
 html[data-harness-open="1"] .running-engine-card.harness-engine--worker,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--worker {
-  border-color: color-mix(
-    in srgb,
-    var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 70%,
-    transparent
-  );
+  border-left: 2px solid var(--role-worker);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 40%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 18%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 20%,
-    var(--theme-eject-card-bg) 80%
-  );
+    0 0 0 1px color-mix(in srgb, var(--role-worker) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--role-worker) 18%, transparent);
+  background: none;
 }
 
 html[data-harness-open="1"] .running-engine-card.harness-engine--brain,
 html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
-  border-color: var(--theme-provider-pill-active-border);
+  border-left: 2px solid var(--role-brain);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-provider-pill-active-bg) 22%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--theme-provider-pill-active-bg) 22%,
-    var(--theme-eject-card-bg) 78%
-  );
+    0 0 0 1px color-mix(in srgb, var(--role-brain) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--role-brain) 18%, transparent);
+  background: none;
 }
 
 .harness-engine-role-chip--brain {
-  color: var(--theme-provider-pill-active-text);
-  border-color: var(--theme-provider-pill-active-border);
-  background: var(--theme-provider-pill-active-bg);
+  color: var(--role-brain-ink);
+  border-color: color-mix(in srgb, var(--role-brain) 55%, transparent);
+  background: color-mix(in srgb, var(--role-brain) 14%, transparent);
 }
 
 .harness-engine-role-chip--worker {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
-  border-color: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
-  background: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
+  color: var(--role-worker-ink);
+  border-color: color-mix(in srgb, var(--role-worker) 55%, transparent);
+  background: color-mix(in srgb, var(--role-worker) 14%, transparent);
 }
 
 .full-auto-cockpit__row-label {
@@ -2363,29 +2346,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .harness-connect-veil--opaque {
-  /* Static fill only — rain paints the motion on canvas */
-  background: var(--display-face-bg, var(--theme-panel));
+  /* The glass face is already the loudest surface on the canvas; the veil is a sheet on it,
+     not a second animation. Static, no fill beyond a very light scrim. */
+  background: color-mix(in srgb, var(--display-face-bg) 92%, transparent);
 }
 
-.harness-connect-veil__fx {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
+/* Role edges inside the veil: the same tokens the seats and the engine cards use, so the
+   sheet reads as a key to the two rows behind it. */
+.harness-connect__seat--brain {
+  border-left: 2px solid var(--role-brain);
 }
 
-/* Matrix rain sits 2px inside the glass on all sides */
-.harness-connect-veil__matrix {
-  position: absolute;
-  inset: 2px;
-  width: auto;
-  height: auto;
-}
-
-/* No corner frame gap — glass is full phosphor face */
-.harness-connect-veil__corners {
-  display: none;
+.harness-connect__seat--worker {
+  border-left: 2px solid var(--role-worker);
 }
 
 .harness-connect-veil .harness-connect {

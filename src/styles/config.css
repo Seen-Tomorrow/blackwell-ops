@@ -119,16 +119,23 @@
   margin-right: 8px;
 }
 
-/* Config panel — textured provider/profile bar (all themes) */
+/* Provider/profile bar — flat, like the catalog sidebar. It is a row of controls and a label,
+   not a bezelled plate: the gunmetal fill, grit texture and 1.5px bezel edge made it the
+   heaviest thing on the canvas while carrying almost no information. The runtime-mode trace
+   next to it is the only graphic here and it stays. */
 [data-config-panel] .config-provider-profile-bar {
-  background-color: var(--theme-industrial-bg);
-  background-image: var(--theme-industrial-texture-active);
-  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
-  box-shadow:
-    0 2px 10px color-mix(in srgb, var(--theme-panel) 55%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
+  background: transparent;
+  border-bottom: none;
+  box-shadow: none;
   position: relative;
   z-index: 2;
+}
+
+/* The bar used to sit under a blue-tinted gradient hairline (top: -1px). With the gunmetal
+   fill gone it was the only thing left of the old bezel, and it read as a stray seam above
+   the row. */
+[data-config-panel] .config-provider-profile-bar::after {
+  display: none;
 }
 
 [data-config-panel] .config-provider-profile-bar.section-divider::after {
@@ -1721,11 +1728,14 @@ select option {
 }
 
 .ctx-slider-tick-tooltip {
-  color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
+  /* Theme ink, not the accent at 55%: accent-bright is a mid tone on light faces, so the
+     ruler read as pale text on a pale well. --theme-text flips with the face and keeps the
+     ruler legible on both without a per-theme override. */
+  color: color-mix(in srgb, var(--theme-text) 86%, transparent);
   z-index: 6;
 }
 .ctx-slider-tick-tooltip--active {
-  color: var(--theme-accent-bright);
+  color: var(--theme-text);
 }
 .ctx-slider-tick-tooltip--hero {
   line-height: 1;

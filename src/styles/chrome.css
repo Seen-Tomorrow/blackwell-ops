@@ -1194,12 +1194,17 @@
 
 .app-footer {
   background: var(--theme-footer-bg);
-  /* Amber-led seam with a soft theme accent kiss (console header stays pure amber) */
+  /* White-led seam, kept warm by a kiss of the amber footer border: the console still needs
+     to draw the eye, and a pure theme-border line disappeared into the flat canvas. */
   border-top: 1px solid color-mix(
     in srgb,
-    var(--theme-footer-border) 78%,
-    var(--theme-accent, var(--theme-footer-border)) 22%
+    var(--theme-bezel-edge-hi) 55%,
+    var(--theme-footer-border) 45%
   );
+  /* The footer owns the seam (the console shell is forced borderless), so the lift lives here:
+     a short cast shadow in both console states, instead of the open console being the only one
+     that reads as attached to a surface. */
+  box-shadow: 0 -3px 8px color-mix(in srgb, var(--fixed-black-a18) 85%, transparent);
   color: var(--theme-footer-text);
   height: var(--app-footer-h);
   min-height: var(--app-footer-h);
