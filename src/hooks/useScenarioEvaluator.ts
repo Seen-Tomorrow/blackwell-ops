@@ -15,7 +15,7 @@ import { sanitizeLearnedCurve } from "../services/vram/shared";
 import type { GpuCalibrationRow } from "../lib/vramLayerPlan";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorKind, errorMessage } from "../lib/blackwellError";
-import { isExternalDraftOnly, draftRoleForSpecType, resolveExternalDraftPath } from "../lib/specDraft";
+import { isAttachmentModel, isExternalDraftOnly, draftRoleForSpecType, resolveExternalDraftPath } from "../lib/specDraft";
 import { normalizeDraftPath } from "../lib/spec/adapters";
 import { useTauriListen } from "./useTauriListen";
 type ProbeSession = {
@@ -619,9 +619,10 @@ export function useScenarioEvaluator({
       return;
     }
 
-    // Draft packs are not mains — no LEARNED/FIT glass, no auto probe.
-    // Rust's draftRoleHint is authoritative; TS path hints cover unscanned files.
-    if (isExternalDraftOnly(model)) {
+    // Draft packs and companion files (Engram tables, projectors) are not mains — no
+    // LEARNED/FIT glass, no auto probe. Rust's role hint is authoritative; TS path
+    // hints cover unscanned files.
+    if (isExternalDraftOnly(model) || isAttachmentModel(model)) {
       commitManifest(null);
       return;
     }
@@ -1097,7 +1098,7 @@ export function useScenarioEvaluator({
 
   const validate = useCallback(async (requestedMode?: FitProbeMode): Promise<VramManifest | null> => {
     if (!model || validatingRef.current) return null;
-    if (isExternalDraftOnly(model)) return null;
+    if (isExternalDraftOnly(model) || isAttachmentModel(model)) return null;
     const curConfig = configRef.current;
     const providerId = curConfig.backend_type || "";
     if (tomMtpBlocked(providerId, model)) {
@@ -1339,7 +1340,7 @@ export function useScenarioEvaluator({
 
   maybeAutoFitRef.current = () => {
     if (!autoVramLaunchRef.current || !model?.path || !model.metadata) return;
-    if (isExternalDraftOnly(model)) return;
+    if (isExternalDraftOnly(model) || isAttachmentModel(model)) return;
     if (validatingRef.current) return;
     const forceProbe = forceProbeRef.current;
     const liveCtx = parseCtx(configRef.current.ctx ?? "32768");

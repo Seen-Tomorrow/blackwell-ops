@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { CatalogDraftFilter } from "../lib/specDraft";
-import type { CatalogUpdateEntry, EngineConfig, HfModelInfo, ModelEntry, ModelPathScan, ProviderConfig, StackEntry } from "../lib/types";
+import type { CatalogUpdateEntry, EngineConfig, ExtraFileEntry, HfModelInfo, ModelEntry, ModelPathScan, ProviderConfig, StackEntry } from "../lib/types";
 import { invoke } from "@tauri-apps/api/core";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
@@ -18,6 +18,8 @@ import TabPageHeader from "./TabPageHeader";
 
 interface ModelCatalogProps {
   models: any[];
+  /** Attachment GGUFs (PLE/Engram tables, projectors) from extras roots. */
+  extras?: ExtraFileEntry[];
   onLaunch: (config: EngineConfig) => Promise<any>;
   error: string | null;
   onReload: () => void;
@@ -52,16 +54,16 @@ const sortLabels: Record<string, string> = {
 };
 
 
-const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["regular", "draft", "all"];
+const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["main", "extras", "all"];
 
 const draftFilterLabels: Record<CatalogDraftFilter, string> = {
-  regular: "MAIN",
-  draft: "DRAFT",
+  main: "MAIN",
+  extras: "EXTRAS",
   all: "ALL",
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, onModelScanned, catalogHfUpdates, catalogUpdatesBusy, onCheckModelUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
+  const { models, extras = [], onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, onModelScanned, catalogHfUpdates, catalogUpdatesBusy, onCheckModelUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
   const [updatesOnly, setUpdatesOnly] = useState(false);
   const [fullConfirm, setFullConfirm] = useState<CatalogUpdateEntry | null>(null);
   const [updateBusyPath, setUpdateBusyPath] = useState<string | null>(null);
@@ -76,7 +78,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   // Coarse slice on purpose: the catalog stays mounted while an engine runs and renders
   // hundreds of cards — it must not re-render at the HW monitor's 4-10 Hz sample rate.
   const { gpus, systemInfo } = useGpuFitTelemetry();
-  const [showScanMenu, setShowScanMenu] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -85,7 +86,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const [fileEditError, setFileEditError] = useState<string | null>(null);
 
   const catalog = useModelCatalog({
-    models, stack, providers: externalProviders, gpus, scanningPath, setScanningPath, batchScanState, setBatchScanState, onModelScanned, onReload,
+    models, extras, stack, providers: externalProviders, gpus, scanningPath, setScanningPath, batchScanState, setBatchScanState, onModelScanned, onReload,
   });
 
   const {
@@ -397,11 +398,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     setupGuide.active,
   ]);
 
-  const startScan = (concurrency: number) => {
-    setShowScanMenu(false);
-    handleScanAll(concurrency);
-  };
-
   const toggleTopStyle =
     toggleTopPx != null
       ? ({ "--catalog-toggle-top": `${toggleTopPx}px` } as React.CSSProperties)
@@ -603,38 +599,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         </>
       );
     }
-    if (showScanMenu) {
-      return (
-        <>
-          <button
-            onClick={() => startScan(4)}
-            disabled={scanningPath !== null}
-            className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30"
-            title="Scan all models with 4x parallelism (~2GB RAM)"
-          >
-            4×
-          </button>
-          <button
-            onClick={() => startScan(8)}
-            disabled={scanningPath !== null}
-            className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30"
-            title="Scan all models with 8x parallelism (~4GB RAM)"
-          >
-            8×
-          </button>
-          <button
-            onClick={() => setShowScanMenu(false)}
-            className="catalog-scan-btn type-micro font-mono px-1 py-0.5 transition-colors rounded-sm opacity-60"
-            title="Close scan menu"
-          >
-            ✕
-          </button>
-        </>
-      );
-    }
+    // One action, no submenu: the old 4× / 8× choice dates from the engine-probe scan
+    // that took minutes. Metadata is read from headers in-process now, so the parallel
+    // fan-out is an implementation detail.
     return (
       <button
-        onClick={() => setShowScanMenu(true)}
+        onClick={() => handleScanAll(8)}
         disabled={scanningPath !== null || scanBlockedByToolchain}
         className="catalog-scan-btn type-micro font-mono px-1.5 py-0.5 transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
         title={
@@ -643,7 +613,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             : "Scan all models for metadata"
         }
       >
-        SCAN META ▾
+        SCAN META
       </button>
     );
   };
@@ -739,7 +709,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         setCatalogDraftFilter(next);
       }}
       className="catalog-kind-cycler font-mono uppercase"
-      title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / DRAFT / ALL)`}
+      title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / EXTRAS / ALL)`}
       aria-label={`Model kind: ${draftFilterLabels[draftFilter]}. Click to cycle.`}
     >
       {draftFilterLabels[draftFilter]}
@@ -771,9 +741,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <span
             className="catalog-search-count"
             aria-hidden="true"
-            title={`${catalogModels.length} shown / ${models.length} total`}
+            title={`${catalogModels.length} shown / ${catalog.kindCounts[draftFilter]} total`}
           >
-            {catalogModels.length} / {models.length}
+            {catalogModels.length} / {catalog.kindCounts[draftFilter]}
           </span>
         </div>
       </div>
@@ -1126,8 +1096,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         model={model}
                         isSelected={isSelected}
                         onSelect={handleSelect}
-                        onScanModel={handleScanModel}
-                        scanningPath={scanningPath}
                         hfUpdateBusy={updateBusyPath === model.path}
                         checkVerdict={catalogCheckVerdicts?.[model.path] ?? null}
                         onApplyHfUpdate={() => {
@@ -1228,8 +1196,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         onSelect={handlePaletteSelect}
         onClose={closeSearchPalette}
         onOpenFullCatalog={openFullCatalogFromPalette}
-        scanningPath={scanningPath}
-        onScanModel={handleScanModel}
       />
     </div>
   );

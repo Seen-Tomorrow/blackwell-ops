@@ -736,6 +736,26 @@
   --vram-draft-wash: var(--theme-dflash-strip-bg, color-mix(in srgb, #2e1065 70%, transparent));
 }
 
+/* Companion faces reuse the draft layout with their own tint, and a finer cross-weave
+   instead of the draft's diagonal so the two never read as the same material. */
+.vram-badge-forecast--attachment[data-attachment-role="ple"] {
+  --vram-draft-ink: var(--fixed-amber-200-a85);
+  --vram-draft-edge: var(--theme-attach-engram-line);
+  --vram-draft-wash: var(--theme-attach-engram-wash);
+}
+
+.vram-badge-forecast--attachment[data-attachment-role="mmproj"] {
+  --vram-draft-ink: var(--fixed-cyan-50-a4);
+  --vram-draft-edge: var(--theme-attach-mmproj-line);
+  --vram-draft-wash: var(--theme-attach-mmproj-wash);
+}
+
+.vram-badge-forecast--attachment[data-attachment-role="adapter"] {
+  --vram-draft-ink: var(--fixed-emerald-400-a5);
+  --vram-draft-edge: var(--theme-attach-adapter-line);
+  --vram-draft-wash: var(--theme-attach-adapter-wash);
+}
+
 .vram-forecast-draft {
   position: relative;
   overflow: hidden;
@@ -753,19 +773,25 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  /* One weave for every non-main face — draft and companion alike. The role is carried
+     by `--vram-draft-edge`, not by a second pattern. */
   background:
     repeating-linear-gradient(
-      -52deg,
-      color-mix(in srgb, var(--vram-draft-edge) 22%, transparent) 0 6px,
-      transparent 6px 13px
+      90deg,
+      color-mix(in srgb, var(--vram-draft-edge) 18%, transparent) 0 1px,
+      transparent 1px 11px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--vram-draft-edge) 10%, transparent) 0 1px,
+      transparent 1px 11px
     ),
     linear-gradient(
       160deg,
-      color-mix(in srgb, var(--vram-draft-wash) 55%, transparent) 0%,
-      transparent 58%,
-      color-mix(in srgb, var(--vram-draft-edge) 10%, transparent) 100%
+      color-mix(in srgb, var(--vram-draft-wash) 45%, transparent) 0%,
+      transparent 60%
     );
-  opacity: 0.95;
+  opacity: 0.85;
 }
 
 .vram-forecast-draft__flank,

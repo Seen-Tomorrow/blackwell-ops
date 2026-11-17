@@ -648,6 +648,22 @@
   --theme-dflash-strip-btn-ghost-text: #ddd6fe;
   --theme-dflash-strip-btn-ghost-border: color-mix(in srgb, #a78bfa 40%, transparent);
   --theme-dflash-strip-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
+  /* Companion-file tints — one hue per attachment role, shared by the catalog hatch and
+     the forecast face. Draft keeps the violet family it already had (DFlash/MTP chips
+     use it); Engram/PLE is amber, projectors cyan, adapters emerald. Kept as veils and
+     hairlines only: these are labels on a card, not card fills. */
+  --theme-attach-engram-line: var(--fixed-amber-400-a35);
+  --theme-attach-engram-wash: var(--fixed-amber-400-a1);
+  --theme-attach-mmproj-line: var(--fixed-cyan-400-a4);
+  --theme-attach-mmproj-wash: var(--fixed-cyan-400-a1);
+  --theme-attach-adapter-line: var(--fixed-emerald-400-a4);
+  --theme-attach-adapter-wash: var(--fixed-emerald-400-a22);
+  /* Card fills: flat washes only — a pattern read as a glitched screen, the hue carries
+     the role. Hatch lines stay for the glass face, which has room for them. */
+  --theme-attach-draft-fill: color-mix(in srgb, var(--theme-dflash-strip-bg) 65%, transparent);
+  --theme-attach-engram-fill: var(--fixed-amber-500-a12);
+  --theme-attach-mmproj-fill: var(--fixed-cyan-400-a1);
+  --theme-attach-adapter-fill: var(--fixed-emerald-400-a22);
   --theme-dflash-mtp-bg: color-mix(in srgb, #040b06 88%, #4ade80 12%);
   --theme-dflash-mtp-border: color-mix(in srgb, #4ade80 50%, transparent);
   --theme-dflash-mtp-text: var(--theme-dflash-mtp-btn-text);

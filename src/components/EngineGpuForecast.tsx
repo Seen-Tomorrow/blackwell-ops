@@ -111,6 +111,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onMoeSuggestionClick,
     hideMoeBadge,
     draftOnly = false,
+    attachmentKind = null,
     modelMeta,
     modelName,
     modelQuant,
@@ -496,6 +497,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onMoeSuggestionClick={onMoeSuggestionClick}
               hideMoeBadge={hideMoeBadge}
               draftOnly={draftOnly}
+              attachmentKind={attachmentKind}
               modelMeta={modelMeta}
               modelName={modelName}
               modelQuant={modelQuant}
@@ -628,6 +630,8 @@ export interface EngineGpuForecastProps {
   hideMoeBadge: boolean;
   /** External draft pack — full-face draft explanation, no FIT. */
   draftOnly?: boolean;
+  /** Companion file (Engram table / projector / adapter) — same fixed face, role tint. */
+  attachmentKind?: "ple" | "mmproj" | "adapter" | null;
   modelMeta?: ModelMetadata;
   modelName?: string;
   modelQuant?: string;

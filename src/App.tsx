@@ -46,7 +46,7 @@ import type { ModelScanPatch } from "./lib/libraryJobs";
 
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { isActiveEngineSlot, stopAllEngines } from "./lib/engineStack";
-import type { ModelEntry, StackEntry, LogBatch, SystemEvent, ProviderConfig, UpdateOfferings, CatalogUpdateEntry, CatalogScanReport, ModelPathScan } from "./lib/types";
+import type { ModelEntry, ExtraFileEntry, StackEntry, LogBatch, SystemEvent, ProviderConfig, UpdateOfferings, CatalogUpdateEntry, CatalogScanReport, ModelPathScan } from "./lib/types";
 import {
   appendLogBatch,
   appendSystemEvent,
@@ -65,6 +65,8 @@ function App() {
   const [remoteSubTab, setRemoteSubTab] = useState<RemoteSubTab>("status");
 
   const [models, setModels] = useState<ModelEntry[]>([]);
+  // Attachment GGUFs (PLE/Engram tables, projectors) — shown by the catalog's EXTRAS kind.
+  const [extras, setExtras] = useState<ExtraFileEntry[]>([]);
   // Per-path scan diagnostics — drives the catalog's "why is this empty" state.
   // `null` = no report yet, so the catalog never blames a path before it has one.
   const [pathScans, setPathScans] = useState<ModelPathScan[] | null>(null);
@@ -310,6 +312,7 @@ function App() {
       setCatalogError(null);
       const report = await invoke<CatalogScanReport>("list_models");
       setModels(report.models);
+      setExtras(report.extras ?? []);
       setPathScans(report.paths);
     } catch (err) {
       const msg = typeof err === "string" ? err : JSON.stringify(err);
@@ -474,7 +477,7 @@ function App() {
       total: payload.total ?? s.total ?? payload.scanned + payload.failed,
     }));
     invoke<CatalogScanReport>("list_models")
-      .then((report) => { setModels(report.models); setPathScans(report.paths); })
+      .then((report) => { setModels(report.models); setExtras(report.extras ?? []); setPathScans(report.paths); })
       .catch(() => {});
   });
 
@@ -635,7 +638,7 @@ function App() {
             aria-hidden={activeTab !== "catalog"}
             inert={activeTab !== "catalog" ? true : undefined}
           >
-            <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} onModelScanned={patchScannedModel} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckModelUpdate={checkModelHfUpdate} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
+            <ModelCatalog models={models} extras={extras} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} onModelScanned={patchScannedModel} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckModelUpdate={checkModelHfUpdate} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
           </div>
         )}
 

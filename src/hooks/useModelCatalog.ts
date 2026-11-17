@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { GpuInfo, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
+import type { ExtraFileEntry, GpuInfo, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { useTauriListen } from "./useTauriListen";
@@ -18,6 +18,7 @@ import {
   draftRoleFromModel,
   hasBakedMtp,
   isExternalDraftOnly,
+  isAttachmentModel,
   isLaunchableMain,
   matchesCatalogDraftFilter,
 } from "../lib/specDraft";
@@ -238,8 +239,27 @@ function applyCatalogSelection(
   saveLastModel(model.path);
 }
 
+/** Present an attachment as a read-only catalog row (EXTRA filter). */
+function extraAsModel(e: ExtraFileEntry): ModelEntry {
+  return {
+    path: e.path,
+    author: e.rootLabel || "extras",
+    name: e.fileName,
+    // The role chip on the card carries ENGRAM / MMPROJ / LORA — do not repeat the raw
+    // role here (`ple` would surface as "PLE" in the quant slot and the glass meta).
+    quant: "",
+    size_str: e.sizeStr,
+    vision: false,
+    sourcePathLabel: e.rootLabel,
+    fileRole: e.role,
+    roleEvidence: e.roleEvidence,
+  };
+}
+
 interface UseModelCatalogParams {
   models: ModelEntry[];
+  /** Attachment GGUFs from extras roots — shown by the EXTRAS filter, never launchable. */
+  extras?: ExtraFileEntry[];
   stack: StackEntry[];
   providers?: ProviderConfig[];
   /** Live GPU free memory for catalog fit-now chips (read-only; no forecast). */
@@ -255,6 +275,7 @@ interface UseModelCatalogParams {
 
 export function useModelCatalog({
   models,
+  extras = [],
   stack,
   providers,
   gpus = [],
@@ -268,8 +289,8 @@ export function useModelCatalog({
   const [search, setSearch] = useState("");
   const [draftFilter, setDraftFilter] = useState<CatalogDraftFilter>(() => {
     const v = readStorage(KEYS.catalogDraftFilter);
-    if (v === "draft" || v === "all") return v;
-    return "regular";
+    if (v === "extras" || v === "all") return v;
+    return "main";
   });
   // Visual highlight in catalog list only — set by catalog card clicks
   const [catalogSelectedModel, setCatalogSelectedModel] = useState<ModelEntry | null>(null);
@@ -641,9 +662,35 @@ export function useModelCatalog({
     await onReload();
   }, [catalogSelectedModel, panelActiveModel, onReload]);
 
+  // MAIN = launchable model rows; EXTRAS = every companion (attachments + draft heads);
+  // ALL = the whole library, models and companions together (debug view).
+  const kindRows = useMemo(() => {
+    const draftRows = models.filter((m) => isExternalDraftOnly(m));
+    const mainRows = models.filter((m) => !isExternalDraftOnly(m) && !isAttachmentModel(m));
+    return { mainRows, draftRows, extrasRows: extras.map(extraAsModel) };
+  }, [models, extras]);
+
+  const kindCounts = useMemo(
+    () => ({
+      main: kindRows.mainRows.length,
+      extras: kindRows.extrasRows.length + kindRows.draftRows.length,
+      all: models.length + extras.length,
+    }),
+    [kindRows, models.length, extras.length],
+  );
+
   // Fit-now + sorted/filtered list (after FIT cache is available; no forecast calls)
   const catalogModels = useMemo(() => {
-    let sorted = [...models].sort((a, b) =>
+    // EXTRAS is its own list, not a filter over models: those rows are attachments
+    // (PLE/Engram tables, projectors). ALL shows models and attachments together.
+    const { extrasRows, draftRows, mainRows } = kindRows;
+    const pool =
+      draftFilter === "extras"
+        ? [...extrasRows, ...draftRows]
+        : draftFilter === "all"
+          ? [...models, ...extrasRows]
+          : mainRows;
+    let sorted = [...pool].sort((a, b) =>
       compareCatalogModels(a, b, sortField, sortDirection),
     );
 
@@ -651,7 +698,9 @@ export function useModelCatalog({
       ? search.toLowerCase().trim().split(/\s+/)
       : null;
 
-    sorted = sorted.filter((m) => matchesCatalogDraftFilter(m, draftFilter));
+    if (draftFilter !== "extras") {
+      sorted = sorted.filter((m) => matchesCatalogDraftFilter(m, draftFilter));
+    }
 
     if (searchWords) {
       sorted = sorted.filter(m => modelMatchesSearch(m, searchWords));
@@ -670,6 +719,8 @@ export function useModelCatalog({
     return sorted;
   }, [
     models,
+    extras,
+    kindRows,
     sortField,
     sortDirection,
     search,
@@ -715,6 +766,7 @@ export function useModelCatalog({
   return {
     search, setSearch,
     draftFilter, setCatalogDraftFilter,
+    kindCounts,
     catalogSelectedModel, setCatalogSelectedModel, handleSelect, handleSelectBySlot, clearEngineSelection,
     panelActiveModel, setPanelActiveModel,
     selectedSlotIdx: selectedSlotIdxState, setSelectedSlotIdx,

@@ -19,7 +19,7 @@ import {
 } from "./specProfiles";
 
 export type DraftRole = "none" | "external_dflash" | "external_eagle3" | "external_mtp";
-export type CatalogDraftFilter = "regular" | "draft" | "all";
+export type CatalogDraftFilter = "main" | "extras" | "all";
 export type SpecCapability = "mtp" | "dflash" | "eagle3";
 
 /** @deprecated Old single group — profiles use SPECULATIVE-MTP / SPECULATIVE-DFLASH. */
@@ -322,18 +322,31 @@ export function isExternalDraftOnly(
 }
 
 export function isLaunchableMain(
-  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "fileRole">,
 ): boolean {
-  return !isExternalDraftOnly(model);
+  return !isExternalDraftOnly(model) && !isAttachmentModel(model);
+}
+
+/**
+ * Attachment GGUFs — PLE/Engram lookup tables, vision projectors and LoRA adapters.
+ * They are listed in the catalog's EXTRAS view but can never be a launch `-m`: the
+ * engine needs the model they attach to.
+ */
+export function isAttachmentModel(
+  model: Pick<ModelEntry, "fileRole">,
+): boolean {
+  const role = model.fileRole;
+  return role === "ple" || role === "mmproj" || role === "adapter";
 }
 
 export function matchesCatalogDraftFilter(
-  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "fileRole">,
   filter: CatalogDraftFilter,
 ): boolean {
   const external = isExternalDraftOnly(model);
-  if (filter === "regular") return !external;
-  if (filter === "draft") return external;
+  // Extras are rendered from `CatalogScanReport.extras`, not from the model list.
+  if (filter === "extras") return false;
+  if (filter === "main") return !external && !isAttachmentModel(model);
   return true;
 }
 

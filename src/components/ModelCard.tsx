@@ -1,5 +1,5 @@
 import type { ModelEntry, ModelMetadata, CatalogUpdateEntry } from "../lib/types";
-import { BAKED_MTP_BADGE, draftRoleBadge, draftRoleFromModel, hasBakedMtp, isExternalDraftOnly } from "../lib/specDraft";
+import { BAKED_MTP_BADGE, draftRoleBadge, draftRoleFromModel, hasBakedMtp, isAttachmentModel, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
 import { ENDPOINT_ROLE_LABEL, type EndpointRole } from "../lib/catalogQuickAccess";
 
@@ -89,8 +89,6 @@ interface ModelCardProps {
   model: ModelEntry;
   isSelected: boolean;
   onSelect: (model: ModelEntry) => void;
-  onScanModel?: (model: ModelEntry) => void;
-  scanningPath: string | null;
   hfUpdateKind?: "header" | "full" | "current" | null;
   hfUpdateBusy?: boolean;
   onApplyHfUpdate?: () => void;
@@ -113,8 +111,6 @@ export default function ModelCard({
   model,
   isSelected,
   onSelect,
-  onScanModel,
-  scanningPath,
   hfUpdateKind = null,
   hfUpdateBusy = false,
   onApplyHfUpdate,
@@ -128,10 +124,21 @@ export default function ModelCard({
   checkDisabled = false,
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
-  const isScanning = scanningPath === model.path;
   const draftRole = draftRoleFromModel(model);
   const draftBadge = draftRoleBadge(draftRole, model) ?? (hasBakedMtp(model) ? BAKED_MTP_BADGE : null);
   const isDraftOnly = isExternalDraftOnly(model);
+  // Attachment rows (Engram table, projector, adapter) come from the EXTRAS view.
+  // They are read-only: no launch, no SCAN, and the card says what the file is.
+  const attachmentKind = isAttachmentModel(model) ? (model.fileRole ?? "") : "";
+  const attachmentRole =
+    attachmentKind === "ple"
+      ? "ENGRAM"
+      : attachmentKind === "mmproj"
+        ? "MMPROJ"
+        : attachmentKind === "adapter"
+          ? "LORA"
+          : attachmentKind.toUpperCase();
+  const isBlockedMain = isDraftOnly || attachmentKind.length > 0;
 
   const isShardNoiseQuant = (label: string) => /^\d{3,}$/.test(label.trim());
   let quantBadge: string | null = null;
@@ -155,12 +162,16 @@ export default function ModelCard({
     archBadge = resolved.archBadge;
   }
 
-  // Vision capability is catalog evidence: the scan found a projector beside this model
-  // (`vision` is set from `find_largest_mmproj`, not from the launch flag). The badge is
-  // the only place that projector is visible in the UI, so it names the file and size.
+  // Vision: capability comes from the model (header/HF tags), presence comes from a
+  // projector on disk. Projectors may live in the extras store, so "no mmproj beside
+  // this file" no longer means "not a vision model".
+  const visionCapable = model.visionCapable === true || model.vision;
   const visionProjector = model.vision
     ? `${model.mmproj ?? "mmproj"}${model.mmproj_size_mib ? ` (${Math.round(model.mmproj_size_mib)} MiB)` : ""}`
     : null;
+  const visionTitle = visionProjector
+    ? `Vision-capable — projector on disk: ${visionProjector}`
+    : "Vision-capable — no projector paired yet (add an mmproj to an extras folder)";
 
   const isNvfp = quantBadge && (quantBadge.toLowerCase().includes('nvfp4') || quantBadge.toLowerCase().includes('mxfp4'));
   const quantBadgeClass = isNvfp
@@ -204,7 +215,13 @@ export default function ModelCard({
           ? "gunmetal-card border"
           : "buried-card"
       }`}
-      title={isDraftOnly ? "Draft model — cannot launch as main (use as speculative draft)" : undefined}
+      title={
+        isBlockedMain
+          ? attachmentRole
+            ? `Attachment file (${attachmentRole}) — cannot launch as a main model`
+            : "Draft model — cannot launch as main (use as speculative draft)"
+          : undefined
+      }
     >
       {checkBubble && (
         <div
@@ -240,8 +257,8 @@ export default function ModelCard({
           )}
         </div>
       )}
-      {isDraftOnly && (
-        <div className="model-card-draft-hatch" aria-hidden="true" />
+      {isBlockedMain && (
+        <div className={`model-card-draft-hatch model-card-draft-hatch--${attachmentKind || "draft"}`} aria-hidden="true" />
       )}
       {/* Name row: the name leads; endpoint role + star ride on the right. The old hover
           path row is gone — the path lives in the title, double-click opens it. */}
@@ -293,15 +310,20 @@ export default function ModelCard({
             {archBadge}
           </span>
         )}
+        {attachmentRole.length > 0 && (
+          <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">
+            {attachmentRole}
+          </span>
+        )}
         {draftBadge && !isDraftOnly && (
           <span className="type-micro font-mono mcard-inkchip px-1 py-0.5 rounded-sm shrink-0">
             {draftBadge}
           </span>
         )}
-        {visionProjector && (
+        {visionCapable && (
           <span
             className="mcard-mm type-micro font-mono px-1 py-0.5 rounded-sm border shrink-0 whitespace-nowrap"
-            title={`Vision projector on disk: ${visionProjector} — loaded when the VISION flag is auto/on`}
+            title={visionTitle}
           >
             VISION
           </span>
@@ -362,21 +384,6 @@ export default function ModelCard({
             <span className="model-card-draft-badge type-micro font-mono px-1 py-0.5 rounded-sm">
               {draftBadge}
             </span>
-          )}
-          {!hasMetadata && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onScanModel?.(model);
-              }}
-              disabled={isScanning || scanningPath !== null}
-              className={`type-micro font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
-                isScanning ? "mcard-scan--scanning border" : "mcard-scan border"
-              }`}
-            >
-              {isScanning ? "⠋ SCANNING..." : "⚠ SCAN"}
-            </button>
           )}
           {quantBadge && (
             <span className={`type-tiny font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>

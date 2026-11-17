@@ -143,6 +143,7 @@ import {
   isLaunchableMain,
   isValidGgufDraftPath,
   isSpecTypeValidForMain,
+  isAttachmentModel,
   loadDraftPairing,
   loadModelSpecOverride,
   pickBestDraftPair,
@@ -1072,7 +1073,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       model?.metadata,
     ],
   );
-  const planModelPath = model && !isExternalDraftOnly(model) ? model.path : null;
+  const planModelPath = model && !isExternalDraftOnly(model) && !isAttachmentModel(model) ? model.path : null;
   const {
     plan: layerPlan,
     kvSource: planKvSource,
@@ -1466,6 +1467,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setCatalogPlaceKey(null);
   }, [currentProvider, catalogPlaceKey, catalogPlaceGroup, effectiveBackendType]);
   const modelIsDraftOnly = model ? isExternalDraftOnly(model) : false;
+  // Companion files (Engram table, projector, adapter) get the draft's fixed face —
+  // they have no launch and no forecast of their own.
+  const modelAttachmentKind = model && isAttachmentModel(model)
+    ? (model.fileRole as "ple" | "mmproj" | "adapter")
+    : null;
+  const modelIsAttachment = modelAttachmentKind != null;
 
   const activeSpecType = cliSpecTypeForMethod(specBoostMethod) ?? undefined;
   const specNeedsExternalDraft =
@@ -1944,6 +1951,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const showCtxAboveConfig =
     model
     && !modelIsDraftOnly
+    && !modelIsAttachment
     && providerHasParamKey(allParamsResolved, "ctx")
     && (ctxStripProps.ctxValues?.length ?? 0) > 0
     && !ctxDockedInCockpit
@@ -2843,7 +2851,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (selectedProfileIsBuilding) return;
     if (!isLaunchableMain(model)) {
       dispatchAppEvent(EVENTS.launchError, {
-        message: "Draft models cannot be launched as mains — select a main model and assign this file as the draft.",
+        message: isAttachmentModel(model)
+          ? "This file is an attachment (Engram table, projector or adapter) — it cannot be launched as a main model."
+          : "Draft models cannot be launched as mains — select a main model and assign this file as the draft.",
       });
       return;
     }
@@ -2888,6 +2898,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const launchDisabled =
     !model
     || modelIsDraftOnly
+    || modelIsAttachment
     || (specNeedsExternalDraft && !draftPathValid)
     || selectedProfileIsBuilding
     || (
@@ -3055,8 +3066,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             saveFullAutoGoal(null);
           }
         }}
-        showFitOrDeviceChrome={!modelIsDraftOnly && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
-        showGpuAssign={Boolean(model && !modelIsDraftOnly && gpus.length > 0 && !fullAutoMode)}
+        showFitOrDeviceChrome={!modelIsDraftOnly && !modelIsAttachment && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
+        showGpuAssign={Boolean(model && !modelIsDraftOnly && !modelIsAttachment && gpus.length > 0 && !fullAutoMode)}
         gpus={gpus}
         deviceValue={config.device}
         splitValue={config.split}
@@ -3109,6 +3120,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }}
         hideMoeBadge
         draftOnly={modelIsDraftOnly}
+        attachmentKind={modelAttachmentKind}
         modelMeta={model?.metadata}
         modelName={model?.name}
         modelQuant={model?.quant}
@@ -3245,7 +3257,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             </span>
           </div>
         ) : null}
-        {model && !modelIsDraftOnly && !showCockpitSurface && isCustomProvider && (
+        {model && !modelIsDraftOnly && !modelIsAttachment && !showCockpitSurface && isCustomProvider && (
           <div className="mb-3 pb-3 border-b section-divider px-1">
             <p className="type-label font-mono config-muted leading-relaxed">
               Cockpit controls bind to Master param keys (ctx, parallel, kv_quant, reasoning…).
@@ -3324,7 +3336,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onAutoFix={fullAutoFixed ? () => { void handleAutoFit(); } : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
-        {!(model && !modelIsDraftOnly && showCockpitSurface) && (
+        {!(model && !modelIsDraftOnly && !modelIsAttachment && showCockpitSurface) && (
           <CockpitInstruments
             defs={allParamsResolved}
             config={config}

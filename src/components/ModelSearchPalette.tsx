@@ -14,8 +14,6 @@ interface ModelSearchPaletteProps {
   onClose: () => void;
   /** Expand full left catalog list and close palette. */
   onOpenFullCatalog?: () => void;
-  scanningPath: string | null;
-  onScanModel?: (model: ModelEntry) => void;
 }
 
 /**
@@ -31,8 +29,6 @@ export default function ModelSearchPalette({
   onSelect,
   onClose,
   onOpenFullCatalog,
-  scanningPath,
-  onScanModel,
 }: ModelSearchPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [highlight, setHighlight] = useState(0);
@@ -149,8 +145,6 @@ export default function ModelSearchPalette({
                     model={model}
                     isSelected={isFocus}
                     onSelect={(m) => onSelect(m)}
-                    scanningPath={scanningPath}
-                    onScanModel={onScanModel}
                   />
                   {isEngineCurrent && !isFocus && (
                     <p className="pal-current px-1.5 pb-1 type-tiny font-mono -mt-0.5">

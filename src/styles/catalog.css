@@ -624,26 +624,39 @@
   z-index: 1;
 }
 
-/* Draft-only hatch — violet diagonal veil; text stays above and readable */
+/* Role fill layer — the hue is applied by the `--draft/--ple/--mmproj/--adapter`
+   modifiers below; this rule only positions the layer. Text stays above and readable. */
 .model-card-draft-hatch {
   position: absolute;
   inset: 0;
   z-index: 0;
   border-radius: inherit;
   pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      -52deg,
-      color-mix(in srgb, var(--theme-dflash-strip-border) 22%, transparent) 0 5px,
-      transparent 5px 11px
-    ),
-    color-mix(in srgb, var(--theme-dflash-strip-bg) 18%, transparent);
+  background: transparent;
   opacity: 0.9;
 }
 
 .model-catalog-card--draft {
   /* keep full ink; hatch carries the draft cue (opacity mute looked disabled) */
   opacity: 1;
+}
+
+/* Companion roles: flat color fills, one hue each. No patterns on cards — a weave over
+   stacked rows read as a glitched screen; the glass face is where the texture lives. */
+.model-card-draft-hatch--draft {
+  background: var(--theme-attach-draft-fill);
+}
+
+.model-card-draft-hatch--ple {
+  background: var(--theme-attach-engram-fill);
+}
+
+.model-card-draft-hatch--mmproj {
+  background: var(--theme-attach-mmproj-fill);
+}
+
+.model-card-draft-hatch--adapter {
+  background: var(--theme-attach-adapter-fill);
 }
 
 .model-catalog-card--draft .model-card-draft-badge {

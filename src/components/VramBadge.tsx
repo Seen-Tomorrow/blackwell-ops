@@ -62,6 +62,8 @@ interface VramBadgeProps {
   ubatch?: number;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
+  /** Attachment role — renders the same fixed face as a draft, tinted per role. */
+  attachmentKind?: AttachmentKind | null;
   className?: string;
   modelName?: string;
   modelQuant?: string;
@@ -93,6 +95,33 @@ const DRAFT_FACE_COPY = {
   aria: "Draft model — no VRAM forecast",
 } as const;
 
+/** Companion files: same fixed face as a draft, different role words and tint. */
+const ATTACHMENT_FACE_COPY = {
+  ple: {
+    title: "ENGRAM TABLE",
+    body: "Per-layer lookup table (Engram) shared by every quant of this family. The engine reads it lazily; it is never a model on its own.",
+    hint: "Pair it to a main model in the engine config.",
+    readout: "LOOKUP",
+    aria: "Engram lookup table — no VRAM forecast",
+  },
+  mmproj: {
+    title: "VISION PROJECTOR",
+    body: "mmproj vision encoder — attached to a main model, never loaded on its own.",
+    hint: "Set VISION auto/on on a main model to use it.",
+    readout: "MMPROJ",
+    aria: "Vision projector — no VRAM forecast",
+  },
+  adapter: {
+    title: "LORA ADAPTER",
+    body: "Adapter weights — applied over a main model at launch.",
+    hint: "Choose a main model and attach the adapter.",
+    readout: "LORA",
+    aria: "LoRA adapter — no VRAM forecast",
+  },
+} as const;
+
+type AttachmentKind = keyof typeof ATTACHMENT_FACE_COPY;
+
 /**
  * One forecast glass: ASSISTED measure cluster (SOURCE + bars + NEED + GPU bank).
  * Fusion overlay replaces the glass while an engine is LOADING/RUNNING.
@@ -102,7 +131,7 @@ export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
-  hideFitProbe = false, draftOnly = false, className,
+  hideFitProbe = false, draftOnly = false, attachmentKind = null, className,
   placementActive = false, onSplitEq,
   snapLogOpen = false,
   onCloseSnapLog,
@@ -240,12 +269,20 @@ export default function VramBadge({
     );
   }
 
-  if (draftOnly) {
+  const attachmentCopy = attachmentKind ? ATTACHMENT_FACE_COPY[attachmentKind] : null;
+  const fixedFace = draftOnly
+    ? DRAFT_FACE_COPY
+    : attachmentCopy
+      ? { ...attachmentCopy, kicker: "NOT A MAIN MODEL" }
+      : null;
+
+  if (fixedFace) {
     return (
       <div
-        className={`vram-badge-forecast vram-fc vram-badge-forecast--draft relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
-        data-forecast-draft="1"
-        aria-label={DRAFT_FACE_COPY.aria}
+        className={`vram-badge-forecast vram-fc ${draftOnly ? "vram-badge-forecast--draft" : "vram-badge-forecast--draft vram-badge-forecast--attachment"} relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        data-forecast-draft={draftOnly ? "1" : undefined}
+        data-attachment-role={attachmentKind ?? undefined}
+        aria-label={fixedFace.aria}
       >
         <div className="vram-forecast-draft flex flex-1 min-h-0 items-stretch justify-between w-full">
           <div className="vram-forecast-draft__hatch" aria-hidden="true" />
@@ -255,20 +292,22 @@ export default function VramBadge({
             <span className="vram-forecast-draft__ladder">
               <i /><i /><i /><i /><i /><i />
             </span>
-            <span className="vram-forecast-draft__flank-readout">DRAFT</span>
+            <span className="vram-forecast-draft__flank-readout">
+              {draftOnly ? "DRAFT" : attachmentCopy?.readout}
+            </span>
           </div>
 
           <div className="vram-forecast-draft__center flex flex-col items-center justify-center gap-3 min-w-0 self-center">
             <div className="vram-forecast-draft__seal font-mono" aria-hidden>
               <span className="vram-forecast-draft__seal-ring" />
               <span className="vram-forecast-draft__seal-ring vram-forecast-draft__seal-ring--outer" />
-              <span className="vram-forecast-draft__seal-core">SPEC</span>
+              <span className="vram-forecast-draft__seal-core">{draftOnly ? "SPEC" : "FILE"}</span>
             </div>
             <div className="vram-forecast-draft__copy font-mono">
-              <span className="vram-forecast-draft__kicker">{DRAFT_FACE_COPY.kicker}</span>
-              <span className="vram-forecast-draft__title">{DRAFT_FACE_COPY.title}</span>
-              <span className="vram-forecast-draft__body">{DRAFT_FACE_COPY.body}</span>
-              <span className="vram-forecast-draft__hint">{DRAFT_FACE_COPY.hint}</span>
+              <span className="vram-forecast-draft__kicker">{fixedFace.kicker}</span>
+              <span className="vram-forecast-draft__title">{fixedFace.title}</span>
+              <span className="vram-forecast-draft__body">{fixedFace.body}</span>
+              <span className="vram-forecast-draft__hint">{fixedFace.hint}</span>
             </div>
             {(modelName || modelQuant) && (
               <div className="vram-forecast-draft__meta font-mono" title={modelName}>
