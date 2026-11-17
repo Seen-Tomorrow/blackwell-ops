@@ -1,7 +1,8 @@
 # Endpoints model — the shape change
 
-**Status: spec, not implemented.** Written 2026-11-17 while the catalog block was still wired
-through the preset join. Execute it in one pass; do not do halves.
+**Status: implemented 2026-11-17.** The v4 store, the fixed BRAIN row and the
+menu/modal/preset-store retirement all landed together; `docs` still describes the shape the
+catalog block now uses rather than a plan.
 
 ## 1. Target shape
 
@@ -48,9 +49,9 @@ export const CATALOG_ENDPOINTS_MAX = 6;          // see §4
 | `src/lib/launchPresets.ts` | `seatOnCombo`, `ensureCatalogSetCombo`, `ComboPreset.seats` — pairing now derived or deleted; `draft` removed from role unions |
 | `src/lib/catalogSeatLearnedMem.ts` | `draft` removed |
 | `src/components/CatalogQuickStrip.tsx` | rows from `Endpoint[]`; `+` row; set tabs `1..5`; roles fixed (BRAIN first row, `+` adds workers) |
-| `src/components/HarnessConnectPanel.tsx` | one brain rule stays; worker list may be >1 — decide whether harness uses the first worker or requires a pick |
+| `src/components/HarnessConnectPanel.tsx` | one brain rule stays; the harness binds the first live worker, extra workers just run |
 | launch-detail types (`catalogLaunchSeats`, `catalogLaunchSeatSolo`) | carry endpoint ids / worker list instead of `brainPath`/`workerPath` |
-| `src/components/EngineConfigPanel.tsx` | delete `LaunchPresetsMenu` import, `LaunchPresetsModal`, `handleSaveSolo/TwinPreset`, `presetsManageOpen` once combos are unused |
+| `src/components/EngineConfigPanel.tsx` | preset menu/modal/handlers/state deleted; `catalogLaunchEndpoints` launches the set with the cockpit's current knobs |
 
 ## 4. UI
 
@@ -79,3 +80,17 @@ export const CATALOG_ENDPOINTS_MAX = 6;          // see §4
   user-facing copy.
 - Engine config still has no endpoint/preset UI: any knob, including spec decoding, stays the
   cockpit's responsibility.
+
+## 7. Decisions recorded during implementation
+
+- **Harness takes the first worker.** A set can hold several workers, but pi binds one BRAIN and
+  one WORKER; `deriveHarnessBinding` takes the first live worker by slot index. The other workers
+  keep running and remain reachable by any OpenAI-compatible client.
+- **Launch uses the cockpit's knobs.** The model the cockpit is showing launches with the current
+  config bag (including Boost / draft). Any other endpoint's model launches on factory defaults
+  rather than inheriting a draft path picked for a different file.
+- **No BRAIN, no worker.** `+` is disabled until the fixed BRAIN row is filled, so a set can never
+  reach the endpoint cap without a brain. `putCatalogEndpoint` refuses the same case in the store.
+- **Zero brains is an incomplete set, not an illegal one.** Only *two* brains are illegal; sanitize
+  keeps the first and collapses the extras to WORKER.
+
