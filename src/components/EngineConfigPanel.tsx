@@ -3487,17 +3487,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           ) : null
         }
         presetsSlot={
-          <LaunchPresetsMenu
-            combos={launchPresetsApi.combos}
-            canSaveSolo={Boolean(model)}
-            canSaveTwin={
-              stack.filter((s) => s.status === "RUNNING" && s.port > 0).length >= 2
-            }
-            onApply={requestApplyCombo}
-            onSaveSolo={handleSaveSoloPreset}
-            onSaveTwin={handleSaveTwinPreset}
-            onManage={() => setPresetsManageOpen(true)}
-          />
+          /* PRESETS removed from the toolbar: the feature is incomplete and the pairing it saved
+             is about to live in ENDPOINTS (catalog sets) instead. The store and the manage modal
+             are untouched for now so nothing that reads a saved combo breaks; they go with the
+             presets retirement, not before. */
+          null
         }
       />
       </div>

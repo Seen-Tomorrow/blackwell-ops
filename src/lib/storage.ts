@@ -1167,11 +1167,11 @@ export function saveCatalogListCollapsed(collapsed: boolean): void {
 }
 
 /**
- * Harness seats block in the catalog quick strip: permanent open/closed.
- * Absent means open, so a fresh install shows the seats.
+ * Endpoints block in the catalog quick strip: permanent open/closed.
+ * Absent means CLOSED — favourites are the default surface, endpoints are opened on purpose.
  */
 export function loadCatalogSeatsOpen(): boolean {
-  return readStorage(KEYS.catalogSeatsOpen) !== "0";
+  return readStorage(KEYS.catalogSeatsOpen) === "1";
 }
 
 export function saveCatalogSeatsOpen(open: boolean): void {

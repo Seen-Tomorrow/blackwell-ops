@@ -326,7 +326,7 @@ export default function CatalogQuickStrip({
         {seatEditing ? <SeatLiveRim /> : null}
         <header
           className="catalog-quick-section__head catalog-quick-section__head--seats"
-          title="Agentic harness seats — BRAIN / WORKER. SOLO launches one seat; TWIN needs both saved bags."
+          title="Endpoints — BRAIN / WORKER. SOLO launches one endpoint; TWIN needs both saved bags. Any OpenAI-compatible client can call a running endpoint."
         >
           <div className="catalog-quick-section__head-row catalog-quick-section__head-row--label">
             <div className="catalog-quick-section__sets" role="tablist" aria-label="Seat sets">
@@ -356,7 +356,7 @@ export default function CatalogQuickStrip({
               <span className="catalog-quick-section__title">
                 {seatEditing
                   ? `EDITING ${CATALOG_SEAT_LABEL[editingRole!]}`
-                  : "HARNESS SEATS"}
+                  : "ENDPOINTS"}
               </span>
               {!seatEditing ? (
                 <button
@@ -364,8 +364,8 @@ export default function CatalogQuickStrip({
                   className={`catalog-quick-section__help${
                     seatsHelpOpen ? " catalog-quick-section__help--active" : ""
                   }`}
-                  title="What are harness seats?"
-                  aria-label="What are harness seats?"
+                  title="What are endpoints?"
+                  aria-label="What are endpoints?"
                   aria-expanded={seatsHelpOpen}
                   aria-controls="catalog-seats-help"
                   onClick={() => setSeatsHelpOpen((v) => !v)}
@@ -378,8 +378,8 @@ export default function CatalogQuickStrip({
               <button
                 type="button"
                 className="catalog-quick-section__collapse"
-                title={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
-                aria-label={seatsExpanded ? "Collapse harness seats" : "Expand harness seats"}
+                title={seatsExpanded ? "Collapse endpoints" : "Expand endpoints"}
+                aria-label={seatsExpanded ? "Collapse endpoints" : "Expand endpoints"}
                 aria-expanded={seatsExpanded}
                 aria-controls="catalog-quick-seat-bank"
                 onClick={() => setSeatsOpen((v) => !v)}
@@ -404,11 +404,11 @@ export default function CatalogQuickStrip({
               id="catalog-seats-help"
               className="catalog-seats-help"
               role="dialog"
-              aria-label="Harness seats help"
+              aria-label="Endpoints help"
             >
               <div className="catalog-seats-help__panel">
                 <div className="catalog-seats-help__top">
-                  <span className="catalog-seats-help__kicker">HARNESS SEATS</span>
+                  <span className="catalog-seats-help__kicker">ENDPOINTS</span>
                   <button
                     type="button"
                     className="catalog-seats-help__close"
@@ -725,10 +725,11 @@ export default function CatalogQuickStrip({
             </button>
           </div>
         ) : null}
+
       </section>
       )}
 
-      {pinModels.length > 0 && (
+      {pinModels.length > 0 && !seatsExpanded && (
         <section className="catalog-quick-section catalog-quick-section--pins">
           <header className="catalog-quick-section__head catalog-quick-section__head--pins">
             <span className="catalog-quick-section__count">
