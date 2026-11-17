@@ -159,9 +159,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     catalogModels: catalogModelsRaw, runningModelPaths,
     handleScanModel, handleScanAll, handleCancelScan,
     handleDeleteModel, handleRenameModel,
-    catalogPins, catalogRecents, catalogSeats, activeSeatSet,
-    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
-    isPinned, getSeatRole,
+    catalogPins, catalogRecents, catalogEndpoints, activeSet,
+    handleTogglePin, handleTogglePinPath,
+    handleAssignEndpoint, handleAddEndpoint, handleReplaceEndpoint, handleRemoveEndpoint,
+    handleSelectSet, handleSelectPath,
+    isPinned, getEndpointRole,
     zone } = catalog;
 
   const catalogModels = useMemo(
@@ -348,7 +350,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       const anchored = Math.max(0, Math.min(target, cap));
 
       // Only anchor when quick access can actually fill the space. A library with
-      // no seats and no pins keeps its natural height instead of a huge void.
+      // no endpoints and no pins keeps its natural height instead of a huge void.
       const stripStyle = getComputedStyle(strip);
       const gap = Number.parseFloat(stripStyle.rowGap || stripStyle.gap) || 0;
       const padTop = Number.parseFloat(stripStyle.paddingTop) || 0;
@@ -390,9 +392,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     catalogCollapsed,
     stackSignature,
     catalogPins.length,
-    catalogSeats.brain?.path,
-    catalogSeats.worker?.path,
-    activeSeatSet,
+    catalogEndpoints,
+    activeSet,
     setupGuide.active,
   ]);
 
@@ -900,22 +901,24 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             } as React.CSSProperties
           }
         >
-          {/* Head — seats / favorites sit above a contextual search + sort toolbar.
+          {/* Head — endpoints / favorites sit above a contextual search + sort toolbar.
               The toolbar's bottom border is the seam shared with the VRAM glass. */}
           <div className="catalog-list-panel__head">
-          {/* Quick access — HARNESS SEATS then FAVORITE (favorites below seats).
-              Seats stay hidden through first-run setup: they need models to seat. */}
+          {/* Quick access — ENDPOINTS then FAVORITE (favorites below endpoints).
+              Endpoints stay hidden through first-run setup: they need models to pair. */}
           <CatalogQuickStrip
             models={models}
-            seats={catalogSeats}
-            activeSeatSet={activeSeatSet}
+            endpoints={catalogEndpoints}
+            activeSet={activeSet}
             pins={catalogPins}
             selectedPath={catalogSelectedModel?.path ?? null}
-            showSeats={!setupGuide.active}
+            showEndpoints={!setupGuide.active}
             onSelectPath={handleSelectPath}
-            onAssignSeat={(role) => handleAssignSeat(role)}
-            onClearSeat={handleClearSeat}
-            onSelectSeatSet={handleSelectSeatSet}
+            onAssignEndpoint={(role) => handleAssignEndpoint(role)}
+            onAddEndpoint={() => handleAddEndpoint()}
+            onReplaceEndpoint={handleReplaceEndpoint}
+            onRemoveEndpoint={handleRemoveEndpoint}
+            onSelectSet={handleSelectSet}
             onTogglePinPath={handleTogglePinPath}
           />
 
@@ -1152,7 +1155,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         }
                         pinned={isPinned(model.path)}
                         onTogglePin={handleTogglePin}
-                        seatRole={getSeatRole(model.path)}
+                        endpointRole={getEndpointRole(model.path)}
                       />
                     </div>
                   );

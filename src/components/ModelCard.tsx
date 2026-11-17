@@ -1,7 +1,7 @@
 import type { ModelEntry, ModelMetadata, CatalogUpdateEntry } from "../lib/types";
 import { BAKED_MTP_BADGE, draftRoleBadge, draftRoleFromModel, hasBakedMtp, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
-import { CATALOG_SEAT_LABEL, type CatalogSeatRole } from "../lib/catalogQuickAccess";
+import { ENDPOINT_ROLE_LABEL, type EndpointRole } from "../lib/catalogQuickAccess";
 
 /**
  * Compact param-count formatting with T/B/M suffix.
@@ -96,7 +96,7 @@ interface ModelCardProps {
   onApplyHfUpdate?: () => void;
   pinned?: boolean;
   onTogglePin?: (model: ModelEntry) => void;
-  seatRole?: CatalogSeatRole | null;
+  endpointRole?: EndpointRole | null;
   /** Transient result of the most recent update check — renders a fading bubble. */
   checkVerdict?: CatalogUpdateEntry | null;
   /** Click-to-dismiss the verdict-only bubble (UP TO DATE / NOT PAIRED). */
@@ -120,7 +120,7 @@ export default function ModelCard({
   onApplyHfUpdate,
   pinned = false,
   onTogglePin,
-  seatRole = null,
+  endpointRole = null,
   checkVerdict = null,
   onBubbleDismiss,
   onCheckUpdate,
@@ -243,7 +243,7 @@ export default function ModelCard({
       {isDraftOnly && (
         <div className="model-card-draft-hatch" aria-hidden="true" />
       )}
-      {/* Name row: the name leads; seat + star ride on the right. The old hover
+      {/* Name row: the name leads; endpoint role + star ride on the right. The old hover
           path row is gone — the path lives in the title, double-click opens it. */}
       <div
         className="model-card-head"
@@ -257,12 +257,12 @@ export default function ModelCard({
         <span className="type-md font-mono block truncate model-card-name min-w-0">
           {model.name}
         </span>
-        {seatRole && (
+        {endpointRole && (
           <span
-            className={`model-card-seat model-card-seat--${seatRole} type-micro font-mono px-1 py-0.5 rounded-sm`}
-            title={`Sticky seat: ${CATALOG_SEAT_LABEL[seatRole]}`}
+            className={`model-card-endpoint model-card-endpoint--${endpointRole} type-micro font-mono px-1 py-0.5 rounded-sm`}
+            title={`In the active endpoint set: ${ENDPOINT_ROLE_LABEL[endpointRole]}`}
           >
-            {CATALOG_SEAT_LABEL[seatRole]}
+            {ENDPOINT_ROLE_LABEL[endpointRole]}
           </span>
         )}
         {onTogglePin && (

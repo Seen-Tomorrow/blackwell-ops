@@ -970,9 +970,6 @@
   overflow: hidden;
 }
 
-.catalog-quick-seat-bank--editing {
-  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
-}
 
 .catalog-quick-seat-bank--help {
   border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
@@ -1184,6 +1181,30 @@
   min-width: 0;
 }
 
+/* Three rows fit the block; the rest scroll inside it under a bottom fade. */
+.catalog-quick-strip__seats--scroll {
+  --catalog-endpoint-row: 76px;
+  max-height: calc(3 * var(--catalog-endpoint-row));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
+}
+
+.catalog-quick-seat--add-idle .catalog-quick-seat__main {
+  cursor: default;
+}
+
+.catalog-quick-section__endpoint-count {
+  flex: 1 1 auto;
+  text-align: center;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
 /* Seat cell inside bank — face only; bank owns the outer frame */
 .catalog-quick-seat {
   position: relative;
@@ -1215,25 +1236,9 @@
   box-shadow: inset 0 0 0 1px var(--fixed-cyan-50-a4);
 }
 
-.catalog-quick-seat--pending {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-telemetry-amber) 55%, transparent);
-}
 
-.catalog-quick-seat--editing {
-  min-height: 52px;
-}
 
-.catalog-quick-seat--brain.catalog-quick-seat--editing {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 50%, transparent),
-    0 0 16px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%, transparent);
-}
 
-.catalog-quick-seat--worker.catalog-quick-seat--editing {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 50%, transparent),
-    0 0 16px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 26%, transparent);
-}
 
 /* Seat top line: role on the left, learned footprint / state on the right. */
 .catalog-quick-seat__top {
@@ -1262,57 +1267,6 @@
   color: var(--theme-accent-bright, var(--theme-accent));
   border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
   background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
-}
-
-/* Σ total — one compact readout in the launch footer, always whole. */
-.catalog-quick-section__sum {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 0 2px;
-  overflow: hidden;
-  white-space: nowrap;
-  font-family: ui-monospace, "JetBrains Mono", monospace;
-  line-height: 1.2;
-}
-
-.catalog-quick-section__sum-part {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0;
-  min-width: 0;
-}
-
-.catalog-quick-section__sum-sigma {
-  color: var(--theme-accent-bright, var(--theme-accent));
-  font-size: var(--type-body);
-  font-weight: 800;
-  opacity: 0.9;
-}
-
-.catalog-quick-section__sum-val {
-  color: var(--theme-text);
-  font-size: var(--type-body);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.catalog-quick-section__sum-unit {
-  color: var(--theme-text-muted);
-  font-size: var(--type-micro);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  opacity: 0.85;
-}
-
-.catalog-quick-section__sum-sep {
-  color: var(--theme-text-muted);
-  font-size: var(--type-micro);
-  letter-spacing: -0.04em;
-  opacity: 0.65;
 }
 
 .catalog-quick-seat__body {
@@ -1447,14 +1401,6 @@
   color: var(--theme-text);
 }
 
-.catalog-quick-seat--editing .catalog-quick-seat__role {
-  font-size: var(--type-sm);
-}
-
-.catalog-quick-seat--editing .catalog-quick-seat__name {
-  font-size: var(--type-md);
-}
-
 .catalog-quick-seat__actions {
   position: absolute;
   right: 8px;
@@ -1489,78 +1435,18 @@
   background: color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
-.catalog-quick-seat__btn--clear,
-.catalog-quick-seat__btn--no {
+.catalog-quick-seat__btn--clear {
   color: var(--theme-danger);
 }
 
-.catalog-quick-seat__btn--clear:hover,
-.catalog-quick-seat__btn--no:hover {
+.catalog-quick-seat__btn--clear:hover {
   color: var(--theme-danger);
   border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
   background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
 }
 
-.catalog-quick-seat__btn--save {
-  color: var(--theme-text);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border-color: color-mix(in srgb, var(--theme-text) 30%, transparent);
-  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
-}
 
-.catalog-quick-seat__save-ico {
-  font-size: var(--type-sm);
-  line-height: 1;
-  color: var(--theme-text);
-  opacity: 0.85;
-}
-
-/* Live perimeter (seat + section while editing) */
-.catalog-quick-seat__live,
-.catalog-quick-section--seats-editing > .catalog-quick-seat__live {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: hidden;
-  border-radius: inherit;
-  padding: 2px;
-  box-sizing: border-box;
-  -webkit-mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  mask-composite: exclude;
-}
-
-.catalog-quick-section--seats-editing > .catalog-quick-seat__live {
-  border-radius: 4px;
-}
-
-.catalog-quick-seat__live-rim {
-  position: absolute;
-  inset: -45%;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0.8;
-  background: conic-gradient(
-    from 0deg,
-    var(--fixed-white-a05) 0deg,
-    var(--fixed-white-a05) 200deg,
-    var(--fixed-white-a45) 250deg,
-    var(--fixed-white-a95) 280deg,
-    var(--fixed-white-a45) 310deg,
-    var(--fixed-white-a05) 360deg
-  );
-  animation: catalog-seat-live-spin 1.6s linear infinite;
-}
-
-/* Seats disclosure — collapses the whole HARNESS SEATS block down to its label
+/* Seats disclosure — collapses the whole ENDPOINTS block down to its label
    bar. FAVORITE is a separate section and is never affected. Pinned to the far
    right of the label row so the title cluster stays centred. */
 .catalog-quick-section__head--seats .catalog-quick-section__collapse {
@@ -1600,156 +1486,6 @@
   display: none;
 }
 
-/* Seat live-rim tone — ONE definition per seat, consumed by both the quick-seat
-   strip and the seat-edit banner. Do not fork these: the two contexts drifted
-   into byte-identical copies once already. */
-.catalog-quick-seat--brain .catalog-quick-seat__live-rim,
-.catalog-quick-strip[data-seat-editing="brain"]
-  .catalog-quick-section--seats-editing
-  > .catalog-quick-seat__live
-  .catalog-quick-seat__live-rim,
-.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 95%, var(--fixed-white) 18%) 280deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-brain-raw) 6%, transparent) 360deg
-  );
-}
-
-.catalog-quick-seat--worker .catalog-quick-seat__live-rim,
-.catalog-quick-strip[data-seat-editing="worker"]
-  .catalog-quick-section--seats-editing
-  > .catalog-quick-seat__live
-  .catalog-quick-seat__live-rim,
-.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__live-rim {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 0deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 200deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 250deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 95%, var(--fixed-white) 14%) 280deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 50%, transparent) 310deg,
-    color-mix(in srgb, var(--theme-harness-worker-raw) 6%, transparent) 360deg
-  );
-}
-
-@keyframes catalog-seat-live-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Seat-edit banner on the engine config panel (not the strip) */
-.catalog-seat-edit-banner {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
-  color: var(--theme-text);
-}
-
-.catalog-seat-edit-banner--brain {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 70%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 35%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 18%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 22%,
-    var(--theme-panel) 78%
-  );
-}
-
-.catalog-seat-edit-banner--worker {
-  border-color: color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 70%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 35%, transparent),
-    0 0 12px color-mix(in srgb, var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 16%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 24%,
-    var(--theme-panel) 76%
-  );
-}
-
-.catalog-seat-edit-banner__label {
-  position: relative;
-  z-index: 2;
-  font-size: var(--type-body);
-  letter-spacing: 0.14em;
-  font-weight: 700;
-}
-
-.catalog-seat-edit-banner--brain .catalog-seat-edit-banner__label {
-  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text, var(--theme-text)));
-}
-
-.catalog-seat-edit-banner--worker .catalog-seat-edit-banner__label {
-  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text, var(--theme-text)));
-}
-
-.catalog-seat-edit-banner__live {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: hidden;
-  border-radius: inherit;
-  padding: 2px;
-  box-sizing: border-box;
-  -webkit-mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(var(--fixed-white) 0 0) content-box,
-    linear-gradient(var(--fixed-white) 0 0);
-  mask-composite: exclude;
-}
-
-.catalog-seat-edit-banner__live-rim {
-  position: absolute;
-  inset: -45%;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0.85;
-  animation: catalog-seat-live-spin 1.6s linear infinite;
-}
-
-.catalog-seat-edit-banner__btn {
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  background: transparent;
-  color: var(--theme-text-muted);
-  padding: 2px 6px;
-  font: inherit;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.catalog-seat-edit-banner__btn--save {
-  color: var(--theme-text);
-  border-color: color-mix(in srgb, var(--theme-text) 35%, transparent);
-}
-
-.catalog-seat-edit-banner__save-ico {
-  color: var(--theme-text);
-  opacity: 0.85;
-  font-size: var(--type-body);
-}
-
-.catalog-seat-edit-banner__btn:hover {
-  color: var(--theme-text);
-}
-
 /* Section chrome */
 .catalog-quick-section {
   display: flex;
@@ -1764,13 +1500,7 @@
   overflow: hidden;
 }
 
-.catalog-quick-section--seats-editing {
-  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
-}
 
-.catalog-quick-strip--seat-editing .catalog-quick-section--seats {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent) 25%, transparent);
-}
 
 .catalog-quick-section__head {
   position: relative;
@@ -1952,11 +1682,6 @@
   color: var(--theme-industrial-text, var(--theme-accent-bright, var(--theme-accent)));
 }
 
-.catalog-quick-section--seats-editing .catalog-quick-section__title {
-  font-size: var(--type-body);
-  color: var(--theme-text);
-}
-
 .catalog-quick-section--pins .catalog-quick-section__title {
   color: var(--theme-accent-bright, var(--theme-accent));
 }
@@ -1995,8 +1720,7 @@
   cursor: not-allowed;
 }
 
-/* Mode + launch share one control size and one amber treatment, so the pair reads as a unit. */
-.catalog-quick-section__action--mode,
+/* Launch control size and amber treatment. */
 .catalog-quick-section__action--launch {
   display: inline-flex;
   align-items: center;
@@ -2010,15 +1734,10 @@
   text-align: center;
 }
 
-.catalog-quick-section__action--mode {
-  letter-spacing: 0.08em;
-}
-
 .catalog-quick-section__action--connect {
   margin-left: auto;
 }
 
-.catalog-quick-section__action--mode:hover:not(:disabled),
 .catalog-quick-section__action--launch:hover:not(:disabled) {
   color: var(--theme-provider-pill-hover-text);
   border-color: var(--theme-provider-pill-hover-border);
@@ -2178,23 +1897,17 @@
   color: var(--theme-text);
 }
 
-[data-model-catalog] .model-card-seat {
+[data-model-catalog] .model-card-endpoint {
   border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
   color: var(--theme-accent-bright, var(--theme-accent));
   background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
   letter-spacing: 0.06em;
 }
 
-[data-model-catalog] .model-card-seat--worker {
+[data-model-catalog] .model-card-endpoint--worker {
   border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
   color: var(--theme-nv-green);
   background: color-mix(in srgb, var(--theme-nv-green) 10%, transparent);
-}
-
-[data-model-catalog] .model-card-seat--draft {
-  border-color: color-mix(in srgb, var(--theme-dflash-strip-border) 50%, transparent);
-  color: var(--theme-dflash-strip-text);
-  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 35%, transparent);
 }
 
 [data-model-catalog] .model-card-fitnow {
@@ -2667,7 +2380,7 @@
   line-height: 1.15;
 }
 
-.model-card-head .model-card-seat {
+.model-card-head .model-card-endpoint {
   flex-shrink: 0;
 }
 

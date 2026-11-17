@@ -180,7 +180,7 @@ export function resolveSpecAdapter(
  *
  * A variant's own id selects its own CLI string: `cliTypeForMethod("dspark")` is
  * `draft-dspark`, not the DFlash default. Callers pass only a method everywhere
- * (`EngineConfigPanel`, `specShareFields`, `catalogSeatLearnedMem`), and a wrong
+ * (`EngineConfigPanel`, `specShareFields`), and a wrong
  * string here would launch the engine with the wrong `--spec-type` and key the
  * learned-VRAM cache under the wrong method.
  */

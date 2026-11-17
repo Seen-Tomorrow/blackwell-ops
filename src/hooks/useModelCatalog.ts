@@ -22,30 +22,23 @@ import {
   matchesCatalogDraftFilter,
 } from "../lib/specDraft";
 import {
-  assignCatalogSeat,
-  clearCatalogSeat,
+  endpointRoleForPath,
   isCatalogPinned,
-  loadCatalogActiveSeatSet,
+  loadCatalogActiveSet,
+  loadCatalogEndpoints,
   loadCatalogPins,
   loadCatalogRecents,
-  loadCatalogSeats,
-  loadCatalogSetComboId,
   pushCatalogRecent,
-  seatRoleForPath,
-  setCatalogActiveSeatSet,
+  putCatalogEndpoint,
+  removeCatalogEndpoint,
+  replaceCatalogEndpoint,
+  setCatalogActiveSet,
   toggleCatalogPin,
-  type CatalogEngineSeatRole,
   type CatalogRecentEntry,
-  type CatalogSeatRole,
-  type CatalogSeatSetIndex,
-  type CatalogSeatsState,
+  type CatalogSetIndex,
+  type EndpointRole,
+  type EndpointSet,
 } from "../lib/catalogQuickAccess";
-import {
-  clearComboSeatPath,
-  getCombo,
-  saveCombo,
-  writeComboSeatPath,
-} from "../lib/launchPresets";
 import {
   cancelMetadataScan,
   getMetadataJob,
@@ -330,11 +323,11 @@ export function useModelCatalog({
     return v === "asc" || v === "desc" ? v : "desc";
   });
 
-  // Pins / recents / sticky seats — path-only, separate from launch presets.
+  // Pins / recents / endpoint sets — path-only; launch knobs stay on the cockpit.
   const [catalogPins, setCatalogPins] = useState<string[]>(() => loadCatalogPins());
   const [catalogRecents, setCatalogRecents] = useState<CatalogRecentEntry[]>(() => loadCatalogRecents());
-  const [catalogSeats, setCatalogSeats] = useState<CatalogSeatsState>(() => loadCatalogSeats());
-  const [activeSeatSet, setActiveSeatSetState] = useState<CatalogSeatSetIndex>(() => loadCatalogActiveSeatSet());
+  const [catalogEndpoints, setCatalogEndpoints] = useState<EndpointSet>(() => loadCatalogEndpoints());
+  const [activeSet, setActiveSetState] = useState<CatalogSetIndex>(() => loadCatalogActiveSet());
   /** Temporary: only the favorite just clicked sits at catalog top. */
   const [floatFavoritePath, setFloatFavoritePath] = useState<string | null>(null);
   // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).
@@ -434,19 +427,19 @@ export function useModelCatalog({
         } catch {}
       }
     };
-    const onSeatsChanged = () => {
-      setCatalogSeats(loadCatalogSeats());
-      setActiveSeatSetState(loadCatalogActiveSeatSet());
+    const onEndpointsChanged = () => {
+      setCatalogEndpoints(loadCatalogEndpoints());
+      setActiveSetState(loadCatalogActiveSet());
     };
     window.addEventListener(EVENTS.engineLaunched, onLaunch);
     window.addEventListener(EVENTS.stopAll, onStopAll);
     window.addEventListener(EVENTS.slotCleared, onSlotCleared);
-    window.addEventListener(EVENTS.catalogSeatsChanged, onSeatsChanged);
+    window.addEventListener(EVENTS.catalogEndpointsChanged, onEndpointsChanged);
     return () => {
       window.removeEventListener(EVENTS.engineLaunched, onLaunch);
       window.removeEventListener(EVENTS.stopAll, onStopAll);
       window.removeEventListener(EVENTS.slotCleared, onSlotCleared);
-      window.removeEventListener(EVENTS.catalogSeatsChanged, onSeatsChanged);
+      window.removeEventListener(EVENTS.catalogEndpointsChanged, onEndpointsChanged);
     };
   }, [models]);
 
@@ -517,46 +510,45 @@ export function useModelCatalog({
     setCatalogPins(toggleCatalogPin(path));
   }, []);
 
-  const handleAssignSeat = useCallback(
-    (role: CatalogEngineSeatRole | CatalogSeatRole, model?: ModelEntry | null) => {
-      if (role === "draft") return;
-      const target = model ?? catalogSelectedModel ?? panelActiveModel;
+  /** Assign the selected model to BRAIN, or refresh WORKER's empty slot. */
+  const handleAssignEndpoint = useCallback(
+    (role: EndpointRole, path?: string | null, model?: ModelEntry | null) => {
+      const target = path ?? model?.path ?? catalogSelectedModel?.path ?? panelActiveModel?.path;
       if (!target) return;
-      const current = catalogSeats[role];
-      if (current?.path
-        && normalizeModelPathKey(current.path) === normalizeModelPathKey(target.path)
-      ) {
-        return;
-      }
-      setCatalogSeats(assignCatalogSeat(role, target.path));
-      const setIndex = loadCatalogActiveSeatSet();
-      const comboId = loadCatalogSetComboId(setIndex);
-      const combo = comboId ? getCombo(comboId) : null;
-      if (combo && (role === "brain" || role === "worker")) {
-        saveCombo(writeComboSeatPath(combo, role, target.path, target.name));
-      }
-      dispatchAppEvent(EVENTS.catalogSeatsChanged);
+      const next = putCatalogEndpoint(loadCatalogActiveSet(), role, target);
+      setCatalogEndpoints(next.endpoints);
+      if (next.ok) dispatchAppEvent(EVENTS.catalogEndpointsChanged);
     },
-    [catalogSelectedModel, panelActiveModel, catalogSeats],
+    [catalogSelectedModel, panelActiveModel],
   );
 
-  const handleClearSeat = useCallback((role: CatalogEngineSeatRole | CatalogSeatRole) => {
-    if (role === "draft") return;
-    setCatalogSeats(clearCatalogSeat(role));
-    const setIndex = loadCatalogActiveSeatSet();
-    const comboId = loadCatalogSetComboId(setIndex);
-    const combo = comboId ? getCombo(comboId) : null;
-    if (combo && (role === "brain" || role === "worker")) {
-      saveCombo(clearComboSeatPath(combo, role));
-    }
-    dispatchAppEvent(EVENTS.catalogSeatsChanged);
+  /** `+` adds the selected model as a WORKER (BRAIN is filled separately). */
+  const handleAddEndpoint = useCallback(
+    (path?: string | null, model?: ModelEntry | null) => {
+      const target = path ?? model?.path ?? catalogSelectedModel?.path ?? panelActiveModel?.path;
+      if (!target) return;
+      const next = putCatalogEndpoint(loadCatalogActiveSet(), "worker", target);
+      setCatalogEndpoints(next.endpoints);
+      if (next.ok) dispatchAppEvent(EVENTS.catalogEndpointsChanged);
+    },
+    [catalogSelectedModel, panelActiveModel],
+  );
+
+  const handleReplaceEndpoint = useCallback((id: string, path: string) => {
+    const next = replaceCatalogEndpoint(loadCatalogActiveSet(), id, path);
+    setCatalogEndpoints(next.endpoints);
+    if (next.ok) dispatchAppEvent(EVENTS.catalogEndpointsChanged);
   }, []);
 
-  const handleSelectSeatSet = useCallback((index: CatalogSeatSetIndex) => {
-    dispatchAppEvent(EVENTS.catalogSeatCancel);
-    const next = setCatalogActiveSeatSet(index);
-    setActiveSeatSetState(next.activeSeatSet);
-    setCatalogSeats(next.seats);
+  const handleRemoveEndpoint = useCallback((id: string) => {
+    setCatalogEndpoints(removeCatalogEndpoint(loadCatalogActiveSet(), id));
+    dispatchAppEvent(EVENTS.catalogEndpointsChanged);
+  }, []);
+
+  const handleSelectSet = useCallback((index: CatalogSetIndex) => {
+    const next = setCatalogActiveSet(index);
+    setActiveSetState(next.activeSet);
+    setCatalogEndpoints(next.endpoints);
   }, []);
 
   const isPinned = useCallback(
@@ -564,9 +556,9 @@ export function useModelCatalog({
     [catalogPins],
   );
 
-  const getSeatRole = useCallback(
-    (path: string) => seatRoleForPath(path, catalogSeats),
-    [catalogSeats],
+  const getEndpointRole = useCallback(
+    (path: string) => endpointRoleForPath(path, catalogEndpoints),
+    [catalogEndpoints],
   );
 
   // Scan handlers
@@ -694,15 +686,6 @@ export function useModelCatalog({
     [models, handleSelect],
   );
 
-  useEffect(() => {
-    const onFocus = (e: Event) => {
-      const path = (e as CustomEvent<{ path?: string }>).detail?.path;
-      if (path) handleSelectPath(path);
-    };
-    window.addEventListener(EVENTS.catalogFocusModel, onFocus);
-    return () => window.removeEventListener(EVENTS.catalogFocusModel, onFocus);
-  }, [handleSelectPath]);
-
   // Keyboard navigation
   const handleKeyboardSelect = useCallback((index: number) => {
     if (catalogModels[index]) handleSelect(catalogModels[index]);
@@ -733,10 +716,12 @@ export function useModelCatalog({
     scanningPath, setScanningPath, handleScanModel,
     batchScanState, setBatchScanState, handleScanAll, handleCancelScan,
     handleDeleteModel, handleRenameModel,
-    // Quick access (pins / recents / seats)
-    catalogPins, catalogRecents, catalogSeats, activeSeatSet,
-    handleTogglePin, handleTogglePinPath, handleAssignSeat, handleClearSeat, handleSelectSeatSet, handleSelectPath,
-    isPinned, getSeatRole,
+    // Quick access (pins / recents / endpoint sets)
+    catalogPins, catalogRecents, catalogEndpoints, activeSet,
+    handleTogglePin, handleTogglePinPath,
+    handleAssignEndpoint, handleAddEndpoint, handleReplaceEndpoint, handleRemoveEndpoint,
+    handleSelectSet, handleSelectPath,
+    isPinned, getEndpointRole,
     zone,
   };
 }

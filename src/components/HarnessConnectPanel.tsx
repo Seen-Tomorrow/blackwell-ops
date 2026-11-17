@@ -636,7 +636,7 @@ export default function HarnessConnectPanel({
 
       {binding.mode === "none" ? (
         <p className="harness-connect__empty m-0">
-          {binding.reason ?? "Launch seats from catalog"}
+          {binding.reason ?? "Launch endpoints from catalog"}
         </p>
       ) : (
         <>
@@ -754,7 +754,7 @@ export default function HarnessConnectPanel({
                       }${overEngine ? " harness-connect__agent-chip--over" : ""}`}
                       title={
                         overEngine
-                          ? `${o.blurb} — engine has ×${workerEngineParallel}; restart seat to raise slots`
+                          ? `${o.blurb} — engine has ×${workerEngineParallel}; restart this engine to raise slots`
                           : o.blurb
                       }
                       onClick={() => setHarnessAgents(o.parallel)}

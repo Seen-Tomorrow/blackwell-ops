@@ -1,11 +1,7 @@
-/**
- * Harness connect veil — phosphor overlay, not a VramBadge face.
- * Shown only for catalog BRAIN/WORKER seats once they are RUNNING.
- */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  loadCatalogSeats,
-  type CatalogSeatsState,
+  loadCatalogEndpoints,
+  type EndpointSet,
 } from "../lib/catalogQuickAccess";
 import {
   bindingReadyToOpen,
@@ -24,7 +20,6 @@ export type HarnessConnectRelaunch = (opts: {
 
 export function useHarnessConnectHost(opts: {
   stack: StackEntry[];
-  catalogSeats?: CatalogSeatsState;
   /** Cockpit Agents / parallel marks for the AGENTS chip row. */
   parallelValues?: (string | number)[];
   onRelaunchSeat?: HarnessConnectRelaunch;
@@ -40,25 +35,19 @@ export function useHarnessConnectHost(opts: {
   connectReady: boolean;
 } {
   const { stack, onRelaunchSeat, onSelectEngine, parallelValues } = opts;
-  const [seats, setSeats] = useState<CatalogSeatsState>(
-    () => opts.catalogSeats ?? loadCatalogSeats(),
-  );
+  const [endpoints, setEndpoints] = useState<EndpointSet>(() => loadCatalogEndpoints());
   const [veilOpen, setVeilOpen] = useState(false);
 
   useEffect(() => {
-    if (opts.catalogSeats) {
-      setSeats(opts.catalogSeats);
-      return;
-    }
-    const reload = () => setSeats(loadCatalogSeats());
+    const reload = () => setEndpoints(loadCatalogEndpoints());
     reload();
-    window.addEventListener(EVENTS.catalogSeatsChanged, reload);
-    return () => window.removeEventListener(EVENTS.catalogSeatsChanged, reload);
-  }, [opts.catalogSeats]);
+    window.addEventListener(EVENTS.catalogEndpointsChanged, reload);
+    return () => window.removeEventListener(EVENTS.catalogEndpointsChanged, reload);
+  }, []);
 
   const binding = useMemo(
-    () => deriveHarnessBinding(stack, seats),
-    [stack, seats],
+    () => deriveHarnessBinding(stack, endpoints),
+    [stack, endpoints],
   );
   const tagged = binding.mode !== "none";
   const ready = tagged && bindingReadyToOpen(binding);

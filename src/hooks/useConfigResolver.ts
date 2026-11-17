@@ -5,7 +5,7 @@
  * (see launchProfiles). Switching modes loads another profile — no silent leakage.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, UserEditedTemplateParam } from "../lib/types";
 import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/paramConfigResolve";
 import {
@@ -66,11 +66,6 @@ interface UseConfigResolverOptions {
   /** Active launch policy — drives which profile is read/written. */
   fullAutoMode: boolean;
   configView: ConfigViewMode;
-  /**
-   * When true, loadConfig is a no-op so FIT probe / param fingerprint
-   * reloads cannot revert knobs during catalog seat-edit.
-   */
-  hydrateLockRef?: MutableRefObject<boolean>;
 }
 
 export function useConfigResolver({
@@ -79,7 +74,6 @@ export function useConfigResolver({
   backendType,
   fullAutoMode,
   configView,
-  hydrateLockRef,
 }: UseConfigResolverOptions) {
   // Heterogeneous param bag — panel treats values as any; pure builder re-types at launch.
   const [config, setConfig] = useState<Record<string, any>>({});
@@ -108,8 +102,7 @@ export function useConfigResolver({
     [cleanedParams],
   );
 
-  const loadConfig = useCallback((force = false) => {
-    if (!force && hydrateLockRef?.current) return;
+  const loadConfig = useCallback(() => {
     if (!cleanedParams.length) {
       setConfig({});
       return;
@@ -162,7 +155,7 @@ export function useConfigResolver({
     }
 
     setConfig(normalized);
-  }, [cleanedParams, backendType, modelPath, policyId, factoryDefaults, hydrateLockRef]);
+  }, [cleanedParams, backendType, modelPath, policyId, factoryDefaults]);
 
   // Load when model / params / provider change
   useEffect(() => {
@@ -187,11 +180,8 @@ export function useConfigResolver({
     if (prevPolicyRef.current === policyId) return;
 
     prevPolicyRef.current = policyId;
-    // A mode switch owns the load: do not let a stale seat-hydration lock keep
-    // the previous mode's config on screen.
-    if (hydrateLockRef) hydrateLockRef.current = false;
     switchActivePolicy(backendType, policyId, factoryDefaults);
-    loadConfig(true);
+    loadConfig();
   }, [policyId, backendType, factoryDefaults, loadConfig]);
 
   useEffect(() => {

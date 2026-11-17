@@ -59,28 +59,10 @@ export const EVENTS = {
   /** Dismiss harness connect glass veil. */
   harnessConnectDismiss: `${STORAGE_PREFIX}harness-connect-dismiss`,
 
-  /**
-   * Catalog seats → launch BRAIN+WORKER twin (optional DRAFT path = convenience pin).
-   * EngineConfigPanel prefers linked combo when present; else ephemeral.
-   */
-  catalogLaunchSeats: `${STORAGE_PREFIX}catalog-launch-seats`,
-  /** Catalog seats → launch one seat as solo (harness connect). */
-  catalogLaunchSeatSolo: `${STORAGE_PREFIX}catalog-launch-seat-solo`,
-  catalogSeatEdit: `${STORAGE_PREFIX}catalog-seat-edit`,
-  /** Force cockpit panel onto this model path (seat-edit, no prior catalog click). */
-  catalogFocusModel: `${STORAGE_PREFIX}catalog-focus-model`,
-  /** Persist panel config into the active seat-edit bag. */
-  catalogSeatSave: `${STORAGE_PREFIX}catalog-seat-save`,
-  /** Leave seat-edit without writing. */
-  catalogSeatCancel: `${STORAGE_PREFIX}catalog-seat-cancel`,
-  /** Panel → strip: seat-edit session ended (clear blink chrome). */
-  catalogSeatEditEnded: `${STORAGE_PREFIX}catalog-seat-edit-ended`,
-  /** Save current panel config into a seat (no edit session required). */
-  catalogSavePanelToSeat: `${STORAGE_PREFIX}catalog-save-panel-to-seat`,
-  /** Save a running engine snapshot into a catalog seat bag. */
-  catalogSaveEngineToSeat: `${STORAGE_PREFIX}catalog-save-engine-to-seat`,
-  /** Path pins / combo link changed — catalog strip should reload seats. */
-  catalogSeatsChanged: `${STORAGE_PREFIX}catalog-seats-changed`,
+  /** Catalog ENDPOINTS → launch every endpoint in the active set. */
+  catalogLaunchEndpoints: `${STORAGE_PREFIX}catalog-launch-endpoints`,
+  /** Endpoint set changed — catalog strip and harness binding should reload. */
+  catalogEndpointsChanged: `${STORAGE_PREFIX}catalog-endpoints-changed`,
 } as const;
 
 /** Detail for `EVENTS.harnessHighlight`. */
@@ -92,51 +74,14 @@ export type HarnessHighlightDetail = {
   selectedSlotIdx?: number | null;
 };
 
-/** Detail for `EVENTS.catalogLaunchSeats`. */
-export type CatalogLaunchSeatsDetail = {
-  brainPath: string;
-  workerPath: string;
-  /** Speculative draft pack path pin (optional convenience; seat bag wins when linked). */
-  draftPath?: string | null;
-  /** Active seat set index (0–2). */
-  setIndex?: 0 | 1 | 2;
-};
-
-/** Detail for `EVENTS.catalogLaunchSeatSolo`. */
-export type CatalogLaunchSeatSoloDetail = {
-  role: "brain" | "worker";
-  modelPath: string;
-  setIndex?: 0 | 1 | 2;
-};
-export type CatalogSeatEditDetail = {
-  role: "brain" | "worker";
-  setIndex: 0 | 1 | 2;
-  /** Model path already selected in catalog (required). */
-  modelPath: string;
-};
-
-type CatalogFocusModelDetail = {
-  path: string;
-};
-
-/** Detail for `EVENTS.catalogSeatEditEnded`. */
-export type CatalogSeatEditEndedDetail = {
-  saved: boolean;
-  role?: "brain" | "worker";
-  setIndex?: 0 | 1 | 2;
-};
-
-/** Detail for `EVENTS.catalogSavePanelToSeat`. */
-export type CatalogSavePanelToSeatDetail = {
-  role: "brain" | "worker";
-  setIndex?: 0 | 1 | 2;
-};
-
-/** Detail for `EVENTS.catalogSaveEngineToSeat`. */
-export type CatalogSaveEngineToSeatDetail = {
-  slotIdx: number;
-  role: "brain" | "worker";
-  setIndex?: 0 | 1 | 2;
+/**
+ * Detail for `EVENTS.catalogLaunchEndpoints`.
+ * Ids, not paths: the panel resolves them against the set it can currently see,
+ * so a stale click cannot launch a pairing the store no longer holds.
+ */
+export type CatalogLaunchEndpointsDetail = {
+  setIndex: number;
+  endpointIds: string[];
 };
 
 

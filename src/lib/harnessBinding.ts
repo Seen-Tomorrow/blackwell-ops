@@ -1,8 +1,10 @@
 /**
- * Derive SOLO/TWIN harness seats from the live stack + catalog seat paths.
- * Catalog assigns; connect only reads. No click-cycle roles.
+ * Derive SOLO/TWIN harness bindings from the live stack + the active ENDPOINT set.
+ * Endpoints assign; connect only reads. The harness gets one BRAIN and one
+ * WORKER; a set may carry more workers than the harness can address, so the
+ * first live worker (by slot index) is the one that connects.
  */
-import type { CatalogSeatsState } from "./catalogQuickAccess";
+import type { EndpointSet } from "./catalogQuickAccess";
 import type { StackEntry } from "./types";
 
 type HarnessMode = "none" | "solo" | "twin";
@@ -43,34 +45,34 @@ function byAlias(live: StackEntry[], role: "brain" | "worker"): StackEntry | nul
   return live.find((e) => aliasRole(e.alias) === role) ?? null;
 }
 
-function byCatalogPath(
-  live: StackEntry[],
-  seats: CatalogSeatsState,
-  role: "brain" | "worker",
-): StackEntry | null {
-  const path = seats[role]?.path;
-  if (!path?.trim()) return null;
-  const want = normalizePath(path);
-  return live.find((e) => e.model_path && normalizePath(e.model_path) === want) ?? null;
+function endpointPaths(endpoints: EndpointSet, role: "brain" | "worker"): string[] {
+  return endpoints.filter((e) => e.role === role).map((e) => e.path);
+}
+
+/** First live engine whose model is one of this role's endpoints. */
+function byEndpointPaths(live: StackEntry[], paths: string[]): StackEntry | null {
+  if (paths.length === 0) return null;
+  const wanted = new Set(paths.map(normalizePath));
+  return live.find((e) => e.model_path && wanted.has(normalizePath(e.model_path))) ?? null;
 }
 
 /**
- * Resolution: alias prefix → catalog path. No untagged 1-live/2-live fallback
+ * Resolution: alias prefix → endpoint path. No untagged 1-live/2-live fallback
  * (regular dock launches must not open harness).
  */
 export function deriveHarnessBinding(
   stack: StackEntry[],
-  catalogSeats: CatalogSeatsState = {},
+  endpoints: EndpointSet = [],
 ): HarnessBinding {
   const live = liveEngines(stack);
   if (live.length === 0) {
-    return { mode: "none", brain: null, worker: null, reason: "Launch seats from catalog" };
+    return { mode: "none", brain: null, worker: null, reason: "Launch endpoints from catalog" };
   }
 
   const brain =
-    byAlias(live, "brain") ?? byCatalogPath(live, catalogSeats, "brain");
+    byAlias(live, "brain") ?? byEndpointPaths(live, endpointPaths(endpoints, "brain"));
   const worker =
-    byAlias(live, "worker") ?? byCatalogPath(live, catalogSeats, "worker");
+    byAlias(live, "worker") ?? byEndpointPaths(live, endpointPaths(endpoints, "worker"));
 
   if (brain && worker && brain.port === worker.port) {
     return {
@@ -91,18 +93,18 @@ export function deriveHarnessBinding(
     mode: "none",
     brain: null,
     worker: worker,
-    reason: "Launch seats from catalog ▶",
+    reason: "Launch endpoints from catalog ▶",
   };
 }
 
-/** Bound seats still booting — veil should dim, not go fully opaque. */
+/** Bound engines still booting — veil should dim, not go fully opaque. */
 export function bindingHasLoading(binding: HarnessBinding): boolean {
   if (binding.brain?.status === "LOADING") return true;
   if (binding.worker?.status === "LOADING") return true;
   return false;
 }
 
-/** OPEN requires RUNNING seats (not LOADING). */
+/** OPEN requires RUNNING engines (not LOADING). */
 export function bindingReadyToOpen(binding: HarnessBinding): boolean {
   if (binding.mode === "solo") {
     return Boolean(binding.brain && binding.brain.status === "RUNNING" && binding.brain.port > 0);

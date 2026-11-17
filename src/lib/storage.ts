@@ -165,9 +165,9 @@ export const KEYS = {
   /** DISTRIBUTION: control/log split width (px). */
   distributionSplitWidth: `${STORAGE_PREFIX}distribution-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
-  /** Harness seats block in the catalog quick strip — "0" = collapsed. Absent = open. */
-  catalogSeatsOpen: `${STORAGE_PREFIX}catalog-seats-open`,
-  /** OPERATIONS catalog pins / recents / sticky seats (path-only). */
+  /** ENDPOINTS block in the catalog quick strip — "1" = expanded. Absent = closed. */
+  catalogEndpointsOpen: `${STORAGE_PREFIX}catalog-endpoints-open`,
+  /** OPERATIONS catalog pins / recents / endpoint sets (path-only). */
   catalogQuickAccess: `${STORAGE_PREFIX}catalog-quick-access`,
   /** OPERATIONS model list: auto | open | closed */
   catalogPresentation: `${STORAGE_PREFIX}catalog-presentation`,
@@ -1170,12 +1170,12 @@ export function saveCatalogListCollapsed(collapsed: boolean): void {
  * Endpoints block in the catalog quick strip: permanent open/closed.
  * Absent means CLOSED — favourites are the default surface, endpoints are opened on purpose.
  */
-export function loadCatalogSeatsOpen(): boolean {
-  return readStorage(KEYS.catalogSeatsOpen) === "1";
+export function loadCatalogEndpointsOpen(): boolean {
+  return readStorage(KEYS.catalogEndpointsOpen) === "1";
 }
 
-export function saveCatalogSeatsOpen(open: boolean): void {
-  writeStorage(KEYS.catalogSeatsOpen, open ? "1" : "0");
+export function saveCatalogEndpointsOpen(open: boolean): void {
+  writeStorage(KEYS.catalogEndpointsOpen, open ? "1" : "0");
 }
 
 /**

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ModelEntry, StackEntry } from "../lib/types";
 import { DEFAULT_BINARY_PROFILE, ENV_META, type Env } from "../lib/foundry_constants";
 import {
-  dispatchAppEvent,
   EVENTS,
   type HarnessHighlightDetail,
 } from "../lib/events";
@@ -143,10 +142,6 @@ function seatRoleForEntry(
   return harnessRoleForPort(entry.port, hl);
 }
 
-function saveEngineToSeat(slotIdx: number, role: "brain" | "worker") {
-  dispatchAppEvent(EVENTS.catalogSaveEngineToSeat, { slotIdx, role });
-}
-
 export default function RunningEnginesPanel({
   stack,
   models,
@@ -268,32 +263,6 @@ export default function RunningEnginesPanel({
                     {item.modelName}
                   </span>
                 </button>
-                {item.entry.status === "RUNNING" ? (
-                  <>
-                    <button
-                      type="button"
-                      className="running-engine-hs-btn shrink-0 font-mono"
-                      title="Save this engine config to BRAIN seat (active set)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        saveEngineToSeat(item.entry.idx, "brain");
-                      }}
-                    >
-                      →B
-                    </button>
-                    <button
-                      type="button"
-                      className="running-engine-hs-btn shrink-0 font-mono"
-                      title="Save this engine config to WORKER seat (active set)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        saveEngineToSeat(item.entry.idx, "worker");
-                      }}
-                    >
-                      →W
-                    </button>
-                  </>
-                ) : null}
                 {onHotSwap && item.entry.status === "RUNNING" && (
                   <button
                     type="button"
@@ -303,7 +272,7 @@ export default function RunningEnginesPanel({
                     title={
                       isHotSwapStale?.(item.entry)
                         ? "Panel config differs from this engine — hot-swap to apply (same port)"
-                        : "Hot-swap: stop this seat and launch panel model/config on the same port"
+                        : "Hot-swap: stop this engine and launch panel model/config on the same port"
                     }
                     onClick={(e) => {
                       e.stopPropagation();

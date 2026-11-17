@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import type { ConfigViewMode } from "../lib/types";
 import type { ConfigColumnCount } from "../lib/configColumnLayout";
 import type { CtxCockpitDock, HwMonitorDock, LaunchDockPosition } from "../lib/storage";
@@ -29,8 +28,6 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     hasParams,
     columnCount,
     onSetColumnCount,
-    presetsSlot,
-    seatSaveSlot,
   } = props;
 
   return (
@@ -47,8 +44,6 @@ export default function EngineToolbar(props: EngineToolbarProps) {
           <span className="config-panel-toolbar__label eng-toolbar-label">AUTOPILOT</span>
         </div>
       )}
-      {seatSaveSlot}
-      {presetsSlot}
       <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
         <button
           type="button"
@@ -177,8 +172,4 @@ export interface EngineToolbarProps {
   hasParams: boolean;
   columnCount: ConfigColumnCount;
   onSetColumnCount: (n: ConfigColumnCount) => void;
-  /** Compact PRESETS control (LaunchPresetsMenu). */
-  presetsSlot?: ReactNode;
-  /** Save current panel config → BRAIN / WORKER seat (left of presets). */
-  seatSaveSlot?: ReactNode;
 }

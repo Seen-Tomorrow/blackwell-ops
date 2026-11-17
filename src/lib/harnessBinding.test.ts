@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CatalogSeatsState } from "./catalogQuickAccess";
+import type { EndpointSet } from "./catalogQuickAccess";
 import {
   aliasRole,
   bindingHasLoading,
@@ -63,11 +63,11 @@ describe("deriveHarnessBinding", () => {
     expect(b.worker?.alias).toBe("WORKER");
   });
 
-  it("twin from catalog paths", () => {
-    const seats: CatalogSeatsState = {
-      brain: { path: "C:/models/brain.gguf", updatedAt: 1 },
-      worker: { path: "C:/models/worker.gguf", updatedAt: 1 },
-    };
+  it("twin from endpoint paths", () => {
+    const endpoints: EndpointSet = [
+      { id: "b", role: "brain", path: "C:/models/brain.gguf" },
+      { id: "w", role: "worker", path: "C:/models/worker.gguf" },
+    ];
     const brain = eng({
       port: 1,
       idx: 0,
@@ -80,9 +80,23 @@ describe("deriveHarnessBinding", () => {
       alias: "E1",
       model_path: "C:/models/worker.gguf",
     });
-    const b = deriveHarnessBinding([brain, worker], seats);
+    const b = deriveHarnessBinding([brain, worker], endpoints);
     expect(b.mode).toBe("twin");
     expect(b.brain?.port).toBe(1);
+    expect(b.worker?.port).toBe(2);
+  });
+
+  it("binds the first live worker when a set has several", () => {
+    const endpoints: EndpointSet = [
+      { id: "b", role: "brain", path: "C:/models/brain.gguf" },
+      { id: "w1", role: "worker", path: "C:/models/w1.gguf" },
+      { id: "w2", role: "worker", path: "C:/models/w2.gguf" },
+    ];
+    const brain = eng({ port: 1, idx: 0, alias: "BRAIN", model_path: "C:/models/brain.gguf" });
+    const w2 = eng({ port: 3, idx: 2, alias: "WORKER-2", model_path: "C:/models/w2.gguf" });
+    const w1 = eng({ port: 2, idx: 1, alias: "WORKER", model_path: "C:/models/w1.gguf" });
+    const b = deriveHarnessBinding([brain, w2, w1], endpoints);
+    expect(b.mode).toBe("twin");
     expect(b.worker?.port).toBe(2);
   });
 

@@ -1,111 +1,70 @@
 /**
- * Catalog quick-access: pins, recents, sticky seats (BRAIN / WORKER).
- * Path pins + optional linked launch-preset combo id per set (knobs live on ComboPreset).
- * Draft/Boost stays on the cockpit — not a catalog seat.
+ * Catalog quick-access: pins, recents, and the five ENDPOINT sets.
  *
- * Three independent seat *sets* (1/2/3) for quick twin-stack switching.
+ * An endpoint is one model path plus its role. The pairing a set describes is
+ * only that: models, not saved launch bags. Every knob a launch needs comes
+ * from the cockpit at launch time, which is why this store has no `comboIds`
+ * and no write-through into a preset store.
+ *
+ * Shape is v4. There is no migration: a store that is not v4 is stale and is
+ * discarded (local storage, owner resets it for free).
  */
 import { KEYS, readJsonStorage, writeJsonStorage } from "./storage";
 
-export type CatalogSeatRole = "brain" | "worker" | "draft";
+export const CATALOG_SET_COUNT = 5;
+export const CATALOG_ENDPOINTS_MAX = 6;
 
-/** Engine seats shown in the catalog strip (DRAFT is storage-only legacy). */
-export const CATALOG_ENGINE_SEAT_ROLES = ["brain", "worker"] as const;
-export type CatalogEngineSeatRole = (typeof CATALOG_ENGINE_SEAT_ROLES)[number];
+export type CatalogSetIndex = 0 | 1 | 2 | 3 | 4;
 
-const CATALOG_SEAT_ROLES: readonly CatalogSeatRole[] = [
-  "brain",
-  "worker",
-  "draft",
-] as const;
+export const ENDPOINT_ROLES = ["brain", "worker"] as const;
+export type EndpointRole = (typeof ENDPOINT_ROLES)[number];
 
-export const CATALOG_SEAT_LABEL: Record<CatalogSeatRole, string> = {
+export const ENDPOINT_ROLE_LABEL: Record<EndpointRole, string> = {
   brain: "BRAIN",
   worker: "WORKER",
-  draft: "DRAFT",
 };
 
-/** How many named twin seat sets the catalog keeps. */
-export const CATALOG_SEAT_SET_COUNT = 3 as const;
-export type CatalogSeatSetIndex = 0 | 1 | 2;
-
-type CatalogSeatSlot = {
+export type Endpoint = {
+  /** Stable for the life of the endpoint; generated on add. */
+  id: string;
+  role: EndpointRole;
+  /** Model GGUF. */
   path: string;
-  updatedAt: number;
 };
 
-export type CatalogSeatsState = Partial<Record<CatalogSeatRole, CatalogSeatSlot>>;
+/** 0..CATALOG_ENDPOINTS_MAX endpoints, at most one of them BRAIN. */
+export type EndpointSet = Endpoint[];
 
 export type CatalogRecentEntry = {
   path: string;
   at: number;
 };
 
-type CatalogSeatSets = [CatalogSeatsState, CatalogSeatsState, CatalogSeatsState];
-type CatalogComboIds = [string | null, string | null, string | null];
-
-type CatalogQuickStoreV3 = {
-  version: 3;
+type CatalogQuickStore = {
+  version: 4;
   pins: string[];
   recents: CatalogRecentEntry[];
-  activeSeatSet: CatalogSeatSetIndex;
-  seatSets: CatalogSeatSets;
-  /** Linked twin ComboPreset id per set (launchPresets store). */
-  comboIds: CatalogComboIds;
+  activeSet: CatalogSetIndex;
+  sets: EndpointSet[];
 };
 
-type CatalogQuickStoreV2 = {
-  version: 2;
-  pins: string[];
-  recents: CatalogRecentEntry[];
-  activeSeatSet: CatalogSeatSetIndex;
-  seatSets: CatalogSeatSets;
-};
-
-/** Legacy v1 shape (single seats bag). */
-type CatalogQuickStoreV1 = {
-  version: 1;
-  pins: string[];
-  recents: CatalogRecentEntry[];
-  seats: CatalogSeatsState;
-};
-
-/** Four keeps FAVORITE at two rows; a sixth chip squeezed the seat bank/summary. */
+/** Four keeps FAVORITE at two rows; a sixth chip squeezed the endpoints block. */
 export const CATALOG_PINS_MAX = 4;
 const PINS_MAX = CATALOG_PINS_MAX;
 const RECENTS_MAX = 8;
 
-function emptySeats(): CatalogSeatsState {
-  return {};
-}
-
-function emptySeatSets(): CatalogSeatSets {
-  return [emptySeats(), emptySeats(), emptySeats()];
-}
-
-function emptyComboIds(): CatalogComboIds {
-  return [null, null, null];
-}
-
-function emptyStore(): CatalogQuickStoreV3 {
+function emptyStore(): CatalogQuickStore {
   return {
-    version: 3,
+    version: 4,
     pins: [],
     recents: [],
-    activeSeatSet: 0,
-    seatSets: emptySeatSets(),
-    comboIds: emptyComboIds(),
+    activeSet: 0,
+    sets: emptySets(),
   };
 }
 
-function sanitizeComboIds(raw: unknown): CatalogComboIds {
-  const out = emptyComboIds();
-  if (!Array.isArray(raw)) return out;
-  for (let i = 0; i < CATALOG_SEAT_SET_COUNT; i++) {
-    const v = raw[i];
-    out[i as CatalogSeatSetIndex] = typeof v === "string" && v.trim() ? v.trim() : null;
-  }
-  return out;
+function emptySets(): EndpointSet[] {
+  return Array.from({ length: CATALOG_SET_COUNT }, () => [] as EndpointSet);
 }
 
 function sanitizePins(raw: unknown): string[] {
@@ -129,92 +88,97 @@ function normalizePath(path: string): string {
   return path.replace(/\//g, "\\").toLowerCase();
 }
 
-function clampSetIndex(n: unknown): CatalogSeatSetIndex {
-  const i = typeof n === "number" ? Math.floor(n) : 0;
+export function clampSetIndex(n: unknown): CatalogSetIndex {
+  const i = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : 0;
   if (i <= 0) return 0;
-  if (i >= 2) return 2;
-  return i as CatalogSeatSetIndex;
+  if (i >= CATALOG_SET_COUNT - 1) return (CATALOG_SET_COUNT - 1) as CatalogSetIndex;
+  return i as CatalogSetIndex;
 }
 
-function sanitizeSeats(raw: unknown): CatalogSeatsState {
-  if (!raw || typeof raw !== "object") return emptySeats();
-  const out: CatalogSeatsState = {};
-  for (const role of CATALOG_SEAT_ROLES) {
-    const slot = (raw as CatalogSeatsState)[role];
-    if (slot && typeof slot.path === "string" && slot.path && typeof slot.updatedAt === "number") {
-      out[role] = { path: slot.path, updatedAt: slot.updatedAt };
+/**
+ * The invariant gate. Everything that reads a persisted store goes through
+ * here, so a hand-edited or torn store degrades to fewer endpoints instead of
+ * throwing or showing an illegal pairing.
+ *
+ * - malformed entries are dropped
+ * - duplicate paths inside a set keep the first
+ * - only the first BRAIN survives; later BRAIN entries collapse to WORKER
+ * - a set never exceeds CATALOG_ENDPOINTS_MAX
+ * - a set with no BRAIN is legal but incomplete (it cannot launch as a set)
+ */
+export function sanitizeCatalogStore(raw: unknown): CatalogQuickStore {
+  if (!raw || typeof raw !== "object") return emptyStore();
+  const v = raw as Partial<CatalogQuickStore>;
+  if (v.version !== 4) return emptyStore();
+
+  const sets = emptySets();
+  if (Array.isArray(v.sets)) {
+    for (let i = 0; i < CATALOG_SET_COUNT; i++) {
+      sets[i] = sanitizeEndpointSet(v.sets[i]);
     }
+  }
+
+  return {
+    version: 4,
+    pins: sanitizePins(v.pins),
+    recents: sanitizeRecents(v.recents),
+    activeSet: clampSetIndex(v.activeSet),
+    sets,
+  };
+}
+
+function sanitizeEndpointSet(raw: unknown): EndpointSet {
+  if (!Array.isArray(raw)) return [];
+  const out: EndpointSet = [];
+  const seenPaths = new Set<string>();
+  let brainSeen = false;
+
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const e = item as Partial<Endpoint>;
+    const id = typeof e.id === "string" ? e.id.trim() : "";
+    const path = typeof e.path === "string" ? e.path.trim() : "";
+    const role = e.role === "brain" || e.role === "worker" ? e.role : null;
+    if (!id || !path || !role) continue;
+
+    const key = normalizePath(path);
+    if (seenPaths.has(key)) continue;
+    if (out.length >= CATALOG_ENDPOINTS_MAX) break;
+
+    // Two BRAIN entries are the illegal shape: collapse the extras to WORKER
+    // so the user keeps both models and the set stays launchable.
+    let nextRole: EndpointRole = role;
+    if (nextRole === "brain") {
+      if (brainSeen) nextRole = "worker";
+      else brainSeen = true;
+    }
+
+    seenPaths.add(key);
+    out.push({ id, role: nextRole, path });
   }
   return out;
 }
 
-function readStore(): CatalogQuickStoreV3 {
-  const raw = readJsonStorage<CatalogQuickStoreV3 | CatalogQuickStoreV2 | CatalogQuickStoreV1>(
-    KEYS.catalogQuickAccess,
-  );
-  if (!raw) return emptyStore();
-
-  // v1 → v3 migration (single seats bag → set 0)
-  if ((raw as CatalogQuickStoreV1).version === 1) {
-    const v1 = raw as CatalogQuickStoreV1;
-    const sets = emptySeatSets();
-    sets[0] = sanitizeSeats(v1.seats);
-    return {
-      version: 3,
-      pins: sanitizePins(v1.pins),
-      recents: sanitizeRecents(v1.recents),
-      activeSeatSet: 0,
-      seatSets: sets,
-      comboIds: emptyComboIds(),
-    };
-  }
-
-  // v2 → v3 (add comboIds)
-  if ((raw as CatalogQuickStoreV2).version === 2) {
-    const v2 = raw as CatalogQuickStoreV2;
-    const sets = emptySeatSets();
-    if (Array.isArray(v2.seatSets)) {
-      for (let i = 0; i < CATALOG_SEAT_SET_COUNT; i++) {
-        sets[i as CatalogSeatSetIndex] = sanitizeSeats(v2.seatSets[i]);
-      }
-    }
-    return {
-      version: 3,
-      pins: sanitizePins(v2.pins),
-      recents: sanitizeRecents(v2.recents),
-      activeSeatSet: clampSetIndex(v2.activeSeatSet),
-      seatSets: sets,
-      comboIds: emptyComboIds(),
-    };
-  }
-
-  if ((raw as CatalogQuickStoreV3).version !== 3) return emptyStore();
-  const v3 = raw as CatalogQuickStoreV3;
-  const sets = emptySeatSets();
-  if (Array.isArray(v3.seatSets)) {
-    for (let i = 0; i < CATALOG_SEAT_SET_COUNT; i++) {
-      sets[i as CatalogSeatSetIndex] = sanitizeSeats(v3.seatSets[i]);
-    }
-  }
-  return {
-    version: 3,
-    pins: sanitizePins(v3.pins),
-    recents: sanitizeRecents(v3.recents),
-    activeSeatSet: clampSetIndex(v3.activeSeatSet),
-    seatSets: sets,
-    comboIds: sanitizeComboIds(v3.comboIds),
-  };
+function readStore(): CatalogQuickStore {
+  return sanitizeCatalogStore(readJsonStorage<unknown>(KEYS.catalogQuickAccess));
 }
 
-function writeStore(store: CatalogQuickStoreV3): void {
+function writeStore(store: CatalogQuickStore): void {
+  const clean = sanitizeCatalogStore(store);
   writeJsonStorage(KEYS.catalogQuickAccess, {
-    version: 3,
-    pins: store.pins.slice(0, PINS_MAX),
-    recents: store.recents.slice(0, RECENTS_MAX),
-    activeSeatSet: clampSetIndex(store.activeSeatSet),
-    seatSets: store.seatSets,
-    comboIds: store.comboIds,
+    version: 4,
+    pins: clean.pins.slice(0, PINS_MAX),
+    recents: clean.recents.slice(0, RECENTS_MAX),
+    activeSet: clean.activeSet,
+    sets: clean.sets,
   });
+}
+
+function newEndpointId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `endpoint-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 export function loadCatalogPins(): string[] {
@@ -225,23 +189,122 @@ export function loadCatalogRecents(): CatalogRecentEntry[] {
   return readStore().recents.slice();
 }
 
-export function loadCatalogActiveSeatSet(): CatalogSeatSetIndex {
-  return readStore().activeSeatSet;
+export function loadCatalogActiveSet(): CatalogSetIndex {
+  return readStore().activeSet;
 }
 
-/** Active set's seats (what the UI edits). */
-export function loadCatalogSeats(): CatalogSeatsState {
+/** Active set's endpoints (what the UI edits). */
+export function loadCatalogEndpoints(): EndpointSet {
   const s = readStore();
-  return { ...s.seatSets[s.activeSeatSet] };
+  return s.sets[s.activeSet].map((e) => ({ ...e }));
 }
 
-function loadCatalogSeatSets(): CatalogSeatSets {
-  const s = readStore();
-  return [
-    { ...s.seatSets[0] },
-    { ...s.seatSets[1] },
-    { ...s.seatSets[2] },
-  ];
+/** All five sets, copied — used where a set is not the active one. */
+export function loadCatalogSets(): EndpointSet[] {
+  return readStore().sets.map((set) => set.map((e) => ({ ...e })));
+}
+
+function setEndpointsAt(index: CatalogSetIndex, endpoints: EndpointSet): EndpointSet {
+  const store = readStore();
+  store.sets[clampSetIndex(index)] = endpoints;
+  writeStore(store);
+  return endpoints.map((e) => ({ ...e }));
+}
+
+export function setCatalogActiveSet(index: CatalogSetIndex): {
+  activeSet: CatalogSetIndex;
+  endpoints: EndpointSet;
+} {
+  const store = readStore();
+  store.activeSet = clampSetIndex(index);
+  writeStore(store);
+  return {
+    activeSet: store.activeSet,
+    endpoints: store.sets[store.activeSet].map((e) => ({ ...e })),
+  };
+}
+
+export type EndpointWriteReason = "limit" | "duplicate";
+
+export type EndpointWriteResult = {
+  ok: boolean;
+  endpoints: EndpointSet;
+  reason?: EndpointWriteReason;
+};
+
+/**
+ * Assign a model path to a role. BRAIN replaces the set's brain (keeping its
+ * id); WORKER appends. Returns why a write was refused so the UI can say so.
+ */
+export function putCatalogEndpoint(
+  index: CatalogSetIndex,
+  role: EndpointRole,
+  path: string,
+): EndpointWriteResult {
+  const trimmed = path.trim();
+  if (!trimmed) return { ok: false, endpoints: loadCatalogSets()[clampSetIndex(index)], reason: "duplicate" };
+
+  const store = readStore();
+  const set = store.sets[clampSetIndex(index)];
+  const key = normalizePath(trimmed);
+  const at = set.findIndex((e) => normalizePath(e.path) === key);
+
+  if (role === "brain") {
+    const brainIdx = set.findIndex((e) => e.role === "brain");
+    if (brainIdx < 0 && set.length >= CATALOG_ENDPOINTS_MAX && at < 0) {
+      return { ok: false, endpoints: set.map((e) => ({ ...e })), reason: "limit" };
+    }
+    if (brainIdx >= 0) {
+      // The path is on another endpoint: move it up to BRAIN rather than
+      // leaving two endpoints with the same model in one set.
+      if (at >= 0 && at !== brainIdx) set.splice(at, 1);
+      const idx = set.findIndex((e) => e.role === "brain");
+      if (idx >= 0) set[idx] = { ...set[idx], role: "brain", path: trimmed };
+    } else {
+      if (at >= 0) set.splice(at, 1);
+      set.unshift({ id: newEndpointId(), role: "brain", path: trimmed });
+    }
+    return { ok: true, endpoints: setEndpointsAt(index, set) };
+  }
+
+  if (at >= 0) {
+    return { ok: false, endpoints: loadCatalogSets()[clampSetIndex(index)], reason: "duplicate" };
+  }
+  if (set.length >= CATALOG_ENDPOINTS_MAX) {
+    return { ok: false, endpoints: loadCatalogSets()[clampSetIndex(index)], reason: "limit" };
+  }
+  set.push({ id: newEndpointId(), role: "worker", path: trimmed });
+  return { ok: true, endpoints: setEndpointsAt(index, set) };
+}
+
+/** Replace one endpoint's model path, keeping its id and role. */
+export function replaceCatalogEndpoint(
+  index: CatalogSetIndex,
+  id: string,
+  path: string,
+): EndpointWriteResult {
+  const trimmed = path.trim();
+  const store = readStore();
+  const set = store.sets[clampSetIndex(index)];
+  const target = set.find((e) => e.id === id);
+  if (!target || !trimmed) {
+    return { ok: false, endpoints: set.map((e) => ({ ...e })), reason: "duplicate" };
+  }
+  const key = normalizePath(trimmed);
+  if (set.some((e) => e.id !== id && normalizePath(e.path) === key)) {
+    return { ok: false, endpoints: set.map((e) => ({ ...e })), reason: "duplicate" };
+  }
+  target.path = trimmed;
+  return { ok: true, endpoints: setEndpointsAt(index, set) };
+}
+
+export function removeCatalogEndpoint(index: CatalogSetIndex, id: string): EndpointSet {
+  const store = readStore();
+  const set = store.sets[clampSetIndex(index)];
+  return setEndpointsAt(
+    index,
+    set.filter((e) => e.id !== id),
+  );
 }
 
 export function isCatalogPinned(path: string, pins: string[] = loadCatalogPins()): boolean {
@@ -278,87 +341,21 @@ export function pushCatalogRecent(path: string): CatalogRecentEntry[] {
   return store.recents.slice();
 }
 
-export function setCatalogActiveSeatSet(index: CatalogSeatSetIndex): {
-  activeSeatSet: CatalogSeatSetIndex;
-  seats: CatalogSeatsState;
-} {
-  const store = readStore();
-  store.activeSeatSet = clampSetIndex(index);
-  writeStore(store);
-  return {
-    activeSeatSet: store.activeSeatSet,
-    seats: { ...store.seatSets[store.activeSeatSet] },
-  };
-}
-
-export function assignCatalogSeat(role: CatalogSeatRole, path: string): CatalogSeatsState {
-  return assignCatalogSeatAt(loadCatalogActiveSeatSet(), role, path);
-}
-
-/** Assign path on a specific set (seat-edit write-through). */
-export function assignCatalogSeatAt(
-  index: CatalogSeatSetIndex,
-  role: CatalogSeatRole,
+/** Role of a model path inside the active set, if any. */
+export function endpointRoleForPath(
   path: string,
-): CatalogSeatsState {
-  const store = readStore();
-  const i = clampSetIndex(index);
-  const seats: CatalogSeatsState = {
-    ...store.seatSets[i],
-    [role]: { path, updatedAt: Date.now() },
-  };
-  for (const r of CATALOG_SEAT_ROLES) {
-    if (r === role) continue;
-    const slot = seats[r];
-    if (slot && normalizePath(slot.path) === normalizePath(path)) {
-      delete seats[r];
-    }
-  }
-  store.seatSets[i] = seats;
-  writeStore(store);
-  return { ...seats };
-}
-
-export function clearCatalogSeat(role: CatalogSeatRole): CatalogSeatsState {
-  const store = readStore();
-  const i = store.activeSeatSet;
-  const seats = { ...store.seatSets[i] };
-  delete seats[role];
-  store.seatSets[i] = seats;
-  writeStore(store);
-  return { ...seats };
-}
-
-export function loadCatalogSetComboId(index?: CatalogSeatSetIndex): string | null {
-  const s = readStore();
-  const i = index != null ? clampSetIndex(index) : s.activeSeatSet;
-  return s.comboIds[i];
-}
-
-function loadCatalogComboIds(): CatalogComboIds {
-  return [...readStore().comboIds] as CatalogComboIds;
-}
-
-export function setCatalogSetComboId(
-  index: CatalogSeatSetIndex,
-  comboId: string | null,
-): void {
-  const store = readStore();
-  const i = clampSetIndex(index);
-  store.comboIds[i] = comboId && comboId.trim() ? comboId.trim() : null;
-  writeStore(store);
-}
-
-export function seatRoleForPath(
-  path: string,
-  seats: CatalogSeatsState = loadCatalogSeats(),
-): CatalogEngineSeatRole | null {
+  endpoints: EndpointSet = loadCatalogEndpoints(),
+): EndpointRole | null {
   const n = normalizePath(path);
-  for (const role of CATALOG_ENGINE_SEAT_ROLES) {
-    const slot = seats[role];
-    if (slot && normalizePath(slot.path) === n) return role;
-  }
-  return null;
+  return endpoints.find((e) => normalizePath(e.path) === n)?.role ?? null;
+}
+
+export function brainEndpoint(endpoints: EndpointSet): Endpoint | null {
+  return endpoints.find((e) => e.role === "brain") ?? null;
+}
+
+export function workerEndpoints(endpoints: EndpointSet): Endpoint[] {
+  return endpoints.filter((e) => e.role === "worker");
 }
 
 /** Short chip label from a model path. */
@@ -369,9 +366,4 @@ export function catalogPathChipLabel(path: string, name?: string): string {
   }
   const base = path.split(/[/\\]/).pop()?.replace(/\.gguf$/i, "") || path;
   return base.length > 22 ? `${base.slice(0, 20)}…` : base;
-}
-
-/** True if a set has at least BRAIN + WORKER filled (twin-launchable). */
-function seatSetCanTwin(seats: CatalogSeatsState): boolean {
-  return Boolean(seats.brain?.path && seats.worker?.path);
 }
