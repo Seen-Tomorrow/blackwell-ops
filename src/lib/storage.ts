@@ -169,6 +169,8 @@ export const KEYS = {
   catalogEndpointsOpen: `${STORAGE_PREFIX}catalog-endpoints-open`,
   /** OPERATIONS catalog pins / recents / endpoint sets (path-only). */
   catalogQuickAccess: `${STORAGE_PREFIX}catalog-quick-access`,
+  /** Per-endpoint cockpit bag keyed by endpoint id — the EDIT → SAVE target. */
+  endpointBags: `${STORAGE_PREFIX}endpoint-bags`,
   /** OPERATIONS model list: auto | open | closed */
   catalogPresentation: `${STORAGE_PREFIX}catalog-presentation`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,

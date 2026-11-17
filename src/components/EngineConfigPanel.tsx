@@ -91,6 +91,7 @@ import {
   type FullAutoWorkload,
 } from "../lib/fullAutoGoals";
 import { resolveFullAutoDecision } from "../lib/fullAutoContract";
+import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import type { SpeedBoostId } from "../lib/multiAgentBooster";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
@@ -117,9 +118,15 @@ import HwMonitor from "./hw/HwMonitor";
 import {
   dispatchAppEvent,
   EVENTS,
+  type CatalogEndpointEditDetail,
   type CatalogLaunchEndpointsDetail,
 } from "../lib/events";
 import { loadCatalogSets } from "../lib/catalogQuickAccess";
+import {
+  loadEndpointBag,
+  saveEndpointBag,
+  type EndpointBag,
+} from "../lib/endpointBags";
 
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorMessage } from "../lib/blackwellError";
@@ -423,6 +430,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   /** After catalog add — place the new key into a group (default USER-ADDED-FROM-CATALOG). */
   const [catalogPlaceKey, setCatalogPlaceKey] = useState<string | null>(null);
   const [catalogPlaceGroup, setCatalogPlaceGroup] = useState("USER-ADDED-FROM-CATALOG");
+  /** Catalog endpoint being tuned: the panel holds its knobs until SAVE/CANCEL. */
+  const [endpointEdit, setEndpointEdit] = useState<{
+    endpointId: string;
+    role: "brain" | "worker";
+    setIndex: number;
+    modelPath: string;
+    applied: boolean;
+  } | null>(null);
+  /** Blocks config reload / Boost re-snap while an endpoint bag is hydrating. */
+  const endpointHydrateLockRef = useRef(false);
   const [uiDensityCompact, setUiDensityCompact] = useState(
     () => loadUiDensity() === "compact",
   );
@@ -795,12 +812,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // ── Hooks ────────────────────────────────────────────────────────────────
   // Per-mode profiles: Full Auto / Assisted Essentials / Assisted Full never share one bag.
-  const { config, updateParam, copyActiveProfileTo, clearSpecConfig } = useConfigResolver({
+  const { config, updateParam, updateParams, copyActiveProfileTo, clearSpecConfig } = useConfigResolver({
     model,
     userEditedParams: allParamsResolved,
     backendType: effectiveBackendType,
     fullAutoMode,
     configView,
+    hydrateLockRef: endpointHydrateLockRef,
   });
 
   const handleSelectEngine = useCallback(
@@ -884,10 +902,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     isCustomProvider,
     specDecodingGroupVisible,
     setResolvedProviders,
+    hydrateLockRef: endpointHydrateLockRef,
   });
   const {
     codingMode,
     speedBoost,
+    setSpeedBoost,
     brains,
     think,
     cockpitThinkOptions,
@@ -2523,20 +2543,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           });
           continue;
         }
-        // Knobs belong to the model the cockpit is showing. Another endpoint's
-        // model launches on factory defaults rather than inheriting a draft path
-        // that was picked for a different file.
+        // A saved bag belongs to this endpoint's model and wins. Without one,
+        // only the cockpit's own model can inherit its knobs; any other
+        // endpoint launches on factory defaults instead of borrowing a draft
+        // path that was picked for a different file.
+        const bag = loadEndpointBag(ep.id);
         const sameAsPanel = panelPath != null && panelPath === normalizeModelPath(entry.path);
         seats.push(
           captureSeatFromPanel({
             model: entry,
-            providerId,
-            binaryProfile: selectedBinaryProfile,
-            policyId,
-            config: sameAsPanel ? { ...config } : {},
+            providerId: bag?.providerId ?? providerId,
+            binaryProfile: bag?.binaryProfile ?? selectedBinaryProfile,
+            policyId: bag?.policyId ?? policyId,
+            config: bag ? bag.paramOverrides : sameAsPanel ? { ...config } : {},
             role: ep.role,
             label: ep.role === "brain" ? "BRAIN" : "WORKER",
-            boostMethod: sameAsPanel ? specBoostMethod : "off",
+            boostMethod: bag ? bag.boostMethod ?? "off" : sameAsPanel ? specBoostMethod : "off",
+            modelSpecOverrides: bag?.modelSpecOverrides,
+            portPolicy: bag?.portPolicy,
             seatId: ep.id,
           }),
         );
@@ -2637,6 +2661,174 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     };
   }, [launchEndpointSet]);
 
+
+  const endEndpointEdit = useCallback(
+    (saved: boolean) => {
+      const prev = endpointEdit;
+      setEndpointEdit(null);
+      endpointHydrateLockRef.current = false;
+      if (prev) {
+        dispatchAppEvent(EVENTS.catalogEndpointEditEnded, {
+          saved,
+          endpointId: prev.endpointId,
+          role: prev.role,
+          setIndex: prev.setIndex,
+        });
+      }
+    },
+    [endpointEdit],
+  );
+
+  /** Put a saved endpoint bag back into the cockpit (policy, Boost, params). */
+  const applyEndpointBagToPanel = useCallback(
+    async (bag: EndpointBag) => {
+      if (bag.policyId === "full_auto") {
+        setFullAuto(true);
+      } else {
+        setFullAuto(false);
+        setConfigViewMode(bag.policyId === "assisted_full" ? "full" : "essentials");
+      }
+      if (bag.providerId) setSelectedProvider(bag.providerId);
+      if (bag.binaryProfile) {
+        setSelectedBinaryProfile(bag.binaryProfile as typeof selectedBinaryProfile);
+      }
+
+      const method = bag.boostMethod ?? "off";
+      // Soft-set the Boost chip only; do not run applyFullAutoCockpit, which would
+      // replan parallel/kv/draft against the bag we are restoring.
+      setSpeedBoost(method);
+      try {
+        await applySpecBoostProfiles({
+          providerId: bag.providerId || effectiveBackendType || DEFAULT_PROVIDER_ID,
+          method,
+          setProviders: setResolvedProviders,
+        });
+      } catch (err) {
+        console.error("[endpoint-edit] applySpecBoostProfiles failed:", err);
+      }
+
+      const clearStale: Record<string, unknown> = {};
+      for (const k of Object.keys(config)) {
+        if (
+          !(
+            k.startsWith("mtp_")
+            || k.startsWith("dflash_")
+            || k === "dflash_draft_model"
+            || k === "spec_draft_model"
+          )
+        ) {
+          continue;
+        }
+        if (!(k in bag.paramOverrides)) clearStale[k] = "";
+      }
+      updateParams({ ...clearStale, ...bag.paramOverrides });
+    },
+    [
+      config,
+      effectiveBackendType,
+      setFullAuto,
+      setConfigViewMode,
+      setSelectedProvider,
+      setSelectedBinaryProfile,
+      setSpeedBoost,
+      setResolvedProviders,
+      updateParams,
+    ],
+  );
+
+  // Hydrate the bag once the endpoint's model and its param defs have landed.
+  useEffect(() => {
+    if (!endpointEdit || endpointEdit.applied) return;
+    if (!model?.path) return;
+    if (normalizeModelPath(model.path) !== normalizeModelPath(endpointEdit.modelPath)) return;
+    if (!allParamsResolved.length) return;
+
+    const bag = loadEndpointBag(endpointEdit.endpointId);
+    setEndpointEdit((prev) => (prev ? { ...prev, applied: true } : prev));
+    if (!bag) return;
+    endpointHydrateLockRef.current = true;
+    void applyEndpointBagToPanel(bag).catch((err) => {
+      console.error("[endpoint-edit] hydrate failed:", err);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply once per endpoint/path
+  }, [
+    endpointEdit?.endpointId,
+    endpointEdit?.applied,
+    endpointEdit?.modelPath,
+    model?.path,
+    allParamsResolved.length,
+    applyEndpointBagToPanel,
+  ]);
+
+  const saveEndpointEdit = useCallback(() => {
+    if (!endpointEdit) return;
+    if (!model?.path) {
+      dispatchAppEvent(EVENTS.launchError, { message: "Endpoint edit: no model loaded" });
+      return;
+    }
+    if (normalizeModelPath(model.path) !== normalizeModelPath(endpointEdit.modelPath)) {
+      dispatchAppEvent(EVENTS.launchError, {
+        message: "Endpoint edit: select this endpoint's model in the catalog first",
+      });
+      return;
+    }
+    const seat = captureSeatFromPanel({
+      model,
+      providerId: effectiveBackendType || DEFAULT_PROVIDER_ID,
+      binaryProfile: selectedBinaryProfile,
+      policyId: resolveLaunchPolicyId({ fullAutoMode, configView }),
+      config,
+      role: endpointEdit.role,
+      label: endpointEdit.role === "brain" ? "BRAIN" : "WORKER",
+      boostMethod: specBoostMethod,
+      seatId: endpointEdit.endpointId,
+    });
+    saveEndpointBag(endpointEdit.endpointId, seat);
+    dispatchAppEvent(EVENTS.catalogEndpointsChanged);
+    dispatchAppEvent(EVENTS.launchSuccess, {
+      alias: `${endpointEdit.role.toUpperCase()} config saved`,
+      port: 0,
+    });
+    endEndpointEdit(true);
+  }, [
+    endpointEdit,
+    model,
+    effectiveBackendType,
+    selectedBinaryProfile,
+    fullAutoMode,
+    configView,
+    config,
+    specBoostMethod,
+    endEndpointEdit,
+  ]);
+
+  // Strip → panel: EDIT / SAVE / CANCEL on one endpoint row.
+  useEffect(() => {
+    const onEdit = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogEndpointEditDetail>).detail;
+      if (!detail?.endpointId || !detail.modelPath) return;
+      if (detail.role !== "brain" && detail.role !== "worker") return;
+      endpointHydrateLockRef.current = false;
+      setEndpointEdit({
+        endpointId: detail.endpointId,
+        role: detail.role,
+        setIndex: detail.setIndex,
+        modelPath: detail.modelPath,
+        applied: false,
+      });
+    };
+    const onSave = () => saveEndpointEdit();
+    const onCancel = () => endEndpointEdit(false);
+
+    window.addEventListener(EVENTS.catalogEndpointEdit, onEdit);
+    window.addEventListener(EVENTS.catalogEndpointSave, onSave);
+    window.addEventListener(EVENTS.catalogEndpointCancel, onCancel);
+    return () => {
+      window.removeEventListener(EVENTS.catalogEndpointEdit, onEdit);
+      window.removeEventListener(EVENTS.catalogEndpointSave, onSave);
+      window.removeEventListener(EVENTS.catalogEndpointCancel, onCancel);
+    };
+  }, [saveEndpointEdit, endEndpointEdit]);
 
   const acknowledgeReplaceLaunch = useCallback(() => {
     try {
@@ -3024,6 +3216,35 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           fullAutoFixed ? " config-params-scroll--full-auto" : ""
         }`}
       >
+        {endpointEdit ? (
+          <div
+            className={`catalog-endpoint-edit-banner catalog-endpoint-edit-banner--${endpointEdit.role}`}
+            role="status"
+          >
+            <span className="catalog-endpoint-edit-banner__label">
+              EDITING {endpointEdit.role.toUpperCase()} · SET {endpointEdit.setIndex + 1}
+            </span>
+            <span className="catalog-endpoint-edit-banner__hint">
+              Tune the cockpit, then SAVE to store these knobs on the endpoint.
+            </span>
+            <span className="catalog-endpoint-edit-banner__actions">
+              <button
+                type="button"
+                className="catalog-endpoint-edit-banner__btn catalog-endpoint-edit-banner__btn--save"
+                onClick={saveEndpointEdit}
+              >
+                SAVE
+              </button>
+              <button
+                type="button"
+                className="catalog-endpoint-edit-banner__btn"
+                onClick={() => endEndpointEdit(false)}
+              >
+                CANCEL
+              </button>
+            </span>
+          </div>
+        ) : null}
         {model && !modelIsDraftOnly && !showCockpitSurface && isCustomProvider && (
           <div className="mb-3 pb-3 border-b section-divider px-1">
             <p className="type-label font-mono config-muted leading-relaxed">

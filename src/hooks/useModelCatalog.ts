@@ -28,6 +28,7 @@ import {
   loadCatalogEndpoints,
   loadCatalogPins,
   loadCatalogRecents,
+  loadCatalogSets,
   pushCatalogRecent,
   putCatalogEndpoint,
   removeCatalogEndpoint,
@@ -39,6 +40,7 @@ import {
   type EndpointRole,
   type EndpointSet,
 } from "../lib/catalogQuickAccess";
+import { deleteEndpointBag, pruneEndpointBags } from "../lib/endpointBags";
 import {
   cancelMetadataScan,
   getMetadataJob,
@@ -328,6 +330,11 @@ export function useModelCatalog({
   const [catalogRecents, setCatalogRecents] = useState<CatalogRecentEntry[]>(() => loadCatalogRecents());
   const [catalogEndpoints, setCatalogEndpoints] = useState<EndpointSet>(() => loadCatalogEndpoints());
   const [activeSet, setActiveSetState] = useState<CatalogSetIndex>(() => loadCatalogActiveSet());
+
+  // A hand-edited or older store may leave bags behind; the endpoint list owns id life.
+  useEffect(() => {
+    pruneEndpointBags(loadCatalogSets().flat().map((e) => e.id));
+  }, []);
   /** Temporary: only the favorite just clicked sits at catalog top. */
   const [floatFavoritePath, setFloatFavoritePath] = useState<string | null>(null);
   // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).
@@ -542,6 +549,7 @@ export function useModelCatalog({
 
   const handleRemoveEndpoint = useCallback((id: string) => {
     setCatalogEndpoints(removeCatalogEndpoint(loadCatalogActiveSet(), id));
+    deleteEndpointBag(id);
     dispatchAppEvent(EVENTS.catalogEndpointsChanged);
   }, []);
 

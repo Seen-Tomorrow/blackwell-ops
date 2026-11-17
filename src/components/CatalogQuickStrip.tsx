@@ -14,6 +14,8 @@ import {
 import {
   dispatchAppEvent,
   EVENTS,
+  type CatalogEndpointEditDetail,
+  type CatalogEndpointEditEndedDetail,
   type CatalogLaunchEndpointsDetail,
 } from "../lib/events";
 import { loadCatalogEndpointsOpen, saveCatalogEndpointsOpen } from "../lib/storage";
@@ -146,6 +148,16 @@ export default function CatalogQuickStrip({
 }: CatalogQuickStripProps) {
   const [endpointsOpen, setEndpointsOpen] = useState<boolean>(() => loadCatalogEndpointsOpen());
   const [helpOpen, setHelpOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onEnded = (e: Event) => {
+      const detail = (e as CustomEvent<CatalogEndpointEditEndedDetail>).detail;
+      if (detail) setEditingId(null);
+    };
+    window.addEventListener(EVENTS.catalogEndpointEditEnded, onEnded);
+    return () => window.removeEventListener(EVENTS.catalogEndpointEditEnded, onEnded);
+  }, []);
 
   useEffect(() => {
     if (!helpOpen) return;
@@ -189,6 +201,7 @@ export default function CatalogQuickStrip({
   const renderRow = (endpoint: Endpoint, index: number) => {
     const model = findModel(models, endpoint.path);
     const isSelected = selectedKey != null && pathKey(endpoint.path) === selectedKey;
+    const isEditing = editingId === endpoint.id;
     const selectionDiffers = selectedKey != null && !isSelected;
     // A worker row cannot take a model that already sits somewhere in this set:
     // moving it there would duplicate a path. BRAIN may pull a worker up.
@@ -202,6 +215,7 @@ export default function CatalogQuickStrip({
           `catalog-quick-seat--${endpoint.role}`,
           "catalog-quick-seat--filled",
           isSelected ? "catalog-quick-seat--selected" : "",
+          isEditing ? "catalog-quick-seat--editing" : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -239,35 +253,87 @@ export default function CatalogQuickStrip({
           </button>
 
           <div className="catalog-quick-seat__actions">
-            {canSet ? (
-              <button
-                type="button"
-                className="catalog-quick-seat__btn catalog-quick-seat__btn--replace"
-                title={
-                  endpoint.role === "brain"
-                    ? "Move the selected model to BRAIN"
-                    : "Use the selected catalog model in this row"
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (endpoint.role === "brain") onAssignEndpoint("brain");
-                  else onReplaceEndpoint(endpoint.id, selectedPath!);
-                }}
-              >
-                SET
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="catalog-quick-seat__btn catalog-quick-seat__btn--clear"
-              title={`Remove ${ENDPOINT_ROLE_LABEL[endpoint.role]} from this set`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemoveEndpoint(endpoint.id);
-              }}
-            >
-              ×
-            </button>
+            {isEditing ? (
+              <>
+                <button
+                  type="button"
+                  className="catalog-quick-seat__btn catalog-quick-seat__btn--save"
+                  title="Save the cockpit's current knobs to this endpoint"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatchAppEvent(EVENTS.catalogEndpointSave, { endpointId: endpoint.id });
+                  }}
+                >
+                  SAVE
+                </button>
+                <button
+                  type="button"
+                  className="catalog-quick-seat__btn catalog-quick-seat__btn--clear"
+                  title="Leave without saving"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatchAppEvent(EVENTS.catalogEndpointCancel, { endpointId: endpoint.id });
+                  }}
+                >
+                  CANCEL
+                </button>
+              </>
+            ) : (
+              <>
+                {model ? (
+                  <button
+                    type="button"
+                    className="catalog-quick-seat__btn catalog-quick-seat__btn--edit"
+                    title="Edit this endpoint's config in the cockpit"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectPath(endpoint.path);
+                      const detail: CatalogEndpointEditDetail = {
+                        endpointId: endpoint.id,
+                        role: endpoint.role,
+                        setIndex: activeSet,
+                        modelPath: endpoint.path,
+                      };
+                      window.requestAnimationFrame(() => {
+                        dispatchAppEvent(EVENTS.catalogEndpointEdit, detail);
+                      });
+                      setEditingId(endpoint.id);
+                    }}
+                  >
+                    EDIT
+                  </button>
+                ) : null}
+                {canSet ? (
+                  <button
+                    type="button"
+                    className="catalog-quick-seat__btn catalog-quick-seat__btn--replace"
+                    title={
+                      endpoint.role === "brain"
+                        ? "Move the selected model to BRAIN"
+                        : "Use the selected catalog model in this row"
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (endpoint.role === "brain") onAssignEndpoint("brain");
+                      else onReplaceEndpoint(endpoint.id, selectedPath!);
+                    }}
+                  >
+                    SET
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="catalog-quick-seat__btn catalog-quick-seat__btn--clear"
+                  title={`Remove ${ENDPOINT_ROLE_LABEL[endpoint.role]} from this set`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveEndpoint(endpoint.id);
+                  }}
+                >
+                  ×
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -302,7 +368,15 @@ export default function CatalogQuickStrip({
                       aria-selected={active}
                       className={`catalog-quick-set-btn${active ? " catalog-quick-set-btn--active" : ""}`}
                       title={`Endpoint set ${idx + 1}${active ? " (active)" : ""}`}
-                      onClick={() => onSelectSet(idx)}
+                      onClick={() => {
+                        if (editingId) {
+                          dispatchAppEvent(EVENTS.catalogEndpointCancel, {
+                            endpointId: editingId,
+                          });
+                          setEditingId(null);
+                        }
+                        onSelectSet(idx);
+                      }}
                     >
                       {idx + 1}
                     </button>
@@ -399,8 +473,8 @@ export default function CatalogQuickStrip({
                     </div>
                   </div>
                   <p className="catalog-seats-help__foot">
-                    Sets <b>1 – 5</b> store alternate pairings. Launch uses the cockpit's current
-                    knobs for each endpoint.
+                    Sets <b>1 – 5</b> store alternate pairings. EDIT loads an endpoint's saved
+                    knobs into the cockpit; SAVE stores the cockpit's current knobs on it.
                   </p>
                 </div>
               </div>

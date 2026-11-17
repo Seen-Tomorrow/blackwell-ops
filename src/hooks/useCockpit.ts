@@ -118,6 +118,11 @@ export type UseCockpitOptions = {
   isCustomProvider: boolean;
   specDecodingGroupVisible: boolean;
   setResolvedProviders: React.Dispatch<React.SetStateAction<ProviderConfig[]>>;
+  /**
+   * While true, skip model/capability Boost re-snap (endpoint bag hydration).
+   * Prevents applyFullAutoCockpit fighting the bag and endless VRAM re-eval.
+   */
+  hydrateLockRef?: React.MutableRefObject<boolean>;
 };
 
 export function useCockpit({
@@ -134,6 +139,7 @@ export function useCockpit({
   isCustomProvider,
   specDecodingGroupVisible,
   setResolvedProviders,
+  hydrateLockRef,
 }: UseCockpitOptions) {
   const cockpitModeKey = fullAutoMode
     ? "full_auto"
@@ -580,6 +586,7 @@ export function useCockpit({
 
   // Model / capability drop → snap Boost (derive agents/memory/think from config).
   useEffect(() => {
+    if (hydrateLockRef?.current) return;
     if (!model) return;
     if (!allParamsResolved.length || Object.keys(config).length === 0) return;
     const modeFromCfg = codingModeFromParallel(

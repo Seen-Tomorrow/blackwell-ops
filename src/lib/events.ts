@@ -63,6 +63,14 @@ export const EVENTS = {
   catalogLaunchEndpoints: `${STORAGE_PREFIX}catalog-launch-endpoints`,
   /** Endpoint set changed — catalog strip and harness binding should reload. */
   catalogEndpointsChanged: `${STORAGE_PREFIX}catalog-endpoints-changed`,
+  /** Strip → panel: load this endpoint's bag into the cockpit for editing. */
+  catalogEndpointEdit: `${STORAGE_PREFIX}catalog-endpoint-edit`,
+  /** Persist the cockpit's current knobs into the endpoint being edited. */
+  catalogEndpointSave: `${STORAGE_PREFIX}catalog-endpoint-save`,
+  /** Leave endpoint editing without writing. */
+  catalogEndpointCancel: `${STORAGE_PREFIX}catalog-endpoint-cancel`,
+  /** Panel → strip: endpoint edit session ended (clear the row chrome). */
+  catalogEndpointEditEnded: `${STORAGE_PREFIX}catalog-endpoint-edit-ended`,
 } as const;
 
 /** Detail for `EVENTS.harnessHighlight`. */
@@ -84,6 +92,22 @@ export type CatalogLaunchEndpointsDetail = {
   endpointIds: string[];
 };
 
+/** Detail for `EVENTS.catalogEndpointEdit`. */
+export type CatalogEndpointEditDetail = {
+  endpointId: string;
+  role: "brain" | "worker";
+  setIndex: number;
+  /** Model path already selected in the catalog. */
+  modelPath: string;
+};
+
+/** Detail for `EVENTS.catalogEndpointEditEnded`. */
+export type CatalogEndpointEditEndedDetail = {
+  saved: boolean;
+  endpointId: string;
+  role: "brain" | "worker";
+  setIndex: number;
+};
 
 
 /** Detail for `EVENTS.ctxSliderDragging`. */
