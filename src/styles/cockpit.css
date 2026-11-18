@@ -2605,91 +2605,142 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 
-/* ── LOADOUT rail — SWAPS sockets (companions attach independently) ───────── */
+/* ── LOADOUT rail — one continuous line, two functional groups ────────────── */
 .loadout-rail {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.3rem 0.1rem 0.05rem;
+  align-items: flex-end;
+  gap: 0.7rem;
+  padding: 0.25rem 0.1rem 0.1rem;
   min-width: 0;
   flex-wrap: wrap;
 }
 
+.loadout-rail__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.loadout-rail__group--spec { flex: 0 1 34rem; min-width: 22rem; }
+.loadout-rail__group--swaps { flex: 0 0 24rem; min-width: 17rem; }
+
+.loadout-rail__spec { min-height: 0; }
+
 .loadout-rail__zone {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
 }
 
-.loadout-rail__sockets {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-width: 0;
+.loadout-rail__dots {
+  align-self: center;
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.28em;
+  opacity: 0.3;
+  color: var(--theme-accent-bright);
+  user-select: none;
 }
 
 .loadout-rail__note {
+  align-self: center;
+  margin-left: auto;
+  margin-top: 0.7rem;
   font-size: 0.6rem;
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 42%, transparent);
-  margin-left: auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.loadout-socket {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  padding: 0.22rem 0.5rem;
-  border-radius: 2px;
-  border: 1px solid var(--theme-border);
-  background: color-mix(in srgb, var(--theme-panel-accent) 82%, transparent);
-  color: var(--theme-industrial-text, var(--theme-accent-bright));
+/* SWAPS: the same grammar as a slider — one line, one thumb per role, role above,
+   attached precision below, state under that. Thumb positions are fixed stops; this is
+   not a single-choice control. */
+.loadout-swaps {
+  position: relative;
+  height: 4.15rem;
+  min-width: 0;
+}
+
+.loadout-swaps__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1.5rem;
+  height: 6px;
+  z-index: 0;
+}
+
+.loadout-stop {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  width: 8.2rem;
+  height: 4.15rem;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
 }
 
-.loadout-socket:disabled { opacity: 0.45; cursor: default; }
+.loadout-stop:disabled { opacity: 0.45; cursor: default; }
 
-.loadout-socket--role-engram { border-color: color-mix(in srgb, var(--theme-attach-engram-line) 55%, var(--theme-border)); }
-.loadout-socket--role-mmproj { border-color: color-mix(in srgb, var(--theme-attach-mmproj-line) 55%, var(--theme-border)); }
-.loadout-socket--role-engram.loadout-socket--auto,
-.loadout-socket--role-engram.loadout-socket--pinned,
-.loadout-socket--role-engram.loadout-socket--integrated {
-  background: color-mix(in srgb, var(--theme-attach-engram-fill) 70%, var(--theme-panel-accent));
-}
-.loadout-socket--role-mmproj.loadout-socket--auto,
-.loadout-socket--role-mmproj.loadout-socket--pinned {
-  background: color-mix(in srgb, var(--theme-attach-mmproj-fill) 70%, var(--theme-panel-accent));
-}
-
-.loadout-socket--pick { border-style: dashed; }
-.loadout-socket--empty { border-style: dashed; opacity: 0.72; }
-.loadout-socket--off { opacity: 0.5; }
-
-.loadout-socket__role {
-  font-size: 0.6rem;
-  letter-spacing: 0.14em;
-  opacity: 0.8;
+.loadout-stop__role {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  opacity: 0.85;
 }
 
-.loadout-socket__state {
-  font-size: 0.64rem;
-  letter-spacing: 0.04em;
+.loadout-stop__thumb {
+  position: absolute;
+  top: 1.02rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
 }
 
-.loadout-socket__count {
+.loadout-stop--role-engram .loadout-stop__thumb { background: var(--theme-attach-engram-line); }
+.loadout-stop--role-mmproj .loadout-stop__thumb { background: var(--theme-attach-mmproj-line); }
+.loadout-stop--off .loadout-stop__thumb { background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent); }
+.loadout-stop--empty .loadout-stop__thumb { background: transparent; border: 1px dashed color-mix(in srgb, var(--theme-accent-bright) 45%, transparent); }
+
+.loadout-stop__value {
+  position: absolute;
+  top: 2.15rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.loadout-stop--role-engram .loadout-stop__value { color: color-mix(in srgb, var(--theme-attach-engram-line) 85%, var(--fixed-white) 15%); }
+.loadout-stop--role-mmproj .loadout-stop__value { color: color-mix(in srgb, var(--theme-attach-mmproj-line) 80%, var(--fixed-white) 20%); }
+
+.loadout-stop__state {
+  position: absolute;
+  top: 2.95rem;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 0.56rem;
-  padding: 0 0.25rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-  opacity: 0.7;
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+  white-space: nowrap;
 }
 
+.loadout-stop--pick .loadout-stop__state,
+.loadout-stop--empty .loadout-stop__state { opacity: 0.45; }
 /* Picker overlay — anchored to the rail, above the cockpit grid. */
 .loadout-picker {
   position: absolute;

@@ -4,16 +4,16 @@ import { invoke } from "@tauri-apps/api/core";
 import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot } from "../lib/types";
 
 /**
- * LOADOUT — the SWAPS half of the rail.
+ * LOADOUT — one rail, two groups.
  *
- * The SPEC half stays where it is for now (the Boost slider); this row owns the
- * independently attachable companions. Each socket shows its state without a tooltip:
- * AUTO (resolved), PINNED (user choice), PICK (candidates but no strong match), EMPTY.
- * Wheel over a socket cycles candidates; click opens the picker.
+ * SPEC is the Boost slider (passed in whole). SWAPS is the same slider grammar used
+ * twice: a continuous track, one thumb per role stopping at MMPROJ / ENGRAM, the role
+ * word above it, the attached precision below it and the state under that. Both halves
+ * are functionally independent — the rail only makes them look like one control.
  */
 interface LoadoutRailProps {
   modelPath?: string | null;
-  /** SPEC control (the Boost slider) rendered inside the rail. */
+  /** SPEC group — the Boost slider rendered inside the rail. */
   specSlot?: ReactNode;
 }
 
@@ -22,23 +22,30 @@ const ROLE_LABEL: Record<CompanionRole, string> = {
   engram: "ENGRAM",
 };
 
-function slotState(slot: CompanionSlot): { text: string; tone: string } {
-  if (slot.pinned_off) return { text: "OFF", tone: "off" };
+interface StopState {
+  value: string;
+  state: string;
+  tone: string;
+}
+
+function stopState(slot: CompanionSlot): StopState {
+  const precisionOf = (path?: string) =>
+    slot.candidates.find((c) => c.path === path)?.precision ?? "—";
+  if (slot.pinned_off) return { value: "—", state: "OFF", tone: "off" };
   if (slot.pinned) {
-    const p = slot.candidates.find((c) => c.path === slot.pinned);
-    return { text: `PINNED · ${p?.precision ?? "file"}`, tone: "pinned" };
+    return { value: precisionOf(slot.pinned), state: "PINNED", tone: "pinned" };
   }
   if (slot.integrated) {
-    const p = slot.candidates.find((c) => c.score >= 100);
-    return { text: `INTEGRATED · ${p?.precision ?? "built-in"}`, tone: "integrated" };
+    const table = slot.candidates.find((c) => c.score >= 100);
+    return { value: table?.precision ?? "built-in", state: "INTEGRATED", tone: "integrated" };
   }
   if (slot.auto && slot.confidence === "strong") {
-    return { text: `AUTO · ${slot.auto.precision}`, tone: "auto" };
+    return { value: slot.auto.precision, state: "AUTO", tone: "auto" };
   }
   if (slot.candidates.length > 0) {
-    return { text: `PICK · ${slot.candidates.length}`, tone: "pick" };
+    return { value: "—", state: `PICK · ${slot.candidates.length}`, tone: "pick" };
   }
-  return { text: "EMPTY · find", tone: "empty" };
+  return { value: "—", state: "EMPTY", tone: "empty" };
 }
 
 export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
@@ -101,20 +108,30 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
 
   return (
     <div className="loadout-rail" data-busy={busy ? "1" : undefined}>
-      <span className="loadout-rail__zone font-mono">SPEC</span>
-      <div className="loadout-rail__spec">{specSlot}</div>
-      <span className="loadout-rail__zone font-mono">SWAPS</span>
-      <div className="loadout-rail__sockets">
-        {slots.map((slot) => (
-          <CompanionSocket
-            key={slot.role}
-            slot={slot}
-            disabled={busy}
-            onOpen={() => setOpenRole(slot.role)}
-            onCycle={(candidate) => void attach(slot.role, candidate.path)}
-          />
-        ))}
+      <div className="loadout-rail__group loadout-rail__group--spec">
+        <span className="loadout-rail__zone font-mono">SPEC</span>
+        <div className="loadout-rail__spec">{specSlot}</div>
       </div>
+
+      <span className="loadout-rail__dots" aria-hidden="true">· · ·</span>
+
+      <div className="loadout-rail__group loadout-rail__group--swaps">
+        <span className="loadout-rail__zone font-mono">SWAPS</span>
+        <div className="loadout-swaps">
+          <div className="cockpit-slider-track loadout-swaps__line" aria-hidden="true" />
+          {slots.map((slot, i) => (
+            <CompanionStop
+              key={slot.role}
+              slot={slot}
+              leftPct={slots.length > 1 ? 26 + i * 48 : 50}
+              disabled={busy}
+              onOpen={() => setOpenRole(slot.role)}
+              onCycle={(candidate) => void attach(slot.role, candidate.path)}
+            />
+          ))}
+        </div>
+      </div>
+
       <span className="loadout-rail__note font-mono">
         {report ? "attach independently · wheel to cycle · click to pick" : "scan a model to resolve companions"}
       </span>
@@ -132,19 +149,20 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
   );
 }
 
-interface CompanionSocketProps {
+interface CompanionStopProps {
   slot: CompanionSlot;
+  leftPct: number;
   disabled: boolean;
   onOpen: () => void;
   onCycle: (candidate: CompanionCandidate) => void;
 }
 
-function CompanionSocket({ slot, disabled, onOpen, onCycle }: CompanionSocketProps) {
-  const state = slotState(slot);
+function CompanionStop({ slot, leftPct, disabled, onOpen, onCycle }: CompanionStopProps) {
+  const state = stopState(slot);
   const ref = useRef<HTMLButtonElement | null>(null);
 
-  // Wheel must not scroll the cockpit — attach a non-passive listener so the cycle can
-  // preventDefault. Only candidates beyond the current pick are cycled.
+  // Wheel must not scroll the cockpit — non-passive listener so the cycle can
+  // preventDefault. Only files already trusted enough to be candidates are cycled.
   useEffect(() => {
     const el = ref.current;
     if (!el || disabled) return;
@@ -161,21 +179,26 @@ function CompanionSocket({ slot, disabled, onOpen, onCycle }: CompanionSocketPro
     return () => el.removeEventListener("wheel", onWheel);
   }, [slot, disabled, onCycle]);
 
+  const active = state.tone !== "empty" && state.tone !== "off";
+
   return (
     <button
       ref={ref}
       type="button"
-      className={`loadout-socket loadout-socket--${state.tone} loadout-socket--role-${slot.role}`}
+      className={`loadout-stop loadout-stop--${state.tone}${active ? " loadout-stop--active" : ""} loadout-stop--role-${slot.role}`}
+      style={{ left: `${leftPct}%` }}
       onClick={onOpen}
       disabled={disabled}
-      title={slot.reason || state.text}
-      aria-label={`${ROLE_LABEL[slot.role]}: ${state.text}`}
+      title={slot.reason || state.state}
+      aria-label={`${ROLE_LABEL[slot.role]}: ${state.state}, ${state.value}`}
     >
-      <span className="loadout-socket__role font-mono">{ROLE_LABEL[slot.role]}</span>
-      <span className="loadout-socket__state font-mono">{state.text}</span>
-      {slot.candidates.length > 1 && (
-        <span className="loadout-socket__count font-mono">{slot.candidates.length}</span>
-      )}
+      <span className="loadout-stop__role font-mono">{ROLE_LABEL[slot.role]}</span>
+      <span className="cockpit-slider-thumb loadout-stop__thumb" aria-hidden="true" />
+      <span className="loadout-stop__value font-mono">{state.value}</span>
+      <span className="loadout-stop__state font-mono">
+        {state.state}
+        {slot.candidates.length > 1 ? ` · ${slot.candidates.length}` : ""}
+      </span>
     </button>
   );
 }
@@ -209,9 +232,7 @@ function CompanionPickPanel({ slot, onClose, onAttach, onDetach, onClear }: Comp
         ) : (
           <ul className="loadout-picker__list">
             {slot.candidates.map((c) => {
-              const active = slot.pinned
-                ? c.path === slot.pinned
-                : slot.auto?.path === c.path;
+              const active = slot.pinned ? c.path === slot.pinned : slot.auto?.path === c.path;
               return (
                 <li key={c.path}>
                   <button

@@ -304,7 +304,7 @@ export function CockpitInstruments({
         standalone ? " cockpit-instruments--standalone" : ""
       }`}
     >
-      <BatchRangeSlider defs={defs} config={config} onChange={onChange} />
+      {showBatch ? <BatchRangeSlider defs={defs} config={config} onChange={onChange} /> : null}
       <SamplerTask
         defs={defs}
         config={config}
