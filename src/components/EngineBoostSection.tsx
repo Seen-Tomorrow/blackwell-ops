@@ -53,6 +53,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     showMemory,
     showThink,
     showBoost,
+  modelPath,
     agentsFromTemplateOnly,
     layout,
     powerMode,
@@ -125,6 +126,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         showMemory={showMemory}
         showThink={showThink}
         showBoost={showBoost}
+      modelPath={modelPath}
         agentsFromTemplateOnly={agentsFromTemplateOnly}
         layout={layout}
         powerMode={powerMode}
@@ -202,6 +204,8 @@ export interface EngineBoostSectionProps {
   showMemory: boolean;
   showThink: boolean;
   showBoost: boolean;
+  /** Active main model path — LOADOUT companions. */
+  modelPath?: string | null;
   agentsFromTemplateOnly: boolean;
   layout: "hero" | "normal";
   powerMode: boolean;

@@ -20,6 +20,7 @@ import {
   type ThinkOption,
 } from "../lib/multiAgentBooster";
 import CockpitCtxStrip from "./CockpitCtxStrip";
+import LoadoutRail from "./LoadoutRail";
 import CockpitSlider from "./CockpitSlider";
 import CockpitNavSegment from "./CockpitNavSegment";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
@@ -135,6 +136,8 @@ export interface MultiAgentBoosterProps {
   showMemory?: boolean;
   showThink?: boolean;
   showBoost?: boolean;
+  /** Active main model path — LOADOUT resolves its companions. */
+  modelPath?: string | null;
   /** When true, Agents marks come only from parallelValues (no hardcoded 1–32 presets). */
   agentsFromTemplateOnly?: boolean;
   /** SAMPLE / THROUGHPUT rails rendered inside the cockpit footer. */
@@ -208,6 +211,7 @@ export default function MultiAgentBooster({
   showMemory = true,
   showThink = true,
   showBoost = true,
+  modelPath = null,
   agentsFromTemplateOnly = false,
   instrumentSlot,
   kvUnified,
@@ -930,6 +934,10 @@ export default function MultiAgentBooster({
           </div>
           )}
         </div>
+
+        {/* LOADOUT — SWAPS sockets. Spec selection still lives in the grid above; this
+            row owns the independently attachable companions. */}
+        <LoadoutRail modelPath={modelPath} />
 
         {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
         {violetStrip ? (

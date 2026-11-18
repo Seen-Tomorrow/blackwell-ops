@@ -2604,3 +2604,193 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   min-width: 10.5rem;
 }
 
+
+/* ── LOADOUT rail — SWAPS sockets (companions attach independently) ───────── */
+.loadout-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0.1rem 0.05rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.loadout-rail__zone {
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
+}
+
+.loadout-rail__sockets {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.loadout-rail__note {
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 42%, transparent);
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loadout-socket {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 2px;
+  border: 1px solid var(--theme-border);
+  background: color-mix(in srgb, var(--theme-panel-accent) 82%, transparent);
+  color: var(--theme-industrial-text, var(--theme-accent-bright));
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.loadout-socket:disabled { opacity: 0.45; cursor: default; }
+
+.loadout-socket--role-engram { border-color: color-mix(in srgb, var(--theme-attach-engram-line) 55%, var(--theme-border)); }
+.loadout-socket--role-mmproj { border-color: color-mix(in srgb, var(--theme-attach-mmproj-line) 55%, var(--theme-border)); }
+.loadout-socket--role-engram.loadout-socket--auto,
+.loadout-socket--role-engram.loadout-socket--pinned,
+.loadout-socket--role-engram.loadout-socket--integrated {
+  background: color-mix(in srgb, var(--theme-attach-engram-fill) 70%, var(--theme-panel-accent));
+}
+.loadout-socket--role-mmproj.loadout-socket--auto,
+.loadout-socket--role-mmproj.loadout-socket--pinned {
+  background: color-mix(in srgb, var(--theme-attach-mmproj-fill) 70%, var(--theme-panel-accent));
+}
+
+.loadout-socket--pick { border-style: dashed; }
+.loadout-socket--empty { border-style: dashed; opacity: 0.72; }
+.loadout-socket--off { opacity: 0.5; }
+
+.loadout-socket__role {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  opacity: 0.8;
+}
+
+.loadout-socket__state {
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+}
+
+.loadout-socket__count {
+  font-size: 0.56rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  opacity: 0.7;
+}
+
+/* Picker overlay — anchored to the rail, above the cockpit grid. */
+.loadout-picker {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 0.35rem);
+  z-index: 40;
+  width: min(46rem, 92vw);
+  max-height: 19rem;
+  overflow: auto;
+  background: var(--theme-panel);
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--fixed-black-a55) 80%, transparent);
+  padding: 0.55rem 0.7rem 0.6rem;
+}
+
+.loadout-picker__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+}
+
+.loadout-picker__reason {
+  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loadout-picker__x {
+  margin-left: auto;
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  padding: 0 0.35rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.loadout-picker__label {
+  display: block;
+  letter-spacing: 0.14em;
+  margin-bottom: 0.3rem;
+  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
+}
+
+.loadout-picker__empty {
+  margin: 0;
+  opacity: 0.7;
+  padding: 0.25rem 0 0.35rem;
+}
+
+.loadout-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.loadout-card {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name score" "meta score";
+  gap: 0.1rem 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 78%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+
+.loadout-card--active {
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 55%, var(--theme-border));
+}
+
+.loadout-card__name { grid-area: name; font-size: 0.72rem; }
+.loadout-card__meta { grid-area: meta; opacity: 0.65; }
+.loadout-card__score { grid-area: score; align-self: center; opacity: 0.55; }
+
+.loadout-picker__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.loadout-picker__btn {
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  letter-spacing: 0.08em;
+}
+
+.loadout-picker__btn:hover { border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border)); }

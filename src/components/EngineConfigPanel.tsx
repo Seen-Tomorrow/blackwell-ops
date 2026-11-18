@@ -3299,6 +3299,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           showMemory={cockpitShowMemory}
           showThink={cockpitShowThink}
           showBoost={cockpitShowBoost}
+          modelPath={model?.path ?? null}
           flagToggles={cockpitFlagToggles}
           agentsFromTemplateOnly={isCustomProvider}
           layout={fullAutoFixed ? "hero" : "normal"}
