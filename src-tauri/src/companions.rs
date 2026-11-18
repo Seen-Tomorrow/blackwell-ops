@@ -656,6 +656,12 @@ fn finish_slot(
 ) -> CompanionSlot {
     let pinned_off = pinned.as_deref() == Some("");
     let pinned_path = pinned.filter(|p| !p.is_empty());
+    // Only plausible companions belong in the picker. A projector that merely shares
+    // the embedding width (a common n_embd) is not "for this model": it needs a name,
+    // arch/type or same-folder agreement to clear 60. A live pin is always shown.
+    candidates.retain(|c| {
+        c.score >= 60 || pinned_path.as_deref() == Some(c.path.as_str())
+    });
     let top = candidates.first().cloned();
     let confidence = top
         .as_ref()
