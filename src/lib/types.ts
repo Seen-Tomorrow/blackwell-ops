@@ -93,6 +93,17 @@ export interface CompanionSlot {
   candidates: CompanionCandidate[];
 }
 
+/** A companion file published in the model's Hub repo (not downloaded yet). */
+export interface RepoCompanion {
+  repo_id: string;
+  path_in_repo: string;
+  file_name: string;
+  size_bytes: number;
+  size_str: string;
+  precision: string;
+  url: string;
+  lfs_oid: string;
+}
 export interface CompanionReport {
   model_path: string;
   mmproj: CompanionSlot;

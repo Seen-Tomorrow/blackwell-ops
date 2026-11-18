@@ -165,6 +165,7 @@ ipc_registry! {
     "CompanionReport" => crate::companions::CompanionReport,
     "CompanionSlot" => crate::companions::CompanionSlot,
     "CompanionCandidate" => crate::companions::CompanionCandidate,
+    "RepoCompanion" => crate::companions::RepoCompanion,
     "CatalogUpdateEntry" => crate::types::CatalogUpdateEntry,
     "ModelPathEntry" => crate::types::ModelPathEntry,
     "ModelPathScan" => crate::types::ModelPathScan,

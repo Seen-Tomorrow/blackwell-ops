@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot } from "../lib/types";
+import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot, RepoCompanion } from "../lib/types";
 
 /**
  * LOADOUT — one rail, two groups.
@@ -139,6 +139,11 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
       {openRole && report ? (
         <CompanionPickPanel
           slot={openRole === "mmproj" ? report.mmproj : report.engram}
+          modelPath={modelPath}
+          onDownloaded={() => {
+            void load();
+            setOpenRole(null);
+          }}
           onClose={() => setOpenRole(null)}
           onAttach={(path) => void attach(openRole, path)}
           onDetach={() => void attach(openRole, null)}
@@ -205,13 +210,55 @@ function CompanionStop({ slot, leftPct, disabled, onOpen, onCycle }: CompanionSt
 
 interface CompanionPickPanelProps {
   slot: CompanionSlot;
+  modelPath: string;
+  onDownloaded: () => void;
   onClose: () => void;
   onAttach: (path: string) => void;
   onDetach: () => void;
   onClear: () => void;
 }
 
-function CompanionPickPanel({ slot, onClose, onAttach, onDetach, onClear }: CompanionPickPanelProps) {
+function CompanionPickPanel({ slot, modelPath, onDownloaded, onClose, onAttach, onDetach, onClear }: CompanionPickPanelProps) {
+  const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
+  const [repoError, setRepoError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setRepoItems(null);
+    setRepoError(null);
+    invoke<RepoCompanion[]>("repo_companions", { modelPath, role: slot.role })
+      .then((items) => {
+        if (alive) setRepoItems(items);
+      })
+      .catch((err) => {
+        if (alive) setRepoError(typeof err === "string" ? err : "repo lookup failed");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [modelPath, slot.role]);
+
+  const download = async (item: RepoCompanion) => {
+    setDownloading(item.path_in_repo);
+    try {
+      await invoke("download_companion", {
+        modelPath,
+        role: slot.role,
+        repoId: item.repo_id,
+        pathInRepo: item.path_in_repo,
+        sizeBytes: item.size_bytes,
+        url: item.url,
+        lfsOid: item.lfs_oid,
+      });
+      onDownloaded();
+    } catch (err) {
+      setRepoError(typeof err === "string" ? err : "download failed");
+    } finally {
+      setDownloading(null);
+    }
+  };
+
   return (
     <div className="loadout-picker" role="dialog" aria-label={`Pick ${ROLE_LABEL[slot.role]}`}>
       <div className="loadout-picker__head">
@@ -249,6 +296,40 @@ function CompanionPickPanel({ slot, onClose, onAttach, onDetach, onClear }: Comp
                 </li>
               );
             })}
+          </ul>
+        )}
+      </div>
+
+      <div className="loadout-picker__section">
+        <span className="type-tiny font-mono loadout-picker__label">FROM THIS REPO</span>
+        {repoError ? (
+          <p className="loadout-picker__empty type-tiny font-mono">{repoError}</p>
+        ) : repoItems === null ? (
+          <p className="loadout-picker__empty type-tiny font-mono">reading the Hub tree…</p>
+        ) : repoItems.length === 0 ? (
+          <p className="loadout-picker__empty type-tiny font-mono">
+            This repo publishes no {ROLE_LABEL[slot.role].toLowerCase()} of its own.
+          </p>
+        ) : (
+          <ul className="loadout-picker__list">
+            {repoItems.map((item) => (
+              <li key={item.path_in_repo}>
+                <button
+                  type="button"
+                  className="loadout-card"
+                  onClick={() => void download(item)}
+                  disabled={downloading === item.path_in_repo}
+                >
+                  <span className="loadout-card__name font-mono">{item.file_name}</span>
+                  <span className="loadout-card__meta type-tiny font-mono">
+                    {item.precision || "file"} · {item.size_str} · {item.path_in_repo}
+                  </span>
+                  <span className="loadout-card__score type-tiny font-mono">
+                    {downloading === item.path_in_repo ? "QUEUED" : "DOWNLOAD & ATTACH"}
+                  </span>
+                </button>
+              </li>
+            ))}
           </ul>
         )}
       </div>

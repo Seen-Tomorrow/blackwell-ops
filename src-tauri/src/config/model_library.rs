@@ -581,6 +581,13 @@ fn download_dest_roots(config: &AppConfig) -> Vec<PathBuf> {
         .into_iter()
         .map(|entry| PathBuf::from(entry.path))
         .collect();
+    // Companion downloads land in the shared extras store, so its roots are valid
+    // destinations too.
+    roots.extend(
+        get_extras_paths(config)
+            .into_iter()
+            .map(|entry| PathBuf::from(entry.path)),
+    );
     roots.push(default_models_dir());
     roots
 }

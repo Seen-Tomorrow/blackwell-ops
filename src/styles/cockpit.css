@@ -2901,3 +2901,26 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: 0.55rem;
   border-radius: 2px;
 }
+
+/* Second source inside the picker: repo companions. Same card grammar, divider keeps
+   the "on disk" and "downloadable" lists from reading as one long list. */
+.loadout-picker__section + .loadout-picker__section {
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed color-mix(in srgb, var(--theme-border) 80%, transparent);
+}
+
+.loadout-picker__section .loadout-card__score {
+  max-width: 12rem;
+  text-align: right;
+  white-space: normal;
+  line-height: 1.2;
+  font-size: 0.52rem;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--theme-accent-bright) 80%, transparent);
+}
+
+.loadout-picker__section .loadout-card:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

@@ -802,7 +802,7 @@ pub fn launch_engram(model_path: &str) -> Option<String> {
 
 // ── IPC ────────────────────────────────────────────────────────────────
 
-fn parse_role(role: &str) -> Result<CompanionRole, String> {
+pub(crate) fn parse_role(role: &str) -> Result<CompanionRole, String> {
     match role {
         "mmproj" => Ok(CompanionRole::Mmproj),
         "engram" => Ok(CompanionRole::Engram),
@@ -833,6 +833,126 @@ pub fn clear_companion_pin(model_path: String, role: String) -> Result<(), Strin
     clear_pin(&model_path, parse_role(&role)?)
 }
 
+
+// ── Repo-side companions (LOADOUT "from this repo") ─────────────────────
+
+/// One downloadable companion published in the model's HF repo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoCompanion {
+    pub repo_id: String,
+    pub path_in_repo: String,
+    pub file_name: String,
+    pub size_bytes: u64,
+    pub size_str: String,
+    pub precision: String,
+    pub url: String,
+    pub lfs_oid: String,
+}
+
+/// `<author>/<repo>` from the first two components below any configured model root.
+/// Separator/case-insensitive: roots are stored as typed, model paths come from the walk.
+fn repo_id_from_roots(model_path: &str, roots: &[String]) -> Option<String> {
+    fn norm(path: &str) -> String {
+        path.replace('/', "\\").to_ascii_lowercase()
+    }
+    let target = norm(model_path);
+    for root in roots {
+        let root_norm = norm(root);
+        let root_norm = root_norm.trim_end_matches('\\');
+        let prefix = format!("{root_norm}\\");
+        if target.starts_with(&prefix) {
+            let rel = &model_path[prefix.len()..];
+            let parts: Vec<&str> = rel.split(['\\', '/']).filter(|s| !s.is_empty()).collect();
+            if parts.len() >= 3 {
+                return Some(format!("{}/{}", parts[0], parts[1]));
+            }
+        }
+    }
+    None
+}
+
+fn repo_id_for(model_path: &str) -> Option<String> {    if let Some(meta) = crate::model_cache::get_hf_metadata(model_path) {
+        if !meta.hf_model_id.is_empty() {
+            return Some(meta.hf_model_id);
+        }
+    }
+    // Configured model roots are the reliable anchor: the first two components below a
+    // root are <author>/<repo>, whether or not a quant folder follows.
+    // Compare separator- and case-insensitively: configured roots are stored with
+    // whichever separators the user typed, the model path comes back from the walk.
+    fn norm(path: &str) -> String {
+        path.replace('/', "\\").to_ascii_lowercase()
+    }
+    let cfg = crate::config::load_config();
+    let roots: Vec<String> = crate::config::get_model_paths(&cfg)
+        .into_iter()
+        .map(|root| root.path)
+        .collect();
+    if let Some(id) = repo_id_from_roots(model_path, &roots) {
+        return Some(id);
+    }
+    // Fallback for a path outside every root: …/<author>/<repo>/file.gguf.
+    let folder = std::path::Path::new(model_path).parent()?;
+    let author = folder.parent()?.file_name()?.to_string_lossy().to_string();
+    let repo = folder.file_name()?.to_string_lossy().to_string();
+    if author.is_empty() || repo.is_empty() {
+        None
+    } else {
+        Some(format!("{author}/{repo}"))
+    }
+}
+
+fn repo_file_matches(role: CompanionRole, file: &crate::types::GgufFile) -> bool {
+    let path = crate::types::hf_resolve_path_from_url(&file.url)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let name = path.rsplit('/').next().unwrap_or("").to_string();
+    let has = |s: &str| name.contains(s) || path.contains(s);
+    match role {
+        CompanionRole::Mmproj => has("mmproj"),
+        CompanionRole::Engram => {
+            has("engram") || has("ple") || file.role == crate::types::GgufRole::Swap
+        }
+    }
+}
+
+/// Companions for one role that the model's Hub repo publishes — offered in the
+/// LOADOUT picker, downloaded only on an explicit click.
+#[tauri::command]
+pub async fn repo_companions(
+    model_path: String,
+    role: String,
+) -> Result<Vec<RepoCompanion>, String> {
+    let role = parse_role(&role)?;
+    let repo_id = repo_id_for(&model_path)
+        .ok_or_else(|| format!("no Hub repo for '{model_path}'"))?;
+    let files = crate::hf_api::list_repo_gguf_files(&repo_id, None).await?;
+    let mut out = Vec::new();
+    for file in files {
+        // Multi-shard weights are not companions; only single files make sense here.
+        if file.shard_count > 1 || !repo_file_matches(role, &file) {
+            continue;
+        }
+        let Some(path_in_repo) = crate::types::hf_resolve_path_from_url(&file.url) else {
+            continue;
+        };
+        let Some(file_name) = path_in_repo.rsplit('/').next().map(|n| n.to_string()) else {
+            continue;
+        };
+        let precision = crate::model_catalog::extract_quant(&file_name);
+        out.push(RepoCompanion {
+            repo_id: repo_id.clone(),
+            path_in_repo,
+            file_name,
+            size_bytes: file.size_bytes,
+            size_str: crate::model_catalog::calc_size_str_from_bytes(file.size_bytes),
+            precision: if precision == "GGUF" { String::new() } else { precision },
+            url: file.url.clone(),
+            lfs_oid: file.lfs_oid.clone(),
+        });
+    }
+    Ok(out)
+}
 #[cfg(test)]
 mod tests {    use super::*;
 
@@ -849,6 +969,7 @@ mod tests {    use super::*;
             has_integrated_table: false,
         }
     }
+
 
     #[test]
     fn names_normalise_across_punctuation() {

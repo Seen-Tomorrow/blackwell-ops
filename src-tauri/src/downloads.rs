@@ -65,6 +65,90 @@ pub async fn start_download(
     Ok(task_id)
 }
 
+// Download one companion file from the model's Hub repo into the extras store and
+/// pin it to the slot. The pin is written now; launch/FIT only use it once the file
+/// exists, so a queued download cannot break a launch.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn download_companion(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    app_config: tauri::State<'_, Arc<std::sync::Mutex<crate::config::AppConfig>>>,
+    model_path: String,
+    role: String,
+    repo_id: String,
+    path_in_repo: String,
+    size_bytes: u64,
+    url: String,
+    lfs_oid: String,
+) -> Result<String, String> {
+    let role_enum = crate::companions::parse_role(&role)?;
+    let file_name = path_in_repo
+        .rsplit('/')
+        .next()
+        .unwrap_or(&path_in_repo)
+        .to_string();
+    crate::config::validate_hf_model_id(&repo_id)?;
+    crate::config::validate_download_file_name(&file_name)?;
+    crate::config::validate_download_url_matches_model(&url, &repo_id, &file_name)?;
+    if size_bytes > crate::config::MAX_DOWNLOAD_SIZE_BYTES {
+        return Err(format!(
+            "File too large: {} exceeds {} byte limit",
+            size_bytes,
+            crate::config::MAX_DOWNLOAD_SIZE_BYTES
+        ));
+    }
+
+    let dest_path = {
+        let cfg = app_config.lock().map_err(|e| e.to_string())?;
+        let extras = crate::config::get_extras_paths(&cfg);
+        let dest_dir = extras
+            .first()
+            .map(|entry| std::path::PathBuf::from(&entry.path))
+            .or_else(|| {
+                std::path::Path::new(&model_path)
+                    .parent()
+                    .map(|parent| parent.to_path_buf())
+            })
+            .ok_or_else(|| "No destination for the companion download".to_string())?;
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| format!("Failed to create {}: {e}", dest_dir.display()))?;
+        let dest = dest_dir.join(&file_name).to_string_lossy().to_string();
+        crate::config::validate_download_dest(&dest, &cfg)?;
+        dest
+    };
+
+    let hf_author = repo_id.split('/').next().unwrap_or("").to_string();
+    let mut dm = manager.write().await;
+    if dm.has_active_task_for_dest(&dest_path) {
+        return Err("A download for this file is already in progress".to_string());
+    }
+    let task_id = dm
+        .start_download(
+            repo_id,
+            file_name,
+            url,
+            size_bytes,
+            dest_path.clone(),
+            hf_author,
+            role.clone(),
+            lfs_oid,
+            None,
+            Arc::clone(&manager),
+        )
+        .await?;
+    drop(dm);
+
+    // Pin the future path: launch and FIT ignore a file that is not on disk yet.
+    crate::companions::set_pin(&model_path, role_enum, &dest_path)?;
+
+    crate::ipc_emit::emit_guarded(&app, "download-event", serde_json::json!({
+        "type": "queued",
+        "taskId": task_id,
+    }));
+
+    Ok(task_id)
+}
 /// Download all parts of a quant — single file or full shard set.
 #[tauri::command]
 pub async fn start_quant_download(

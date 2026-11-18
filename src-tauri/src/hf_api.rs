@@ -467,6 +467,20 @@ pub async fn search_models(
     })
 }
 
+/// Public wrapper over the repo tree walk — used by the LOADOUT picker to offer a
+/// repo's companions (projectors, Engram tables) for download.
+pub async fn list_repo_gguf_files(
+    model_id: &str,
+    token: Option<&str>,
+) -> Result<Vec<crate::types::GgufFile>, String> {
+    let parts: Vec<&str> = model_id.split('/').collect();
+    if parts.len() != 2 {
+        return Err(format!("invalid repo id '{model_id}' (expected author/repo)"));
+    }
+    let client = build_client(token);
+    fetch_repo_gguf_files(&client, parts[0], parts[1]).await
+}
+
 /// Fetch and aggregate all GGUF quants from an HF repo file tree.
 async fn fetch_repo_gguf_files(
     client: &Client,
