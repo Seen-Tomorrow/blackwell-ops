@@ -121,6 +121,8 @@ struct LookupFacts {
     pub tensors_declared: Option<u64>,
     pub name: String,
     pub only_lookup_tensor: bool,
+    /// ggml type of the lookup tensor — the table's real precision (Q5_K, IQ4_NL…).
+    pub table_type: u32,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -182,6 +184,7 @@ fn read_lookup_facts(path: &Path) -> Option<LookupFacts> {
         tensors_declared: kv_int(&facts, "split.tensors.count").map(|n| n as u64),
         name: kv_str(&facts, "general.name").unwrap_or_default(),
         only_lookup_tensor: !has_trunk && facts.tensors.len() <= 2,
+        table_type: table.first().map(|t| t.ggml_type).unwrap_or(0),
     })
 }
 
@@ -361,6 +364,36 @@ fn is_mmproj_name(name: &str) -> bool {
     name.to_ascii_lowercase().contains("mmproj")
 }
 
+/// GGML type discriminant → catalog label. The table's precision is the tensor's, not
+/// the model's quant tag: an IQ2_XXS model can ship a Q5_K Engram table.
+fn ggml_type_label(id: u32) -> &'static str {
+    match id {
+        0 => "F32",
+        1 => "F16",
+        2 => "Q4_0",
+        3 => "Q4_1",
+        6 => "Q5_0",
+        7 => "Q5_1",
+        8 => "Q8_0",
+        10 => "Q2_K",
+        11 => "Q3_K",
+        12 => "Q4_K",
+        13 => "Q5_K",
+        14 => "Q6_K",
+        16 => "IQ2_XXS",
+        17 => "IQ2_XS",
+        18 => "IQ3_XXS",
+        19 => "IQ1_S",
+        20 => "IQ4_NL",
+        21 => "IQ3_S",
+        22 => "IQ2_S",
+        23 => "IQ4_XS",
+        29 => "IQ1_M",
+        30 => "BF16",
+        39 => "MXFP4",
+        _ => "",
+    }
+}
 fn precision_label(file_name: &str, fallback: &str) -> String {
     let q = crate::model_catalog::extract_quant(file_name);
     if q != "GGUF" {
@@ -514,7 +547,12 @@ fn collect_engram_candidates(
             return;
         }
         let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-        let precision = precision_label(&file_name, &eng.name);
+        let tensor_precision = ggml_type_label(eng.table_type);
+        let precision = if tensor_precision.is_empty() {
+            precision_label(&file_name, &eng.name)
+        } else {
+            tensor_precision.to_string()
+        };
         out.push(candidate(
             path,
             source,
@@ -554,17 +592,17 @@ fn collect_engram_candidates(
         if !seen.insert(key) {
             continue;
         }
-        let eng = LookupFacts {
-            dims: e.lookup_dims.clone().unwrap_or_default(),
-            split_no: e.split_no,
-            split_count: e.split_count,
-            tensors_declared: e.tensors_declared,
-            name: e.file_name.clone(),
-            only_lookup_tensor: true,
+        let Some(eng) = read_lookup_facts(path) else {
+            continue;
         };
         let same_folder = path.parent() == Some(model.folder.as_path());
         let (score, reason) = score_lookup(model.ple_width, model, &eng, same_folder);
-        let precision = precision_label(&e.file_name, "");
+        let tensor_precision = ggml_type_label(eng.table_type);
+        let precision = if tensor_precision.is_empty() {
+            precision_label(&e.file_name, &eng.name)
+        } else {
+            tensor_precision.to_string()
+        };
         out.push(candidate(
             path,
             "library",
@@ -876,6 +914,7 @@ mod tests {    use super::*;
             tensors_declared: Some(1224),
             name: "Qwen3.8 Flash Next Engram".to_string(),
             only_lookup_tensor: true,
+            ..Default::default()
         };
         let (score, reason) = score_lookup(160, &model, &eng, false);
         assert!(score >= 70, "expected strong, got {score}: {reason}");
@@ -892,6 +931,7 @@ mod tests {    use super::*;
             tensors_declared: Some(999),
             name: "Something Else".to_string(),
             only_lookup_tensor: true,
+            ..Default::default()
         };
         let (score, _) = score_lookup(160, &model, &eng, false);
         assert_eq!(confidence_for(score), "medium", "score {score}");
@@ -907,6 +947,7 @@ mod tests {    use super::*;
             tensors_declared: None,
             name: String::new(),
             only_lookup_tensor: true,
+            ..Default::default()
         };
         let (score, _) = score_lookup(160, &model, &eng, false);
         assert!(score < 45, "score {score}");
