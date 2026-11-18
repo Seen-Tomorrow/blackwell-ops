@@ -871,9 +871,22 @@ fn repo_id_from_roots(model_path: &str, roots: &[String]) -> Option<String> {
     None
 }
 
-fn repo_id_for(model_path: &str) -> Option<String> {    if let Some(meta) = crate::model_cache::get_hf_metadata(model_path) {
-        if !meta.hf_model_id.is_empty() {
-            return Some(meta.hf_model_id);
+/// HF ids are `<author>/<repo>`. The catalog can carry a directory-derived id with the
+/// quant folder appended (`author/repo/QUANT`) for folders imported rather than
+/// downloaded, so always keep the first two segments.
+fn normalize_repo_id(id: &str) -> Option<String> {
+    let parts: Vec<&str> = id.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 2 {
+        Some(format!("{}/{}", parts[0], parts[1]))
+    } else {
+        None
+    }
+}
+
+fn repo_id_for(model_path: &str) -> Option<String> {
+    if let Some(meta) = crate::model_cache::get_hf_metadata(model_path) {
+        if let Some(id) = normalize_repo_id(&meta.hf_model_id) {
+            return Some(id);
         }
     }
     // Configured model roots are the reliable anchor: the first two components below a
@@ -925,6 +938,7 @@ pub async fn repo_companions(
 ) -> Result<Vec<RepoCompanion>, String> {
     let role = parse_role(&role)?;
     let repo_id = repo_id_for(&model_path)
+        .and_then(|id| normalize_repo_id(&id))
         .ok_or_else(|| format!("no Hub repo for '{model_path}'"))?;
     let files = crate::hf_api::list_repo_gguf_files(&repo_id, None).await?;
     let mut out = Vec::new();
@@ -970,6 +984,20 @@ mod tests {    use super::*;
         }
     }
 
+
+    #[test]
+    fn repo_ids_normalize_to_two_segments() {
+        // Directory-derived ids carry the quant folder; the Hub wants author/repo only.
+        assert_eq!(
+            normalize_repo_id("unsloth/Qwen3.8-Flash-Next-GGUF/UD-Q4_K_XL").as_deref(),
+            Some("unsloth/Qwen3.8-Flash-Next-GGUF")
+        );
+        assert_eq!(
+            normalize_repo_id("unsloth/Qwen3.5-9B-GGUF").as_deref(),
+            Some("unsloth/Qwen3.5-9B-GGUF")
+        );
+        assert_eq!(normalize_repo_id("nolash"), None);
+    }
 
     #[test]
     fn names_normalise_across_punctuation() {
