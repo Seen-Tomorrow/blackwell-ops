@@ -883,6 +883,7 @@ export default function MultiAgentBooster({
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Memory"
+              cornerLabel
               value={
                 memoryOptions.some((o) => o.id === brains)
                   ? brains
@@ -906,6 +907,7 @@ export default function MultiAgentBooster({
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Agents"
+              cornerLabel
               value={codingMode}
               onChange={onCodingMode}
               options={agentOptions.map((o) => ({
@@ -930,11 +932,10 @@ export default function MultiAgentBooster({
           {showThink && (
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
-              label="Think"
+              label="Think budget"
+              cornerLabel
               value={think}
               onChange={onThink}
-              valueBadge={think === "off" ? "DISABLED" : undefined}
-              badgeWidth={think === "off" ? "8ch" : undefined}
               options={thinkOptions.map((o) => ({
                 id: o.id,
                 label: o.label,

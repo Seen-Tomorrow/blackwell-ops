@@ -182,8 +182,12 @@
   white-space: nowrap;
 }
 
+/* Compact band: the dual-thumb rail lives on the same 46px rhythm as the discrete
+   cockpit sliders — value strip on top, rail centred at 27px, preset labels at 34px. */
 .cockpit-instrument--batch {
-  justify-content: flex-start;
+  position: relative;
+  justify-content: center;
+  gap: 0;
 }
 
 .cockpit-batch__stage {
@@ -192,14 +196,14 @@
   flex-direction: column;
   justify-content: center;
   min-height: 0;
-  padding-bottom: 14px;
   min-width: 0;
 }
 
 .cockpit-batch__track {
+  --cockpit-batch-center: 27px;
   position: relative;
-  height: 64px;
-  margin: 0 8px;
+  height: 46px;
+  margin: 0;
   touch-action: none;
   user-select: none;
 }
@@ -207,7 +211,7 @@
 .cockpit-batch__rail,
 .cockpit-batch__band {
   position: absolute;
-  top: 50%;
+  top: var(--cockpit-batch-center);
   height: 8px;
   transform: translateY(-50%);
   border-radius: 2px;
@@ -238,7 +242,7 @@
 
 .cockpit-batch__mark-wrap {
   position: absolute;
-  top: 50%;
+  top: var(--cockpit-batch-center);
   transform: translate(-50%, -50%);
   z-index: 2;
   display: flex;
@@ -254,16 +258,16 @@
   position: relative;
   display: block;
   width: 14px;
-  height: 24px;
+  height: 14px;
 }
 
 .cockpit-batch__mark::before {
   content: "";
   position: absolute;
   left: 50%;
-  top: 3px;
+  top: 0;
   width: 2px;
-  height: 18px;
+  height: 14px;
   transform: translateX(-50%);
   border-radius: 1px;
   background: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
@@ -282,15 +286,13 @@
 }
 
 .cockpit-batch__mark--active::before {
-  height: 24px;
-  top: 0;
   box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow) 80%, transparent);
 }
 
 .cockpit-batch__mark-label {
   position: absolute;
   left: 50%;
-  top: 46px;
+  top: calc(100% + 5px);
   transform: translateX(-50%);
   color: var(--theme-text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -303,38 +305,73 @@
   color: var(--theme-text);
 }
 
+/* One stop = value label + thumb, so the value rides its thumb (including the
+   collision shift) instead of re-centring against the rail. */
+.cockpit-batch__stop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+
+.cockpit-batch__value {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--type-hairline);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.cockpit-batch__value--ub {
+  color: var(--theme-electric-blue);
+}
+
+.cockpit-batch__value--b {
+  color: var(--theme-warn);
+}
+
+/* Same solid 16px block as the discrete thumbs — BATCH keeps the colour, the letters
+   carry the role. */
 .cockpit-batch__thumb {
   position: absolute;
-  top: 50%;
+  top: var(--cockpit-batch-center);
+  left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  border: 1px solid var(--theme-accent-bright);
-  border-radius: 3px;
-  background: var(--theme-panel);
-  color: var(--theme-accent-bright);
+  border: 0;
+  border-radius: 2px;
+  background: var(--theme-accent-bright);
+  color: var(--theme-chip-solid-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-label);
+  font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0;
   cursor: grab;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow) 70%, transparent);
   touch-action: none;
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .cockpit-batch__thumb--ub {
-  border-color: var(--theme-electric-blue);
-  color: var(--theme-electric-blue);
+  background: var(--theme-electric-blue);
 }
 
 .cockpit-batch__thumb--b {
-  border-color: var(--theme-warn);
-  color: var(--theme-warn);
+  background: var(--theme-warn);
 }
 
 .cockpit-batch__thumb--dragging,
@@ -343,53 +380,17 @@
   box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 80%, transparent);
 }
 
-/* Collided thumbs sit side by side on the rail — stacking them vertically collided
-   with the mark labels below and read as a glitch. */
-.cockpit-batch__thumb--collide.cockpit-batch__thumb--ub {
-  transform: translate(calc(-100% - 2px), -50%);
+/* Collided stops sit side by side on the rail — stacking them vertically collided
+   with the mark labels below, and the values would have collided too. */
+.cockpit-batch__stop--collide.cockpit-batch__stop--ub {
+  transform: translateX(calc(-100% - 2px));
 }
 
-.cockpit-batch__thumb--collide.cockpit-batch__thumb--b {
-  transform: translate(2px, -50%);
+.cockpit-batch__stop--collide.cockpit-batch__stop--b {
+  transform: translateX(2px);
 }
 
-/* Resolved values live in the header — the rail stays short and never grows
-   to hold labels above/below the thumbs. */
-.cockpit-batch__readout {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-left: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--type-sm);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.cockpit-batch__readout-item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-}
-
-.cockpit-batch__readout-item--ub {
-  color: var(--theme-electric-blue);
-}
-
-.cockpit-batch__readout-item--b {
-  color: var(--theme-warn);
-}
-
-.cockpit-batch__readout-key {
-  color: color-mix(in srgb, var(--theme-text-muted) 85%, transparent);
-  font-size: var(--type-micro);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-}
-
-/* ── Saved-value badges (sampler fingerprint · batch readout) ─────── */
+/* ── Saved-value badges (sampler fingerprint) ─────────────────────── */
 
 .cockpit-instrument__finger {
   display: flex;

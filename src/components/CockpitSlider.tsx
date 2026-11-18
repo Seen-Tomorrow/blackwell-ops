@@ -6,7 +6,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const THUMB_WIDTH = 16;
-const TRACK_HEIGHT = 6;
+/** Rail weight — same 8px channel the dual-thumb BATCH rail uses. */
+const TRACK_HEIGHT = 8;
+/** Option ticks are tall bars, not nubs: the BATCH mark grammar, shared by all four. */
+const MARK_HEIGHT = 14;
+/** Value strip sits this far above the track top (2px higher than the nub era). */
+const ABOVE_LABEL_OFFSET = 13;
 const TRACK_AREA_BASE = 32;
 const TRACK_AREA_WITH_ABOVE = 46;
 
@@ -42,6 +47,13 @@ interface CockpitSliderProps {
   badgeWidth?: string;
   /** Use hero-style badge (larger, CTX hero formatting). */
   heroBadge?: boolean;
+  /**
+   * Put the label in the cell's top-left corner instead of a left gutter, so every
+   * cell in the cockpit grid starts its track at the same x. The 46px band is then
+   * always reserved (above-mark values sit below the corner label) and all four
+   * cells keep one height.
+   */
+  cornerLabel?: boolean;
   /**
    * Tiny control pinned under one option mark (e.g. DFlash2 draft sampling).
    * It is positioned with the same mark geometry, so it stays centered under
@@ -111,6 +123,7 @@ export default function CockpitSlider({
   valueBadge,
   badgeWidth = "3rem",
   heroBadge = false,
+  cornerLabel = false,
   subControl,
   className = "",
 }: CockpitSliderProps) {
@@ -119,13 +132,16 @@ export default function CockpitSlider({
   const dragRef = useRef(false);
 
   const hasAbove = options.some((o) => Boolean(o.aboveLabel));
+  // The corner label shares the top strip with the above-mark values, so that strip
+  // is reserved even when no option publishes one.
+  const reserveAbove = hasAbove || cornerLabel;
   const subControlIdx = subControl
     ? options.findIndex((option) => option.id === subControl.optionId)
     : -1;
   const hasSubControl = subControlIdx >= 0;
-  const baseTrackAreaH = hasAbove ? TRACK_AREA_WITH_ABOVE : TRACK_AREA_BASE;
+  const baseTrackAreaH = reserveAbove ? TRACK_AREA_WITH_ABOVE : TRACK_AREA_BASE;
   const trackAreaH = baseTrackAreaH + (hasSubControl ? 22 : 0);
-  const trackTop = (baseTrackAreaH - TRACK_HEIGHT) / 2 + (hasAbove ? 4 : 0);
+  const trackTop = (baseTrackAreaH - TRACK_HEIGHT) / 2 + (reserveAbove ? 4 : 0);
 
   const selectedIdx = Math.max(0, options.findIndex((o) => o.id === value));
 
@@ -191,10 +207,15 @@ export default function CockpitSlider({
 
   return (
     <div className={`cockpit-slider-row flex items-center gap-x-1 gap-y-1 min-w-0 ${className}`}>
-      <span className="full-auto-cockpit__row-label font-mono tracking-wider uppercase flex-shrink-0">
-        {label}
-      </span>
-      <div className="flex items-center gap-1 min-w-0 flex-1">
+      {cornerLabel ? null : (
+        <span className="full-auto-cockpit__row-label font-mono tracking-wider uppercase flex-shrink-0">
+          {label}
+        </span>
+      )}
+      <div className="flex items-center gap-1 min-w-0 flex-1 relative">
+        {cornerLabel ? (
+          <span className="cockpit-slider-corner-label font-mono">{label}</span>
+        ) : null}
         <div
           ref={trackRef}
           className="cockpit-slider-track-host relative flex-1 min-w-0 select-none touch-none"
@@ -204,10 +225,20 @@ export default function CockpitSlider({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         >
-          {/* Track line */}
+          {/* Track line + the filled run up to the thumb — the BATCH rail/band pair,
+              monochrome. The batch keeps its colour because it carries two thumbs. */}
           <div
             className="cockpit-slider-track absolute left-0 right-0 rounded-sm z-[1]"
             style={{ top: `${trackTop}px`, height: `${TRACK_HEIGHT}px` }}
+          />
+          <div
+            className="cockpit-slider-fill absolute left-0 rounded-sm z-[1]"
+            style={{
+              top: `${trackTop}px`,
+              height: `${TRACK_HEIGHT}px`,
+              width: `${thumbPct}%`,
+            }}
+            aria-hidden
           />
 
           {/* Option marks — always visible */}
@@ -243,7 +274,7 @@ export default function CockpitSlider({
                     className={`cockpit-slider-above-label absolute left-1/2 -translate-x-1/2 text-center font-mono whitespace-nowrap${
                       isSelected ? " cockpit-slider-above-label--selected" : ""
                     }${opt.aboveRaw ? " cockpit-slider-above-label--raw" : ""}`}
-                    style={{ top: `${Math.max(0, trackTop - 12)}px` }}
+                    style={{ top: `${Math.max(0, trackTop - ABOVE_LABEL_OFFSET)}px` }}
                     // Family word (draft/ngram) stays neutral — color only mark + under-label
                   >
                     {opt.aboveLabel}
@@ -251,16 +282,22 @@ export default function CockpitSlider({
                 ) : null}
                 <span
                   aria-hidden
-                  className={`cockpit-slider-mark absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors ${
+                  className={`cockpit-slider-mark absolute left-1/2 -translate-x-1/2 block w-[2px] rounded-sm transition-colors ${
                     isSelected ? "cockpit-slider-mark--selected" : ""
                   }${
                     emphasize && opt.badgeColor
                       ? ` cockpit-slider-mark--${opt.badgeColor}${isSelected ? "" : " cockpit-slider-mark--tint"}`
                       : ""
                   }`}
-                  style={{ top: `${trackTop}px`, height: `${TRACK_HEIGHT}px` }}
+                  style={{
+                    top: `${trackTop + TRACK_HEIGHT / 2 - MARK_HEIGHT / 2}px`,
+                    height: `${MARK_HEIGHT}px`,
+                  }}
                 />
-                {/* Label below mark — MTP green / DFlash violet when capable */}
+                {/* Label below mark — MTP green / DFlash violet when capable.
+                    An option with no label (AGENTS' bare x1) renders no plate: the
+                    selected fill would otherwise print an empty pill under the thumb. */}
+                {opt.label ? (
                 <span
                   className={`cockpit-slider-mark-label absolute left-1/2 -translate-x-1/2 text-center font-mono whitespace-nowrap ${
                     isSelected ? "cockpit-slider-mark-label--selected" : ""
@@ -273,6 +310,7 @@ export default function CockpitSlider({
                 >
                   {opt.custom ? `·${opt.label}` : opt.label}
                 </span>
+                ) : null}
               </div>
             );
           })}
@@ -307,17 +345,18 @@ export default function CockpitSlider({
           ) : null}
         </div>
 
-        {/* Value badge — right side with reserved left padding for growth */}
-        <div
-          className="flex-shrink-0 font-mono type-body"
-          style={{ paddingLeft: heroBadge ? "2ch" : "0.4rem", minWidth: badgeWidth }}
-        >
-          {valueBadge ? (
+        {/* Value badge — only rendered when there is one. A permanently reserved
+            column made the track asymmetric, which the centred cells no longer want. */}
+        {valueBadge ? (
+          <div
+            className="flex-shrink-0 font-mono type-body"
+            style={{ paddingLeft: heroBadge ? "2ch" : "0.4rem", minWidth: badgeWidth }}
+          >
             <span className={`cockpit-slider-badge inline-block rounded-sm px-1.5 py-0.5${heroBadge ? " cockpit-slider-badge--hero" : ""}`}>
               {valueBadge}
             </span>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

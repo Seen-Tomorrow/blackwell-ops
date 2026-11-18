@@ -1280,6 +1280,23 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
 }
 
+/* Grid-cell variant of the row label: pinned to the slider's top-left corner so every
+   track starts at the same x. Lives in the strip the above-mark values leave free
+   (band top → 10px), so it never fights the thumb's value. */
+.cockpit-slider-corner-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  color: color-mix(in srgb, var(--theme-industrial-muted) 55%, transparent);
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* CTX hero — recessed channel in the cockpit/panel face (inset well, not a plate) */
 .full-auto-cockpit__ctx-hero {
   position: relative;
@@ -1635,16 +1652,37 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   cursor: default;
 }
 
-/* 2x2 slider grid with center divider */
+/* 2x2 slider grid with center divider. `grid-auto-rows: 1fr` keeps both rows at one
+   height whatever the four instruments measure, so the grid reads as two even bands.
+   The bottom rule lifts the grid off the LOADOUT rail underneath. */
 .full-auto-cockpit__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
   gap: 0;
-  padding-top: 5px;
+  padding: 5px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
 
 .full-auto-cockpit__grid-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
   padding: 0.25rem 0.35rem;
+}
+
+.full-auto-cockpit__grid-cell > * {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Tracks are centred in their cell: equal inset on both sides, so a slider never runs
+   into the dividers and the two columns read as a pair. The inset also has to hold the
+   selected mark's label plate on the end marks (a long name like DISABLED is ~67px and
+   would otherwise hang outside the cell). The corner label stays pinned to the cell's
+   left edge, above the inset track. */
+.full-auto-cockpit__grid-cell .cockpit-slider-track-host {
+  margin: 0 1rem;
 }
 
 /* Tiny DFlash2 draft-sampling switch pinned under the DFLASH2 mark. */
@@ -1726,10 +1764,16 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   align-self: center;
 }
 
+/* Rail + fill: the BATCH rail/band pair in monochrome. One channel, the run up to the
+   thumb lit — colour is reserved for BATCH, which carries two thumbs on one rail. */
 .cockpit-slider-track {
-  background: var(--theme-panel-accent);
-  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
-  box-sizing: border-box;
+  background: color-mix(in srgb, var(--theme-accent-bright) 12%, var(--theme-panel-accent));
+}
+
+.cockpit-slider-fill {
+  background: color-mix(in srgb, var(--theme-accent-bright) 70%, transparent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 60%, transparent);
+  transition: width 0.12s ease;
 }
 
 .cockpit-slider-thumb {
@@ -1740,7 +1784,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .cockpit-slider-mark {
-  background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
   transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -2877,29 +2921,19 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   width: 100%;
 }
 
-.full-auto-cockpit__grid-cell--batch {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-/* BATCH//UBATCH in the grid cell: fill the cell like every other slider and shrink the
-   thumbs so a uBatch==batch collision still fits the lower height. */
+/* In the grid the batch instrument is a cell, not a panel: no face of its own, so all
+   four cells are framed by the same dividers (the standalone layout keeps the face). */
 .full-auto-cockpit__grid-cell--batch .cockpit-instrument--batch {
   width: 100%;
-  height: 100%;
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
+/* Match the discrete tracks' inset so both columns start and end on the same x. */
 .full-auto-cockpit__grid-cell--batch .cockpit-batch__track {
-  height: 52px;
-}
-
-.full-auto-cockpit__grid-cell--batch .cockpit-batch__thumb {
-  width: 22px;
-  height: 22px;
-  font-size: 0.55rem;
-  border-radius: 2px;
+  margin: 0 1rem;
 }
 
 /* Second source inside the picker: repo companions. Same card grammar, divider keeps

@@ -27,6 +27,15 @@ interface BatchRangeSliderProps {
 
 type ThumbId = "batch" | "ubatch";
 
+/** Half a thumb, in px — the same inset `CockpitSlider` applies to its marks, so a stop
+ *  at 0 or 100% still clears the rail ends and the batch rail can span the whole cell. */
+const STOP_PAD = 8;
+
+/** Map a 0..1 rail ratio to a stop position with the thumb pad folded in. */
+function stopLeft(ratio: number): string {
+  return `calc(${STOP_PAD}px + ${ratio} * (100% - ${STOP_PAD * 2}px))`;
+}
+
 export default function BatchRangeSlider({
   defs,
   config,
@@ -166,25 +175,15 @@ export default function BatchRangeSlider({
     return null;
   }
 
-  const ubPct = ratioOf(ubatch) * 100;
-  const batchPct = ratioOf(batch) * 100;
+  const ubRatio = ratioOf(ubatch);
+  const batchRatio = ratioOf(batch);
+  const ubPct = ubRatio * 100;
+  const batchPct = batchRatio * 100;
   const collide = Math.abs(batchPct - ubPct) < 4;
 
   return (
     <div className="cockpit-instrument cockpit-instrument--batch">
-      <div className="cockpit-instrument__head">
-        <span className="cockpit-instrument__label">BATCH // UBATCH</span>
-        <span className="cockpit-batch__readout" aria-label="Resolved batch values">
-          <span className="cockpit-batch__readout-item cockpit-batch__readout-item--ub">
-            <span className="cockpit-batch__readout-key">UB</span>
-            {formatParamValue(ubatch)}
-          </span>
-          <span className="cockpit-batch__readout-item cockpit-batch__readout-item--b">
-            <span className="cockpit-batch__readout-key">B</span>
-            {formatParamValue(batch)}
-          </span>
-        </span>
-      </div>
+      <span className="cockpit-slider-corner-label font-mono">BATCH // UBATCH</span>
       <div className="cockpit-batch__stage">
         <div
           className="cockpit-batch__track"
@@ -196,18 +195,21 @@ export default function BatchRangeSlider({
           <div className="cockpit-batch__rail" aria-hidden />
           <div
             className="cockpit-batch__band"
-            style={{ left: `${ubPct}%`, width: `${Math.max(0, batchPct - ubPct)}%` }}
+            style={{
+              left: stopLeft(ubRatio),
+              width: `calc(${Math.max(0, batchRatio - ubRatio)} * (100% - ${STOP_PAD * 2}px))`,
+            }}
             aria-hidden
           />
           {presets.map((preset) => {
-            const pct = ratioOf(preset.batchValue) * 100;
+            const ratio = ratioOf(preset.batchValue);
             const isActive = active === preset.id;
             return (
               <button
                 key={preset.id}
                 type="button"
                 className="cockpit-batch__mark-wrap"
-                style={{ left: `${pct}%` }}
+                style={{ left: stopLeft(ratio) }}
                 onClick={() => {
                   onChange("batch", preset.batchValue);
                   onChange("ubatch", preset.ubatchValue);
@@ -231,30 +233,51 @@ export default function BatchRangeSlider({
               </button>
             );
           })}
-          <button
-            type="button"
-            className={`cockpit-batch__thumb cockpit-batch__thumb--ub${
-              collide ? " cockpit-batch__thumb--collide" : ""
-            }${dragging === "ubatch" ? " cockpit-batch__thumb--dragging" : ""}`}
-            style={{ left: `${ubPct}%` }}
-            onPointerDown={(e) => startDrag("ubatch", e)}
-            title={`uBatch ${ubatch}`}
-            aria-label="uBatch"
+          {/* Each thumb carries its own resolved value above it — same above-mark
+              grammar as the discrete cockpit sliders, so the readout lives with the
+              control instead of in the header. */}
+          <div
+            className={`cockpit-batch__stop cockpit-batch__stop--ub${
+              collide ? " cockpit-batch__stop--collide" : ""
+            }`}
+            style={{ left: stopLeft(ubRatio) }}
           >
-            UB
-          </button>
-          <button
-            type="button"
-            className={`cockpit-batch__thumb cockpit-batch__thumb--b${
-              collide ? " cockpit-batch__thumb--collide" : ""
-            }${dragging === "batch" ? " cockpit-batch__thumb--dragging" : ""}`}
-            style={{ left: `${batchPct}%` }}
-            onPointerDown={(e) => startDrag("batch", e)}
-            title={`Batch ${batch}`}
-            aria-label="Batch"
+            <span className="cockpit-batch__value cockpit-batch__value--ub">
+              {formatParamValue(ubatch)}
+            </span>
+            <button
+              type="button"
+              className={`cockpit-batch__thumb cockpit-batch__thumb--ub${
+                dragging === "ubatch" ? " cockpit-batch__thumb--dragging" : ""
+              }`}
+              onPointerDown={(e) => startDrag("ubatch", e)}
+              title={`uBatch ${ubatch}`}
+              aria-label="uBatch"
+            >
+              UB
+            </button>
+          </div>
+          <div
+            className={`cockpit-batch__stop cockpit-batch__stop--b${
+              collide ? " cockpit-batch__stop--collide" : ""
+            }`}
+            style={{ left: stopLeft(batchRatio) }}
           >
-            B
-          </button>
+            <span className="cockpit-batch__value cockpit-batch__value--b">
+              {formatParamValue(batch)}
+            </span>
+            <button
+              type="button"
+              className={`cockpit-batch__thumb cockpit-batch__thumb--b${
+                dragging === "batch" ? " cockpit-batch__thumb--dragging" : ""
+              }`}
+              onPointerDown={(e) => startDrag("batch", e)}
+              title={`Batch ${batch}`}
+              aria-label="Batch"
+            >
+              B
+            </button>
+          </div>
         </div>
       </div>
     </div>
