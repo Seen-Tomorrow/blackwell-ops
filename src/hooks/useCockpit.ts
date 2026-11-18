@@ -19,6 +19,7 @@ import {
   BRAINS_OPTIONS,
   THINK_OPTIONS,
   brainsFromKvQuant,
+  buildThinkOptions,
   codingModeFromParallel,
   collectBoostSpecTypes,
   parallelForCodingMode,
@@ -82,20 +83,12 @@ function resolveParallelSlots(
   return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
-function thinkFromReasoning(value: unknown): ThinkId {
-  if (value === "off" || value === 0 || value === "0") return "off";
-  if (value === 2000 || value === "2000") return "budget2k";
-  if (value === 8000 || value === "8000") return "budget8k";
-  if (value === 4000 || value === "4000") return "budget";
-  return "on";
-}
-
-function reasoningForThink(think: ThinkId): string | number {
-  if (think === "off") return "off";
-  if (think === "budget2k") return 2000;
-  if (think === "budget8k") return 8000;
-  if (think === "budget") return 4000;
-  return "on";
+/** The rung a stored `reasoning` value points at, or "" when the template lost it. */
+function thinkMarkFor(value: unknown, options: ThinkOption[]): ThinkId {
+  if (value == null || typeof value === "object") return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  return options.find((option) => option.id.toLowerCase() === raw.toLowerCase())?.id ?? "";
 }
 
 export type ApplyCockpitOpts = {
@@ -170,28 +163,34 @@ export function useCockpit({
     () => brainsFromKvQuant(config.kv_quant != null ? String(config.kv_quant) : undefined),
     [config.kv_quant],
   );
-  const think = useMemo(() => thinkFromReasoning(config.reasoning), [config.reasoning]);
-
   /**
-   * Think marks are engine budgets — offer only the ones this template maps
-   * (Master: off / on / 2k / 4k / 8k). The current raw value keeps its mark even
-   * when the value chip is catalog-hidden, so the slider never lies about it.
+   * Think marks come from the template: one mark per `reasoning` value it publishes.
+   * A stored value the catalog hides still keeps its mark, so the slider never lies
+   * about the live setting.
    */
   const cockpitThinkOptions = useMemo((): ThinkOption[] => {
     const def = allParamsResolved.find((p) => p.key === "reasoning");
     if (!def) return THINK_OPTIONS;
-    const allowed = new Set(
-      visibleParamValuesOf(def).map((value) => String(value).toLowerCase()),
-    );
-    if (allowed.size === 0) return THINK_OPTIONS;
-    const current =
-      config.reasoning != null ? String(config.reasoning).toLowerCase() : null;
-    const options = THINK_OPTIONS.filter((option) => {
-      const raw = String(reasoningForThink(option.id)).toLowerCase();
-      return allowed.has(raw) || raw === current;
-    });
-    return options.length > 0 ? options : THINK_OPTIONS;
+    const values = visibleParamValuesOf(def);
+    const current = config.reasoning != null ? String(config.reasoning).trim() : "";
+    const listed =
+      current &&
+      !values.some((value) => String(value).trim().toLowerCase() === current.toLowerCase())
+        ? [...values, current]
+        : values;
+    return listed.length > 0 ? buildThinkOptions(listed) : THINK_OPTIONS;
   }, [allParamsResolved, config.reasoning]);
+
+  /** Selected rung: the stored value, else the template default, else the first mark. */
+  const think = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "reasoning");
+    return (
+      thinkMarkFor(config.reasoning, cockpitThinkOptions) ||
+      thinkMarkFor(def?.defaultValue ?? def?.factoryDefault, cockpitThinkOptions) ||
+      cockpitThinkOptions[0]?.id ||
+      ""
+    );
+  }, [config.reasoning, cockpitThinkOptions, allParamsResolved]);
 
   const fullAutoFixed = fullAutoMode;
 
@@ -456,7 +455,9 @@ export function useCockpit({
           ? config.reasoning
           : null;
       const thinkChanged =
-        storedReasoning == null || thinkFromReasoning(storedReasoning) !== thinkPick;
+        storedReasoning == null ||
+        thinkMarkFor(storedReasoning, cockpitThinkOptions).toLowerCase() !==
+          thinkPick.toLowerCase();
       if (
         thinkChanged
         && plan.reasoning != null
@@ -474,8 +475,9 @@ export function useCockpit({
         if (kv && kvQuantValues.some((v) => String(v).toLowerCase() === kv.toLowerCase())) {
           updateParam("kv_quant", kv);
         }
+        // The mark IS the template value name — write it back verbatim.
         if (thinkChanged && allParamsResolved.some((p) => p.key === "reasoning")) {
-          updateParam("reasoning", reasoningForThink(thinkPick));
+          updateParam("reasoning", thinkPick);
         }
       }
 
@@ -595,11 +597,8 @@ export function useCockpit({
     const brainsFromCfg = brainsFromKvQuant(
       config.kv_quant != null ? String(config.kv_quant) : undefined,
     );
-    let thinkFromCfg: ThinkId = "on";
-    const r = config.reasoning;
-    if (r === "off" || r === 0 || r === "0") thinkFromCfg = "off";
-    else if (r === 2000 || r === "2000") thinkFromCfg = "budget2k";
-    else if (r === 4000 || r === "4000" || r === 8000 || r === "8000") thinkFromCfg = "budget";
+    // Same rung the slider shows — one derivation, no drift between display and apply.
+    const thinkFromCfg = think;
 
     const plan = resolveFullAutoPlan({
       codingMode: modeFromCfg,

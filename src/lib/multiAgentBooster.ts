@@ -12,8 +12,72 @@ export type CodingModeId = string;
 export type SpeedBoostId = "off" | "mtp" | "dflash" | "dspark" | "smart";
 /** Brains row — KV quant quality (VRAM trade) + `kv:VALUE` for custom. */
 export type BrainsId = string;
-/** Optional thinking budget for models that expose reasoning flags. */
-export type ThinkId = "off" | "on" | "budget" | "budget2k" | "budget8k";
+/**
+ * Optional thinking budget — the template's `reasoning` value name, verbatim.
+ *
+ * The template keeps the machine names (`off` / `on` / budgets) because they key its
+ * `sub_params`; the cockpit only relabels the two sentinels so the ladder reads as a
+ * token budget: `off` → Disabled, `on` → MAX (the template turns `on` into
+ * `--reasoning-budget -1`, i.e. no limit). A budget keeps its own name, so the number
+ * in the mark IS the token budget and needs no legend.
+ */
+export type ThinkId = string;
+
+export interface ThinkOption {
+  id: ThinkId;
+  label: string;
+  blurb: string;
+}
+
+/** Only the sentinel rungs get a word; everything else shows its own value. */
+const THINK_LABEL: Record<string, string> = {
+  off: "Disabled",
+  on: "MAX",
+};
+
+const THINK_NOTES: Record<string, string> = {
+  off: "Thinking off — no reasoning tokens",
+  on: "No limit — the template maps this to -1",
+};
+
+/** Ladder position: off first, budgets ascending, the no-limit rung last. */
+function thinkRank(id: string): number {
+  const key = id.trim().toLowerCase();
+  if (key === "off") return 0;
+  if (key === "on") return Number.MAX_SAFE_INTEGER;
+  const numeric = Number(key);
+  return Number.isFinite(numeric) ? numeric : Number.MAX_SAFE_INTEGER - 1;
+}
+
+/** Label a rung gets on the slider — the stored value except for the two sentinels. */
+export function thinkLabelFor(id: ThinkId): string {
+  const key = String(id).trim().toLowerCase();
+  return THINK_LABEL[key] ?? String(id);
+}
+
+/**
+ * One mark per `reasoning` value the template publishes, ordered as a budget ladder.
+ * A value we have never seen keeps its raw name, so a provider can add a rung freely.
+ */
+export function buildThinkOptions(values: (string | number)[] | undefined): ThinkOption[] {
+  const seen = new Set<string>();
+  const out: ThinkOption[] = [];
+  for (const raw of values ?? []) {
+    if (raw == null || typeof raw === "object") continue;
+    const id = String(raw).trim();
+    if (!id || seen.has(id.toLowerCase())) continue;
+    seen.add(id.toLowerCase());
+    out.push({
+      id,
+      label: thinkLabelFor(id),
+      blurb: THINK_NOTES[id.toLowerCase()] ?? `Thinking budget ${id} tokens`,
+    });
+  }
+  return out.sort((a, b) => thinkRank(a.id) - thinkRank(b.id));
+}
+
+/** Last resort only when a provider publishes no `reasoning` values at all. */
+export const THINK_OPTIONS = buildThinkOptions(["off", 2000, 4000, 8000, "on"]);
 
 export interface CodingModeOption {
   id: CodingModeId;
@@ -41,12 +105,13 @@ export interface BrainsOption {
 }
 
 export const CODING_MODE_OPTIONS: CodingModeOption[] = [
-  { id: "solo", label: "", parallel: 1, blurb: "One stream - snappiest single agent" },
+  { id: "solo", label: "Solo", parallel: 1, blurb: "One stream - snappiest single agent" },
   { id: "twin", label: "Twin", parallel: 2, blurb: "2 agents — twin parallelism" },
   { id: "group", label: "Group", parallel: 4, blurb: "4 agents in parallel" },
   { id: "squad", label: "Squad", parallel: 8, blurb: "8 agents — coding swarm sweet spot" },
   { id: "team", label: "Team", parallel: 16, blurb: "16 agents — heavy harnesses" },
   { id: "army", label: "Army", parallel: 32, blurb: "32 agents — max concurrency" },
+  { id: "legion", label: "Legion", parallel: 64, blurb: "64 agents — beyond army scale" },
 ];
 
 const PRESET_PARALLEL = new Set(CODING_MODE_OPTIONS.map((o) => o.parallel));
@@ -88,21 +153,6 @@ export const BRAINS_OPTIONS: BrainsOption[] = [
 const KNOWN_KV_BY_NORM = new Map(
   BRAINS_OPTIONS.map((o) => [o.kvQuant.toLowerCase(), o] as const),
 );
-
-export type ThinkOption = { id: ThinkId; label: string; blurb: string };
-
-/**
- * One mark per engine budget. Labels are the user-facing size, the raw value
- * passed to --reasoning-budget is the engine's (2k → 2000, 4k → 4000, 8k →
- * 8000) — never collapse two engine values onto one label.
- */
-export const THINK_OPTIONS: ThinkOption[] = [
-  { id: "off", label: "Off", blurb: "Disabled at launch — clients cannot set a reasoning effort level" },
-  { id: "on", label: "On", blurb: "Full reasoning when the model supports it" },
-  { id: "budget2k", label: "2k", blurb: "Capped thinking budget (~2000)" },
-  { id: "budget", label: "4k", blurb: "Capped thinking budget (~4000)" },
-  { id: "budget8k", label: "8k", blurb: "Capped thinking budget (~8000)" },
-];
 
 /** Groups tucked away under Full Auto (Full Assisted still shows everything). */
 export const FULL_AUTO_COLLAPSE_GROUPS = ["PERFORMANCE", "FEATURE-FLAGS", "ADVANCED"] as const;
@@ -502,18 +552,9 @@ export function resolveFullAutoPlan(opts: {
 
   // Think slider only drives REASONING budget (--reasoning / budget).
   // Reasoning Preserve is a free FEATURE-FLAGS chip — never cockpit-owned.
-  let reasoning: string | number | null = null;
-  if (think === "off") {
-    reasoning = "off";
-  } else if (think === "on") {
-    reasoning = "on";
-  } else if (think === "budget2k") {
-    reasoning = 2000;
-  } else if (think === "budget8k") {
-    reasoning = 8000;
-  } else {
-    reasoning = 4000;
-  }
+  // The rung NAME is the value the template keys its sub_params by, so it is written
+  // back verbatim: the template decides what the engine actually sees.
+  const reasoning: string | number | null = think ? think : null;
 
   const brainsLabel =
     BRAINS_OPTIONS.find((b) => b.id === brains)?.label
@@ -522,16 +563,8 @@ export function resolveFullAutoPlan(opts: {
       : "Solid");
   const agentsN = parallel;
   const agentsLabel = `×${agentsN}`;
-  const thinkLabel =
-    think === "off"
-      ? "Disabled"
-      : think === "on"
-        ? "On"
-        : think === "budget2k"
-          ? "2k"
-          : think === "budget8k"
-            ? "8k"
-            : "4k";
+  // Header summary uses the same word the slider shows, not the stored value name.
+  const thinkLabel = thinkLabelFor(think);
 
   let boostTone: "mtp" | "dflash" | "dspark" | "smart" = "smart";
   let boostLabel = powerUser ? "Off" : "Smart";
