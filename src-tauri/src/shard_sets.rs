@@ -353,7 +353,7 @@ fn is_gguf_magic(path: &std::path::Path) -> bool {
     f.read_exact(&mut magic).is_ok() && &magic == b"GGUF"
 }
 
-fn walk_gguf_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+pub(crate) fn walk_gguf_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
@@ -488,6 +488,33 @@ pub fn is_attachment_role(role: &str) -> bool {
     FileRole::from_wire(role)
         .map(|r| r.is_attachment())
         .unwrap_or(false)
+}
+
+/// Persist the attachment inventory from the last catalog pass so the LOADOUT rail can
+/// offer companions that live in *other* model folders (a table inside another set),
+/// without re-walking the library every time a slot is opened.
+pub fn persist_extras(extras: &[crate::types::ExtraFileEntry]) {
+    let path = crate::config::config_dir()
+        .join("cache")
+        .join("extras_index.json");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let payload = extras.to_vec();
+    if let Err(e) = crate::fs_util::write_json_atomic(&path, &payload) {
+        log::debug!("[shard_sets] extras index not written: {e}");
+    }
+}
+
+/// Attachments known from the last catalog pass (empty when no scan has run yet).
+pub fn load_extras() -> Vec<crate::types::ExtraFileEntry> {
+    let path = crate::config::config_dir()
+        .join("cache")
+        .join("extras_index.json");
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 /// Build an extras row from a classified file.

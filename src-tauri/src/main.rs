@@ -52,6 +52,7 @@ mod download_manager;
 mod model_catalog;
 mod file_role;
 mod shard_sets;
+mod companions;
 mod spec_draft;
 mod engine_utils;
 mod engine_deps;
@@ -486,6 +487,9 @@ async fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             engine::list_models,
+            companions::resolve_companions,
+            companions::set_companion_pin,
+            companions::clear_companion_pin,
             engine::launch_engine,
             engine::stop_engine,
             engine::stop_engine_slot,

@@ -475,6 +475,7 @@ pub async fn list_models(
             );
         }
         crate::shard_sets::persist_pairs(&models, &resolution);
+        crate::shard_sets::persist_extras(&extras);
         (models, extras)
     })
     .await

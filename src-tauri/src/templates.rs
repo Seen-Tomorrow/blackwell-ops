@@ -556,9 +556,8 @@ impl ProviderTemplate {
         if sp.model_flag.first().map(|f| f == "-m").unwrap_or(false)
             && !args.iter().any(|a| a == "--ple" || a == "--shard")
         {
-            let externals = crate::shard_sets::launch_externals(&config.model_path);
-            if !externals.is_empty() {
-                args.extend(["--ple".to_string(), externals.join(",")]);
+            if let Some(engram) = crate::companions::launch_engram(&config.model_path) {
+                args.extend(["--ple".to_string(), engram]);
             }
         }
 
@@ -569,7 +568,12 @@ impl ProviderTemplate {
             let vstr = vval.as_str().unwrap_or("").to_lowercase();
             if matches!(vstr.as_str(), "auto" | "on") {
                 if let Some(mmproj_flag) = sp.mmproj_flag.first() {
-                    if let Some((mmproj_name, _)) = crate::model_catalog::find_largest_mmproj(
+                    // A pinned projector (possibly in an extras root) wins; without one
+                    // the legacy same-folder choice still applies, so nothing changes for
+                    // libraries that keep the projector beside the model.
+                    if let Some(pinned) = crate::companions::launch_mmproj(&config.model_path) {
+                        args.extend([mmproj_flag.clone(), pinned]);
+                    } else if let Some((mmproj_name, _)) = crate::model_catalog::find_largest_mmproj(
                         std::path::Path::new(&config.model_path).parent().unwrap_or(std::path::Path::new(""))
                     ) {
                         args.extend([mmproj_flag.clone(), mmproj_name]);

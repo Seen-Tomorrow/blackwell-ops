@@ -56,6 +56,49 @@ export interface ExtraFileEntry {
   rootLabel?: string;
 }
 
+/** LOADOUT rail — one attachable companion role. */
+export type CompanionRole = "mmproj" | "engram";
+
+export interface CompanionCandidate {
+  path: string;
+  /** Name shown on the card (header name, else file stem). */
+  label: string;
+  size_bytes: number;
+  size_str: string;
+  /** `folder` (beside the model) or `extras`. */
+  source: string;
+  /** Quant / precision label from the file name. */
+  precision: string;
+  score: number;
+  /** Why this candidate scored — shown verbatim in the picker. */
+  reason: string;
+  split_no?: number;
+  split_count?: number;
+  lookup_dims?: number[];
+}
+
+/** One rail slot: attached state, auto pick, and the alternatives. */
+export interface CompanionSlot {
+  role: CompanionRole;
+  /** Engram only: the table already lives inside the model's own shard set. */
+  integrated: boolean;
+  auto?: CompanionCandidate;
+  /** `strong` | `medium` | `none`. */
+  confidence: string;
+  reason: string;
+  /** Explicit user pin (path). */
+  pinned?: string;
+  /** Explicit detach — no companion even if one would auto-resolve. */
+  pinned_off: boolean;
+  candidates: CompanionCandidate[];
+}
+
+export interface CompanionReport {
+  model_path: string;
+  mmproj: CompanionSlot;
+  engram: CompanionSlot;
+}
+
 export interface ModelPathEntry {
   path: string;
   label: string;
