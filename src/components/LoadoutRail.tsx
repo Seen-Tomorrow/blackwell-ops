@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot } from "../lib/types";
 
@@ -12,6 +13,8 @@ import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot 
  */
 interface LoadoutRailProps {
   modelPath?: string | null;
+  /** SPEC control (the Boost slider) rendered inside the rail. */
+  specSlot?: ReactNode;
 }
 
 const ROLE_LABEL: Record<CompanionRole, string> = {
@@ -38,7 +41,7 @@ function slotState(slot: CompanionSlot): { text: string; tone: string } {
   return { text: "EMPTY · find", tone: "empty" };
 }
 
-export default function LoadoutRail({ modelPath }: LoadoutRailProps) {
+export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
   const [report, setReport] = useState<CompanionReport | null>(null);
   const [openRole, setOpenRole] = useState<CompanionRole | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,6 +101,8 @@ export default function LoadoutRail({ modelPath }: LoadoutRailProps) {
 
   return (
     <div className="loadout-rail" data-busy={busy ? "1" : undefined}>
+      <span className="loadout-rail__zone font-mono">SPEC</span>
+      <div className="loadout-rail__spec">{specSlot}</div>
       <span className="loadout-rail__zone font-mono">SWAPS</span>
       <div className="loadout-rail__sockets">
         {slots.map((slot) => (

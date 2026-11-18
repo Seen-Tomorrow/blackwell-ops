@@ -136,6 +136,8 @@ export interface MultiAgentBoosterProps {
   showMemory?: boolean;
   showThink?: boolean;
   showBoost?: boolean;
+  /** Batch/uBatch slider rendered in the grid cell BOOST used to occupy. */
+  batchSlot?: React.ReactNode;
   /** Active main model path — LOADOUT resolves its companions. */
   modelPath?: string | null;
   /** When true, Agents marks come only from parallelValues (no hardcoded 1–32 presets). */
@@ -212,6 +214,7 @@ export default function MultiAgentBooster({
   showThink = true,
   showBoost = true,
   modelPath = null,
+  batchSlot = null,
   agentsFromTemplateOnly = false,
   instrumentSlot,
   kvUnified,
@@ -475,6 +478,85 @@ export default function MultiAgentBooster({
         />
       </div>
     ) : null;
+
+  // SPEC half of LOADOUT: the Boost slider, rendered inside the rail.
+  const boostCell = showBoost ? (
+    <div className="loadout-spec-cell">
+            <CockpitSlider
+              label="Boost"
+              value={boostSliderValue}
+              onChange={(id) => {
+                // One parent apply only — do NOT call onRawSpecType(null) before MTP/DFlash/Off.
+                // That used to fire apply(off) then apply(mtp) and the off path often won the race
+                // (MTP only worked after Off→MTP; raw types blocked Off).
+                if (id === "off") {
+                  onSpeedBoost("off");
+                  return;
+                }
+                if (id === "smart") {
+                  onSpeedBoost("smart");
+                  return;
+                }
+                if (id === "mtp" || id === "dflash" || id === "dspark") {
+                  onSpeedBoost(id);
+                  return;
+                }
+                if (id.startsWith("raw:")) {
+                  onRawSpecType?.(id.slice(4));
+                  return;
+                }
+                onSpeedBoost(id as SpeedBoostId);
+              }}
+              options={boostMarks.map((m) => {
+                // DFlash keeps its library gate; MTP is a manual lane (see mtpSelectable).
+                const needCap = m.id === "dflash" && !dflashAvailable;
+                const available =
+                  m.id === "smart" ||
+                  m.id === "off" ||
+                  m.id === "dspark" ||
+                  m.id === "mtp" ||
+                  (m.id === "dflash" && dflashAvailable) ||
+                  m.id.startsWith("raw:");
+                return {
+                  id: m.id,
+                  label: m.label,
+                  aboveLabel: m.aboveLabel,
+                  blurb: m.blurb,
+                  disabled: needCap,
+                  badgeColor: m.badgeColor,
+                  // Color track mark + under-label only (not above family word)
+                  emphasize: Boolean(m.badgeColor) && available && !needCap,
+                };
+              })}
+              subControl={
+                speedBoost === "dflash" && onDflashSampling
+                  ? {
+                      optionId: "dflash",
+                      content: (
+                        <div
+                          className="full-auto-cockpit__dflash-sampling"
+                          title="DFlash2 only — probabilistic samples the draft and lets the target rejection-sample; DFlash1 ignores it."
+                        >
+                          {(["greedy", "probabilistic"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              className={`full-auto-cockpit__dflash-sampling-btn ${
+                                dflashSampling === mode ? "value-chip-active" : "value-chip"
+                              }`}
+                              onClick={() => onDflashSampling(mode)}
+                            >
+                              {mode === "greedy" ? "GREEDY" : "PROBAB"}
+                            </button>
+                          ))}
+                        </div>
+                      ),
+                    }
+                  : undefined
+              }
+            />
+          </div>
+  ) : null;
 
   const stripTone: "mtp" | "dflash" | "neutral" =
     displayBoost === "mtp"
@@ -840,83 +922,11 @@ export default function MultiAgentBooster({
           </div>
           )}
 
-          {showBoost && (
-          <div className="full-auto-cockpit__grid-cell">
-            <CockpitSlider
-              label="Boost"
-              value={boostSliderValue}
-              onChange={(id) => {
-                // One parent apply only — do NOT call onRawSpecType(null) before MTP/DFlash/Off.
-                // That used to fire apply(off) then apply(mtp) and the off path often won the race
-                // (MTP only worked after Off→MTP; raw types blocked Off).
-                if (id === "off") {
-                  onSpeedBoost("off");
-                  return;
-                }
-                if (id === "smart") {
-                  onSpeedBoost("smart");
-                  return;
-                }
-                if (id === "mtp" || id === "dflash" || id === "dspark") {
-                  onSpeedBoost(id);
-                  return;
-                }
-                if (id.startsWith("raw:")) {
-                  onRawSpecType?.(id.slice(4));
-                  return;
-                }
-                onSpeedBoost(id as SpeedBoostId);
-              }}
-              options={boostMarks.map((m) => {
-                // DFlash keeps its library gate; MTP is a manual lane (see mtpSelectable).
-                const needCap = m.id === "dflash" && !dflashAvailable;
-                const available =
-                  m.id === "smart" ||
-                  m.id === "off" ||
-                  m.id === "dspark" ||
-                  m.id === "mtp" ||
-                  (m.id === "dflash" && dflashAvailable) ||
-                  m.id.startsWith("raw:");
-                return {
-                  id: m.id,
-                  label: m.label,
-                  aboveLabel: m.aboveLabel,
-                  blurb: m.blurb,
-                  disabled: needCap,
-                  badgeColor: m.badgeColor,
-                  // Color track mark + under-label only (not above family word)
-                  emphasize: Boolean(m.badgeColor) && available && !needCap,
-                };
-              })}
-              subControl={
-                speedBoost === "dflash" && onDflashSampling
-                  ? {
-                      optionId: "dflash",
-                      content: (
-                        <div
-                          className="full-auto-cockpit__dflash-sampling"
-                          title="DFlash2 only — probabilistic samples the draft and lets the target rejection-sample; DFlash1 ignores it."
-                        >
-                          {(["greedy", "probabilistic"] as const).map((mode) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              className={`full-auto-cockpit__dflash-sampling-btn ${
-                                dflashSampling === mode ? "value-chip-active" : "value-chip"
-                              }`}
-                              onClick={() => onDflashSampling(mode)}
-                            >
-                              {mode === "greedy" ? "GREEDY" : "PROBAB"}
-                            </button>
-                          ))}
-                        </div>
-                      ),
-                    }
-                  : undefined
-              }
-            />
+          {batchSlot ? (
+          <div className="full-auto-cockpit__grid-cell full-auto-cockpit__grid-cell--batch">
+            {batchSlot}
           </div>
-          )}
+          ) : null}
           {showThink && (
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
@@ -937,7 +947,7 @@ export default function MultiAgentBooster({
 
         {/* LOADOUT — SWAPS sockets. Spec selection still lives in the grid above; this
             row owns the independently attachable companions. */}
-        <LoadoutRail modelPath={modelPath} />
+        <LoadoutRail modelPath={modelPath} specSlot={boostCell} />
 
         {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
         {violetStrip ? (

@@ -2794,3 +2794,21 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .loadout-picker__btn:hover { border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border)); }
+
+/* LOADOUT composition: SPEC half (the old BOOST slider) + SWAPS sockets on one rail.
+   The grid keeps four cells: Memory, Agents, Think, and BATCH//UBATCH. */
+.loadout-rail__spec {
+  flex: 0 1 34rem;
+  min-width: 22rem;
+  min-height: 0;
+}
+
+.loadout-spec-cell {
+  width: 100%;
+}
+
+.full-auto-cockpit__grid-cell--batch {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}

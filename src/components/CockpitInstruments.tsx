@@ -279,6 +279,8 @@ interface CockpitInstrumentsProps {
   onModelDefaults?: () => void;
   /** No cockpit surface (custom provider) — own the outer face too. */
   standalone?: boolean;
+  /** Cockpit renders the batch slider in its own grid cell; standalone keeps it here. */
+  showBatch?: boolean;
 }
 
 /**
@@ -294,6 +296,7 @@ export function CockpitInstruments({
   modelSampler = null,
   onModelDefaults,
   standalone = false,
+  showBatch = true,
 }: CockpitInstrumentsProps) {
   return (
     <div

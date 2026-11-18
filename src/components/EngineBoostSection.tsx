@@ -54,6 +54,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     showThink,
     showBoost,
   modelPath,
+  batchSlot,
     agentsFromTemplateOnly,
     layout,
     powerMode,
@@ -127,6 +128,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         showThink={showThink}
         showBoost={showBoost}
       modelPath={modelPath}
+      batchSlot={batchSlot}
         agentsFromTemplateOnly={agentsFromTemplateOnly}
         layout={layout}
         powerMode={powerMode}
@@ -206,6 +208,7 @@ export interface EngineBoostSectionProps {
   showBoost: boolean;
   /** Active main model path — LOADOUT companions. */
   modelPath?: string | null;
+  batchSlot?: React.ReactNode;
   agentsFromTemplateOnly: boolean;
   layout: "hero" | "normal";
   powerMode: boolean;

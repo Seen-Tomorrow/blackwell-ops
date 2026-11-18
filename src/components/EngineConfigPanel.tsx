@@ -103,6 +103,7 @@ import ConfigBelowGroups from "./ConfigBelowGroups";
 import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
 import { CockpitInstruments } from "./CockpitInstruments";
+import BatchRangeSlider from "./BatchRangeSlider";
 import {
   COMPAT_KEYS,
   SAMPLER_KEYS,
@@ -3300,6 +3301,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           showThink={cockpitShowThink}
           showBoost={cockpitShowBoost}
           modelPath={model?.path ?? null}
+          batchSlot={<BatchRangeSlider defs={allParamsResolved} config={config} onChange={updateParam} />}
           flagToggles={cockpitFlagToggles}
           agentsFromTemplateOnly={isCustomProvider}
           layout={fullAutoFixed ? "hero" : "normal"}
@@ -3325,6 +3327,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onTask={applyWorkloadPreset}
               modelSampler={modelSampler}
               onModelDefaults={applyModelDefaults}
+              showBatch={false}
             />
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
