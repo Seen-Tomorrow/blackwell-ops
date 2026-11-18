@@ -113,7 +113,7 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
         <div className="loadout-rail__spec">{specSlot}</div>
       </div>
 
-      <span className="loadout-rail__dots" aria-hidden="true">· · ·</span>
+      <span className="loadout-rail__bridge" aria-hidden="true" />
 
       <div className="loadout-rail__group loadout-rail__group--swaps">
         <span className="loadout-rail__zone font-mono">SWAPS</span>

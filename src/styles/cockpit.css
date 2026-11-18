@@ -2609,8 +2609,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .loadout-rail {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(14rem, 1fr) auto minmax(15rem, 0.62fr) auto;
-  align-items: end;
+  grid-template-columns: minmax(14rem, 1fr) minmax(2rem, 3.5rem) minmax(15rem, 0.62fr) auto;
+  align-items: start;
   gap: 0.6rem;
   padding: 0.25rem 0.1rem 0.1rem;
   min-width: 0;
@@ -2650,14 +2650,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
 }
 
-.loadout-rail__dots {
-  align-self: center;
-  margin-top: 0.85rem;
-  font-size: 0.8rem;
-  letter-spacing: 0.28em;
-  opacity: 0.3;
-  color: var(--theme-accent-bright);
-  user-select: none;
+/* Dotted connector on the track line — reads as one rail, not two widgets. */
+.loadout-rail__bridge {
+  align-self: start;
+  margin-top: calc(2.4rem + 2px);
+  height: 8px;
+  background-image: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--theme-accent-bright) 45%, transparent) 0 2px,
+    transparent 2px 7px
+  );
+  opacity: 0.4;
 }
 
 .loadout-rail__note {
@@ -2705,52 +2708,57 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop:disabled { opacity: 0.45; cursor: default; }
 
+/* Typography and thumb are copied from CockpitSlider's mark grammar on purpose:
+   role above in the same size as a mark's above-label, value below in the mark-label
+   size, state in a smaller tier. The thumb IS the slider thumb — same body, same glow. */
 .loadout-stop__role {
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
+  font-size: 0.42rem;
+  letter-spacing: 0.03em;
   white-space: nowrap;
-  opacity: 0.85;
+  opacity: 0.55;
 }
 
 .loadout-stop__thumb {
   position: absolute;
-  top: 1.02rem;
+  top: 1.28rem;
   left: 50%;
   transform: translateX(-50%);
   width: 16px;
   height: 16px;
+  border-radius: 2px;
 }
 
-.loadout-stop--role-engram .loadout-stop__thumb { background: var(--theme-attach-engram-line); }
-.loadout-stop--role-mmproj .loadout-stop__thumb { background: var(--theme-attach-mmproj-line); }
-.loadout-stop--off .loadout-stop__thumb { background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent); }
-.loadout-stop--empty .loadout-stop__thumb { background: transparent; border: 1px dashed color-mix(in srgb, var(--theme-accent-bright) 45%, transparent); }
+.loadout-stop--empty .loadout-stop__thumb {
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--theme-accent-bright) 45%, transparent);
+  box-shadow: none;
+}
 
 .loadout-stop__value {
   position: absolute;
-  top: 2.15rem;
+  top: 2.2rem;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
+  font-size: 0.55rem;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
-.loadout-stop--role-engram .loadout-stop__value { color: color-mix(in srgb, var(--theme-attach-engram-line) 85%, var(--fixed-white) 15%); }
-.loadout-stop--role-mmproj .loadout-stop__value { color: color-mix(in srgb, var(--theme-attach-mmproj-line) 80%, var(--fixed-white) 20%); }
+.loadout-stop--role-engram .loadout-stop__value { color: var(--fixed-amber-400); }
+.loadout-stop--role-mmproj .loadout-stop__value { color: var(--fixed-cyan-400); }
 
 .loadout-stop__state {
   position: absolute;
   top: 2.95rem;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.56rem;
-  letter-spacing: 0.1em;
-  opacity: 0.6;
+  font-size: 0.42rem;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
   white-space: nowrap;
 }
 
@@ -2873,4 +2881,23 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   min-width: 0;
   display: flex;
   align-items: center;
+}
+
+/* BATCH//UBATCH in the grid cell: fill the cell like every other slider and shrink the
+   thumbs so a uBatch==batch collision still fits the lower height. */
+.full-auto-cockpit__grid-cell--batch .cockpit-instrument--batch {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.full-auto-cockpit__grid-cell--batch .cockpit-batch__track {
+  height: 52px;
+}
+
+.full-auto-cockpit__grid-cell--batch .cockpit-batch__thumb {
+  width: 22px;
+  height: 22px;
+  font-size: 0.55rem;
+  border-radius: 2px;
 }

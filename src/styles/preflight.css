@@ -343,14 +343,14 @@
   box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 80%, transparent);
 }
 
-/* Collided thumbs must not grow the block: the values are read in the head
-   readout, so only the 28px thumb bodies need vertical separation. */
+/* Collided thumbs sit side by side on the rail — stacking them vertically collided
+   with the mark labels below and read as a glitch. */
 .cockpit-batch__thumb--collide.cockpit-batch__thumb--ub {
-  transform: translate(-50%, -80%);
+  transform: translate(calc(-100% - 2px), -50%);
 }
 
 .cockpit-batch__thumb--collide.cockpit-batch__thumb--b {
-  transform: translate(-50%, 60%);
+  transform: translate(2px, -50%);
 }
 
 /* Resolved values live in the header — the rail stays short and never grows
