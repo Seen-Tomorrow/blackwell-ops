@@ -293,6 +293,16 @@ export function useSpecDraft({
 
   const dflashLocalPickItems = useMemo(() => libraryPickItems, [libraryPickItems]);
 
+  /**
+   * The active lane's local heads, built unconditionally so a caller can offer them
+   * WITHOUT opening the legacy modal — libraryPickItems only fills inside the open
+   * handlers, which is why the LOADOUT panel used to come up empty.
+   */
+  const specLocalFileRows = useMemo(
+    () => buildLocalDflashPickItems(),
+    [buildLocalDflashPickItems],
+  );
+
   /** The active lane's own draft key — the modal pre-selects what that lane holds. */
   const activeDraftKey =
     speedBoost === "mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
@@ -391,6 +401,7 @@ export function useSpecDraft({
     dflashResolving,
     dflashResolveError,
     dflashLocalPickItems,
+    specLocalFileRows,
     dflashPickInitialSelectedId,
     dflashMainDescribe,
     handleGetDflashDraft,

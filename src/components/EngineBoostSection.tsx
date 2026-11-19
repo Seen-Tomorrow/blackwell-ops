@@ -47,6 +47,11 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     mtpDraftLabel,
     mtpBakedIn,
     onChangeMtpDraft,
+  specFileRows = [],
+  onPickSpecFile,
+  specFileBusy = false,
+  specFileError = null,
+  onResolveSpecHf,
     kvQuantValues,
     parallelValues,
     showAgents,
@@ -121,6 +126,11 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         mtpDraftLabel={mtpDraftLabel}
         mtpBakedIn={mtpBakedIn}
         onChangeMtpDraft={onChangeMtpDraft}
+        specFileRows={specFileRows}
+        onPickSpecFile={onPickSpecFile}
+        specFileBusy={specFileBusy}
+        specFileError={specFileError}
+        onResolveSpecHf={onResolveSpecHf}
         kvQuantValues={kvQuantValues}
         parallelValues={parallelValues}
         showAgents={showAgents}
@@ -200,6 +210,14 @@ export interface EngineBoostSectionProps {
   mtpDraftLabel: string | null;
   mtpBakedIn: boolean;
   onChangeMtpDraft: () => void;
+  /** Local draft heads for the active SPEC lane, available without opening the modal. */
+  specFileRows?: { id: string; title: string; meta?: string; score?: number }[];
+  /** Applies a picked draft head path. */
+  onPickSpecFile?: (path: string) => void;
+  /** Resolver state for the HF-id field. */
+  specFileBusy?: boolean;
+  specFileError?: string | null;
+  onResolveSpecHf?: (id: string) => void;
   kvQuantValues: (string | number)[];
   parallelValues: (string | number)[];
   showAgents: boolean;

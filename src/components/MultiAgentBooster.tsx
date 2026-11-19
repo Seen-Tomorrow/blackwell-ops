@@ -83,6 +83,13 @@ export interface MultiAgentBoosterProps {
   mtpBakedIn?: boolean;
   /** Open local-library MTP head picker. */
   onChangeMtpDraft?: () => void;
+  /** Local draft heads for the active SPEC lane (built without opening the legacy modal). */
+  specFileRows?: { id: string; title: string; meta?: string; score?: number }[];
+  /** Applies a picked draft head path. */
+  onPickSpecFile?: (path: string) => void;
+  specFileBusy?: boolean;
+  specFileError?: string | null;
+  onResolveSpecHf?: (id: string) => void;
   kvQuantValues: (string | number)[];
   /** Factory + user-added parallel values for Agents marks. */
   parallelValues?: (string | number)[];
@@ -189,6 +196,11 @@ export default function MultiAgentBooster({
   mtpDraftLabel = null,
   mtpBakedIn = false,
   onChangeMtpDraft,
+  specFileRows = [],
+  onPickSpecFile,
+  specFileBusy = false,
+  specFileError = null,
+  onResolveSpecHf,
   kvQuantValues,
   parallelValues,
   layout = "normal",
@@ -238,7 +250,7 @@ export default function MultiAgentBooster({
   // grid, which is this component's territory.
   const [companionReport, setCompanionReport] = useState<CompanionReport | null>(null);
   const [companionBusy, setCompanionBusy] = useState(false);
-  const [pickSlot, setPickSlot] = useState<{ role: CompanionRole; anchor: number } | null>(null);
+  const [pickSlot, setPickSlot] = useState<{ role: CompanionRole | null; anchor: number } | null>(null);
 
   const reloadCompanions = useCallback(async () => {
     if (!modelPath) {
@@ -853,12 +865,58 @@ export default function MultiAgentBooster({
         </div>
         {/* File picker for one stop at a time, centred above that stop. It only ever
             picks a companion file — the SPEC mode itself stays on the rail. */}
-        {pickSlot && companionReport ? (
+        {pickSlot && (companionReport || pickSlot.role === null) ? (
           <LoadoutPicker
-            title={pickSlot.role === "mmproj" ? "MMPROJ" : "ENGRAM"}
+            title={
+              pickSlot.role === null
+                ? "DRAFT"
+                : pickSlot.role === "mmproj"
+                  ? "MMPROJ"
+                  : "ENGRAM"
+            }
             anchor={pickSlot.anchor}
             role={pickSlot.role}
-            slot={pickSlot.role === "mmproj" ? companionReport.mmproj : companionReport.engram}
+            slot={
+              pickSlot.role === null || !companionReport
+                ? null
+                : pickSlot.role === "mmproj"
+                  ? companionReport.mmproj
+                  : companionReport.engram
+            }
+            localRows={
+              pickSlot.role === null
+                ? specFileRows.map((row) => {
+                    // meta is a free-form "author · quant · size" line — pick the parts
+                    // by shape so a missing author cannot shift the columns.
+                    const parts = (row.meta ?? "")
+                      .split("·")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    return {
+                      key: row.id,
+                      quant:
+                        parts.find((p) => /^(Q\d|IQ\d|BF16|F16|F8|FP8|MXFP|Q8)/i.test(p)) ??
+                        "—",
+                      size: parts.find((p) => /(GB|MB|KB)$/i.test(p)) ?? "—",
+                      name: row.title,
+                      onPick: () => {
+                        onPickSpecFile?.(row.id);
+                        setPickSlot(null);
+                      },
+                    };
+                  })
+                : undefined
+            }
+            hfInput={
+              pickSlot.role === null && onResolveSpecHf
+                ? {
+                    placeholder: "author/model",
+                    busy: specFileBusy,
+                    error: specFileError,
+                    onSubmit: (id) => onResolveSpecHf(id),
+                  }
+                : undefined
+            }
             modelPath={modelPath ?? ""}
             onAttach={(role, path) => void setCompanion(role, path)}
             onDetach={(role) => void setCompanion(role, null)}
@@ -881,9 +939,7 @@ export default function MultiAgentBooster({
               : 0.5
           }
           canPickExternal={canPickSpecFile}
-          onPickExternal={() =>
-            displayBoost === "mtp" ? onChangeMtpDraft?.() : onChangeDflashDraft?.()
-          }
+          onPickExternal={(anchor) => setPickSlot({ role: null, anchor })}
           report={companionReport}
           busy={companionBusy}
           onOpenSlot={(role, anchor) => setPickSlot({ role, anchor })}

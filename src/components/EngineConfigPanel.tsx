@@ -958,6 +958,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     dflashResolving,
     dflashResolveError,
     dflashLocalPickItems,
+    specLocalFileRows,
     dflashPickInitialSelectedId,
     dflashMainDescribe,
     handleGetDflashDraft,
@@ -3294,6 +3295,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           mtpDraftLabel={mtpDraftLabel}
           mtpBakedIn={mtpBakedIn}
           onChangeMtpDraft={handleChangeMtpDraft}
+          specFileRows={specLocalFileRows}
+          onPickSpecFile={handleConfirmLibraryDraft}
+          specFileBusy={dflashResolving}
+          specFileError={dflashResolveError}
+          onResolveSpecHf={handleConfirmDflashManual}
           kvQuantValues={cockpitKvValuesBound}
           parallelValues={cockpitParallelValues}
           showAgents={cockpitShowAgents}
