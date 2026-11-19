@@ -253,6 +253,9 @@ export default function LoadoutPicker({
           </div>
         ) : null}
 
+        {/* Keeps the content in the opaque part; the rail shows through the fade below. */}
+        <div className="gp-fade" aria-hidden />
+
 
       </div>
     </div>

@@ -376,11 +376,13 @@ export default function MultiAgentBooster({
     ? {
         id: "draft",
         role: "DRAFT",
-        value: draftHeadName
-          ? (draftHeadName.split(/[\\/]/).pop() ?? draftHeadName).replace(/\.gguf$/i, "").slice(0, 14)
-          : displayBoost === "mtp" && mtpBakedIn
-            ? "built-in"
-            : "—",
+        // A short token, never the whole file name: the plate is 16px tall.
+        value: (() => {
+          if (!draftHeadName) return displayBoost === "mtp" && mtpBakedIn ? "built-in" : "—";
+          const base = draftHeadName.split(/[\\/]/).pop() ?? draftHeadName;
+          const quant = base.match(/(IQ\d[_A-Z]*|Q\d[_A-Z]*|BF16|F16|FP8|F8)/i);
+          return quant?.[0].toUpperCase() ?? "FILE";
+        })(),
         state:
           displayBoost === "mtp" && mtpBakedIn && !mtpDraftLabel
             ? "BAKED-IN"
@@ -889,9 +891,6 @@ export default function MultiAgentBooster({
           </div>
           )}
         </div>
-        {/* File picker for one stop at a time, centred above that stop. It only ever
-            picks a companion file — the SPEC mode itself stays on the rail. */}
-        </div>
 
         {/* LOADOUT — SWAPS sockets. Spec selection still lives in the grid above; this
             row owns the independently attachable companions. */}
@@ -908,18 +907,6 @@ export default function MultiAgentBooster({
           report={companionReport}
           busy={companionBusy}
         />
-
-        {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
-        {violetStrip ? (
-          <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
-            {violetStrip}
-          </div>
-        ) : null}
-
-        {instrumentSlot ? (
-          <div className="full-auto-cockpit__instruments">{instrumentSlot}</div>
-        ) : null}
-
         {/* File picker overlay. It covers the whole body — grid, rail and strips — so
             the lists get the cockpit's full height instead of the grid's 150px. */}
         {pickSlot && (companionReport || pickSlot.role === null) ? (
@@ -980,7 +967,20 @@ export default function MultiAgentBooster({
             onDownloaded={() => void reloadCompanions()}
             onClose={() => setPickSlot(null)}
           />
+        ) : null}        </div>
+
+        {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
+        {violetStrip ? (
+          <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
+            {violetStrip}
+          </div>
         ) : null}
+
+        {instrumentSlot ? (
+          <div className="full-auto-cockpit__instruments">{instrumentSlot}</div>
+        ) : null}
+
+
 
       </div>
         </>

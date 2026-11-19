@@ -2974,38 +2974,45 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
    whole 2x2 grid and the content takes the SWAPS half — the largest area the cockpit
    can hand over without moving anything, and enough that lists never get squeezed.
    Surface is --theme-panel-accent (neutral cockpit metal), never --theme-panel. */
-/* The overlay's positioning context: full body height, not just the grid. */
-.full-auto-cockpit__body {
-  position: relative;
-}
-
 .full-auto-cockpit__grid-stack {
   position: relative;
+  /* The rail lives inside this box (the overlay has to cover both), so the gap the
+     body used to give it is owned here — same 0.75rem, same body height as before. */
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .gp-scrim {
   position: absolute;
   inset: 0;
   z-index: 30;
+  /* Fades out over the rail: the grid dims, the rail underneath stays readable. */
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--theme-panel-accent) 84%, transparent),
-    color-mix(in srgb, var(--theme-panel-accent) 92%, transparent)
+    color-mix(in srgb, var(--theme-panel-accent) 78%, transparent) 0 48%,
+    transparent 92%
   );
 }
 
 .gp-panel {
   position: absolute;
   top: 3px;
-  bottom: 3px;
+  bottom: 0;
   left: 50%;
   right: 3px;
   display: flex;
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
-  border-radius: 3px;
-  background: var(--theme-panel-accent);
-  box-shadow: 0 12px 30px color-mix(in srgb, var(--fixed-black-a55) 80%, transparent);
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  /* Opaque through the grid and the SWAPS label, then transparent over the stops — the
+     user has to see the rail change they just made. */
+  background: linear-gradient(
+    180deg,
+    var(--theme-panel-accent) 0 52%,
+    transparent 88%
+  );
   overflow: hidden;
 }
 
@@ -3043,6 +3050,11 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .gp-panel__x:hover { color: var(--theme-accent-bright); }
 
 /* LOCAL | REMOTE side by side — two different decisions, not one long list. */
+.gp-fade {
+  flex: 0 0 40%;
+  pointer-events: none;
+}
+
 .gp-panel__cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
