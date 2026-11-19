@@ -237,17 +237,2273 @@
   gap: 2px;
   width: 3.55rem;
   pointer-events: none;
+}/* Model count — under the kind cycler, same rail width (flat chip, no chrome grit) */
+.catalog-search-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 0 4px;
+  height: 13px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  color: var(--theme-text-muted, var(--theme-text));
+  opacity: 0.85;
+  white-space: nowrap;
+  user-select: none;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle) 55%, transparent);
+  pointer-events: none;
 }
 
-.catalog-search-field__rail
-/* Kind filter — the catalog's most used control, so it is a full-width four-stop bar
-   above the search field: every kind visible with its own count, no cycling. */
-/* The wrap lays the bar above the field, full width. */
-.catalog-search-wrap {
+.catalog-list-panel__chrome-tools .catalog-search-input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 3.95rem 0 0.75rem;
+  line-height: 38px;
+  box-sizing: border-box;
+}
+
+
+/* SCAN META + EDIT controls — moved into the filter/sort bar (row 1, far right),
+   docked right with an amber border to group them as a distinct unit. */
+.catalog-tools-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* Amber grouping border on the SCAN META / EDIT chips. */
+.catalog-tools-right .catalog-scan-btn {
+  border: 1px solid var(--fixed-amber-600-a55);
+  border-radius: 3px;
+}
+
+.catalog-list-panel__chrome-tools {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-chrome-row--search {
+  align-items: stretch;
+}
+
+/* Search / sort bar — flat. The sidebar is one region now, so this row is a row with a
+   hairline under it, not a gunmetal panel with grit: the texture belonged to the era when
+   the panel was a stack of bezelled plates. */
+.catalog-list-panel .catalog-list-panel__chrome-tools {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  overflow: hidden;
+  background: transparent;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+  box-shadow: none;
+}
+.catalog-list-panel .catalog-list-panel__chrome-tools > * {
+  position: relative;
+  z-index: 1;
+}
+[data-model-catalog] .catalog-list-panel .catalog-list-panel__chrome-tools {
+  background: transparent;
+  background-image: none;
+}
+
+.catalog-chrome-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-chrome-row--filters {
+  justify-content: space-between;
+}.catalog-list-panel__chrome-msg {
+  margin: 0;
+}
+
+.catalog-list-panel__chrome-dialog {
+  flex-shrink: 0;
+}
+
+/* Card list body — the scroll area owns the remaining height */
+.catalog-list-panel__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Selected model — raised above its neighbours under quiet-wing desaturate */
+.catalog-list-card-wrap--selected {
+  position: relative;
+  z-index: 1;
+}
+
+[data-model-catalog] .catalog-list-panel .catalog-list-card-wrap--selected .gunmetal-card {
+  filter: saturate(1.55) brightness(1.08);
+}
+
+/*
+ * OPERATIONS workspace — one continuous field with the engine-config panel.
+ * Same face as .eink-panel-wrapper (theme-panel-accent); list is a quiet wing,
+ * not a second chrome room. Engine config stays full chroma.
+ */
+[data-model-catalog] .catalog-split-workspace {
+  background: var(--theme-panel-accent);
+}
+
+/* List column — flat matte. The depth lives in the joint (see .catalog-split-handle), not in
+   the pane: a fill gradient has to invent a light source to justify itself, while a groove
+   is a physical detail the eye already knows how to read. */
+[data-model-catalog] .catalog-list-panel,
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
+  isolation: auto;
+  background: var(--theme-panel-accent);
+  border: none;
+  box-shadow: none;
+}
+
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper::before {
+  display: none;
+}
+
+/* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
+/* Rail instead of stacking: neither pane is "above" the other, so no shadow, no channel —
+   one full-height line in the handle (see .catalog-split-handle::before) does the separating. */
+[data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
+  border-left: none;
+  box-shadow: none;
+}
+
+[data-model-catalog] .catalog-list-scroll {
+  background: transparent;
+  background-image: none;
+}
+
+/*
+ * Quiet wing on list body only — chrome keeps full industrial chroma/texture.
+ */
+[data-model-catalog] .catalog-list-panel__body {
+  filter: saturate(0.42) brightness(0.97);
+}
+
+/* Unselected cards stay quiet; selected is boosted via .catalog-list-card-wrap--selected */
+[data-model-catalog] .catalog-list-panel .buried-card {
+  filter: none;
+}
+
+[data-model-catalog] .catalog-list-panel .gunmetal-card {
+  filter: saturate(1.35) brightness(1.04);
+}
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-text-muted) 35%, var(--theme-panel-accent) 65%);
+}
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-accent) 28%, var(--theme-panel-accent) 72%);
+}
+
+
+.catalog-split-rail--collapsed {
+  overflow: visible;
+}
+
+.catalog-split-rail--collapsed .catalog-split-handle {
+  cursor: col-resize;
+}
+
+.catalog-split-toggle {
+  position: absolute;
+  /* Aligned to bottom of catalog chrome header (set via --catalog-toggle-top) */
+  top: var(--catalog-toggle-top, 0px);
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  /* Center the chevron on the chrome/list seam */
+  transform: translate(-50%, -50%);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, var(--theme-border));
+  border-radius: 4px;
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  color: var(--theme-accent, var(--theme-text-muted));
+  cursor: pointer;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent-glow, transparent) 15%, transparent);
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.catalog-split-toggle:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, var(--theme-border));
+  color: var(--theme-accent-bright, var(--theme-text));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Collapsed: amber pulse so the rail isn’t “invisible” */
+.catalog-split-toggle--collapsed-hint {
+  animation: catalogSplitTogglePulse 1.35s ease-in-out infinite;
+}
+
+.catalog-split-toggle__glyph {
+  font-size: var(--type-body);
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+.catalog-split-toggle__glyph--collapse {
+  transform: rotate(180deg);
+}
+
+.catalog-split-rail .catalog-split-toggle {
+  left: 0;
+  /* --catalog-toggle-top = first model card top; pin glyph top-aligned to that line */
+  transform: translate(-50%, 0);
+}
+
+.catalog-split-rail--collapsed .catalog-split-toggle {
+  left: 0;
+  /* No chrome when collapsed — pin near rail top */
+  transform: translate(0, 0);
+}
+
+.catalog-split-rail--collapsed .catalog-split-toggle:hover {
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Header: soft amber / search hint when catalog is collapsed (readable on dark themes) */
+.config-catalog-search-hint--pulse.config-catalog-search-hint--pulse {
+  border-color: var(--fixed-amber-600-a45);
+  color: color-mix(in srgb, var(--fixed-amber-500) 75%, #e5e5e5);
+  background: var(--fixed-amber-600-a1);
+  animation: catalogSearchHintPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes catalogSearchHintPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0.88;
+  }
+  50% {
+    box-shadow: 0 0 8px 0 var(--fixed-amber-600-a28);
+    opacity: 1;
+  }
+}
+
+@keyframes catalogSplitTogglePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    border-color: color-mix(in srgb, var(--fixed-amber-600) 40%, var(--theme-border));
+  }
+  50% {
+    box-shadow: 0 0 6px 0 var(--fixed-amber-600-a3);
+    border-color: color-mix(in srgb, var(--fixed-amber-600) 55%, var(--theme-border));
+  }
+}
+
+.catalog-split-toggle--collapsed-hint.catalog-split-toggle--collapsed-hint {
+  border-color: color-mix(in srgb, var(--fixed-amber-600) 45%, var(--theme-border));
+  color: color-mix(in srgb, var(--fixed-amber-500) 70%, var(--theme-text-muted));
+}
+
+.catalog-split-workspace--collapsed .catalog-list-panel {
+  display: none;
+}
+
+/* Model catalog — skip paint for off-screen cards; stable intrinsic height for scroll */
+[data-model-path] {
+  content-visibility: auto;
+  /* Must track the row height (3 content lines), or the scrollbar re-estimates
+     every time a new row enters the viewport. */
+  contain-intrinsic-size: auto 3.7rem;
+}
+
+.model-catalog-card {
+  contain: layout style;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.model-catalog-card > *:not(.model-card-draft-hatch):not(.model-card-check-bubble) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Role fill layer — the hue is applied by the `--draft/--ple/--mmproj/--adapter`
+   modifiers below; this rule only positions the layer. Text stays above and readable. */
+.model-card-draft-hatch {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: transparent;
+  opacity: 0.9;
+}
+
+.model-catalog-card--draft {
+  /* keep full ink; hatch carries the draft cue (opacity mute looked disabled) */
+  opacity: 1;
+}
+
+/* Companion roles: flat color fills, one hue each. No patterns on cards — a weave over
+   stacked rows read as a glitched screen; the glass face is where the texture lives. */
+.model-card-draft-hatch--draft {
+  background: var(--theme-attach-draft-fill);
+}
+
+.model-card-draft-hatch--ple {
+  background: var(--theme-attach-engram-fill);
+}
+
+.model-card-draft-hatch--mmproj {
+  background: var(--theme-attach-mmproj-fill);
+}
+
+.model-card-draft-hatch--adapter {
+  background: var(--theme-attach-adapter-fill);
+}
+
+.model-catalog-card--draft .model-card-draft-badge {
+  color: var(--theme-dflash-strip-text);
+  border: 1px solid var(--theme-dflash-strip-border, var(--fixed-violet-400-a5));
+  background: color-mix(in srgb, var(--theme-dflash-strip-bg) 55%, transparent);
+}
+
+.catalog-search-wrap {
+  min-width: 0;
+}
+
+.catalog-search-input {
+  min-width: 0;
+}
+
+
+/* Catalog list — vertical scrollbar on the left (Chromium / WebView2) */
+.catalog-list-scroll {
+  direction: rtl;
+  /* Physical right = split side — keep list content off the resize rail */
+  padding-right: 1.125rem;
+}
+
+.catalog-list-scroll > * {
+  direction: ltr;
+}
+
+
+/* Model card styles */
+/* ── Catalog card (unselected) — no fill; list panel tint shows through ─── */
+.buried-card {
+  background: transparent;
+  background-image: none;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 6px;
+  box-shadow: none;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Reserve selection rail slot on every card — gunmetal only changes color */
+.buried-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.buried-card:hover {
+  background: color-mix(in srgb, var(--theme-accent) 5%, transparent);
+  background-image: none;
+  border-color: color-mix(in srgb, var(--theme-border) 55%, var(--theme-accent) 45%);
+  box-shadow: none;
+}
+
+/*
+ * Catalog cards — face from --theme-catalog-card-* (ARCTIC = ice slab;
+ * dark themes = transparent wing defaults in tokens-base).
+ */
+[data-model-catalog] .model-catalog-card.buried-card,
+[data-model-catalog] .buried-card,
+[data-model-catalog] [data-model-path] .model-catalog-card {
+  background-color: var(--theme-catalog-card-bg);
+  background-image: var(--theme-catalog-card-bg-image);
+  border-color: var(--theme-catalog-card-border);
+  box-shadow: var(--theme-catalog-card-shadow);
+  border-radius: 8px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-model-catalog] .model-catalog-card.buried-card:hover,
+[data-model-catalog] .buried-card:hover {
+  background-color: var(--theme-catalog-card-hover-bg);
+  background-image: var(--theme-catalog-card-bg-image);
+  border-color: var(--theme-catalog-card-hover-border);
+  box-shadow: var(--theme-catalog-card-hover-shadow);
+}
+
+/* Selected — lifted accent face + left rail (must read on dark themes) */
+[data-model-catalog] .model-catalog-card.gunmetal-card,
+[data-model-catalog] .gunmetal-card {
+  background-color: var(--theme-catalog-card-selected-bg);
+  background-image: var(--theme-catalog-card-selected-bg-image);
+  border: 1px solid var(--theme-catalog-card-selected-border);
+  box-shadow: var(--theme-catalog-card-selected-shadow);
+  border-radius: 8px;
+}
+
+[data-model-catalog] .gunmetal-card::before,
+[data-model-catalog] .model-catalog-card.gunmetal-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--theme-catalog-card-rail);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-catalog-card-rail) 55%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-model-catalog] .model-catalog-card.gunmetal-card .model-card-name {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+/* Footer: size/date left, badge column right */
+[data-model-catalog] .model-card-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+[data-model-catalog] .model-card-badges {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* Size + date footer meta — size is the primary weight readout */
+[data-model-catalog] .model-card-meta {
+  position: relative;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+[data-model-catalog] .model-card-size {
+  font-size: var(--type-sm);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+[data-model-catalog] .model-card-date {
+  font-size: var(--type-tiny);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Badges on catalog cards — mono mute (less cyan/green noise) */
+[data-model-catalog] .model-card-quant-badge,
+[data-model-catalog] .model-card-quant-badge--cyan,
+[data-model-catalog] .model-card-quant-badge--nvfp {
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, var(--theme-text) 15%);
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 4%, transparent);
+}
+
+/*
+ * Card ink — ModelCard surface classes (mcard-*) paint theme tokens directly;
+ * these container rules are the ARCTIC readability correction, re-keyed from
+ * the deleted text-white/* / text-stealth-muted utility hooks.
+ */
+[data-model-catalog] .model-catalog-card .mcard-params {
+  color: var(--theme-text);
+}
+
+[data-model-catalog] .model-catalog-card .mcard-date,
+[data-model-catalog] .model-catalog-card .mcard-inkchip {
+  color: var(--theme-text-muted);
+}
+
+[data-model-catalog] .model-catalog-card .mcard-author,
+[data-model-catalog] .model-catalog-card .mcard-meta-mut {
+  color: var(--theme-text-muted);
+}
+
+[data-model-catalog] .model-catalog-card .mcard-inkchip {
+  background-color: color-mix(in srgb, var(--theme-text) 14%, transparent);
+}
+
+[data-model-catalog] .model-catalog-card .mcard-inkchip {
+  color: var(--theme-text);
+}
+
+/* ── E-ink Scrollbar ─── */
+.eink-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.eink-scrollbar::-webkit-scrollbar-track {
+  background: var(--theme-scrollbar-track);
+}
+
+.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-scrollbar-thumb) 70%, var(--theme-accent-bright) 30%);
+}
+
+/* ── Engine Stack page — unified with MODELS tab ─── */
+[data-engine-stack] .engine-stack-empty-icon {
+  color: var(--theme-accent);
+}
+
+[data-engine-stack] .engine-stack-banner {
+  background: var(--theme-eject-card-bg);
+}
+
+[data-engine-stack] .status-online {
+  background-color: var(--theme-accent);
+  box-shadow: 0 0 6px var(--theme-accent-glow);
+}
+
+[data-engine-stack] .status-loading {
+  background-color: var(--theme-secondary-bright);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-secondary) 40%, transparent);
+}
+
+[data-engine-stack] .provider-pill-active {
+  background: var(--theme-provider-pill-active-bg);
+  border: 1px solid var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
+}
+
+[data-engine-stack] .engine-stack-profile-pill {
+  background: var(--fixed-rgba-184-122-0-a08);
+  border: 1px solid var(--fixed-rgba-184-122-0-a4);
+  color: var(--fixed-brand-amber);
+}
+
+
+/* ── Catalog quick strip: seats bank + pins ──────────────────────────────── */
+.catalog-quick-strip {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 8px 10px;
+  background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 55%, transparent);
+}
+
+/*
+ * CTX docked inside the cockpit lifts the VRAM glass. The head gives back a
+ * little air instead of hanging the sort bar below the bezel: seats tighten one
+ * notch and FAVORITE becomes a horizontal quick strip (scrolls past two chips).
+ */
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-strip {
+  gap: 6px;
+  padding: 6px 6px 8px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__head {
+  min-height: 1.15rem;
+  padding-bottom: 3px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__head--seats {
+  padding-bottom: 4px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat {
+  min-height: 58px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat__main {
+  gap: 2px;
+  padding: 4px 4px 4px 8px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat__actions {
+  bottom: 3px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__actions-row {
+  padding-top: 0;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-section__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-chip {
+  min-height: 28px;
+  padding: 2px 16px 2px 6px;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-chip__meta {
+  display: none;
+}
+
+.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-section__head {
+  padding-bottom: 2px;
+}
+
+/* Twin seats + optional Σ footer in one frame */
+.catalog-quick-seat-bank {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  overflow: hidden;
+}
+
+
+.catalog-quick-seat-bank--help {
+  border-color: color-mix(in srgb, var(--theme-harness-brain-raw, var(--theme-accent)) 40%, transparent);
+  background:
+    radial-gradient(
+      120% 90% at 0% 0%,
+      color-mix(in srgb, var(--theme-harness-brain-raw) 14%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      100% 80% at 100% 100%,
+      color-mix(in srgb, var(--theme-harness-worker-raw) 12%, transparent),
+      transparent 50%
+    ),
+    color-mix(in srgb, var(--theme-panel) 70%, var(--fixed-black) 30%);
+}
+
+/* Local help panel inside seat bank (same idea as harness connect veil, scoped) */
+.catalog-seats-help {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px 9px 9px;
+}
+
+.catalog-seats-help__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.catalog-seats-help__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.catalog-seats-help__kicker {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-seats-help__close {
+  margin: 0;
+  padding: 2px 7px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.catalog-seats-help__close:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.catalog-seats-help__blurb {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  line-height: 1.35;
+  color: var(--theme-text);
+  opacity: 0.9;
+}
+
+.catalog-seats-help__flow {
+  display: flex;
+  align-items: stretch;
   gap: 4px;
   min-width: 0;
+}
+
+.catalog-seats-help__step {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 5px 6px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+}
+
+.catalog-seats-help__n {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+}
+
+.catalog-seats-help__step-title {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--theme-text);
+}
+
+.catalog-seats-help__roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.catalog-seats-help__role {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.catalog-seats-help__role--brain {
+  color: var(--theme-harness-brain-text, var(--theme-provider-pill-active-text));
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 28%,
+    transparent
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--theme-harness-brain-raw, var(--theme-provider-pill-active-bg)) 45%,
+    transparent
+  );
+}
+
+.catalog-seats-help__role--worker {
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
+  background: color-mix(
+    in srgb,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 28%,
+    transparent
+  );
+  border: 1px solid color-mix(
+    in srgb,
+    var(--theme-harness-worker-raw, var(--theme-pair-secondary-bg)) 45%,
+    transparent
+  );
+}
+
+.catalog-seats-help__launch,
+.catalog-seats-help__connect {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-seats-help__step-copy {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  line-height: 1.25;
+  color: var(--theme-text-muted);
+}
+
+.catalog-seats-help__arrow {
+  flex: 0 0 auto;
+  align-self: center;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-body);
+  color: var(--theme-text-muted);
+  opacity: 0.55;
+}
+
+.catalog-seats-help__foot {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  line-height: 1.35;
+  color: var(--theme-text-muted);
+}
+
+.catalog-seats-help__foot b {
+  color: var(--theme-text);
+  font-weight: 700;
+}
+
+@media (max-width: 360px) {
+  .catalog-seats-help__flow {
+    flex-direction: column;
+  }
+
+  .catalog-seats-help__arrow {
+    align-self: flex-start;
+    transform: rotate(90deg);
+    margin: 0 0 0 8px;
+  }
+}
+
+/* Seats stack full width: a 394px rail never had room for two readable cards. */
+.catalog-quick-strip__seats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+/* Three rows fit the block; the rest scroll inside it under a bottom fade. */
+.catalog-quick-strip__seats--scroll {
+  --catalog-endpoint-row: 76px;
+  max-height: calc(3 * var(--catalog-endpoint-row));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent 100%);
+}
+
+.catalog-quick-seat--add-idle .catalog-quick-seat__main {
+  cursor: default;
+}
+
+.catalog-quick-section__endpoint-count {
+  flex: 1 1 auto;
+  text-align: center;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+/* Endpoint edit banner — the panel-side anchor for the row's EDIT button. */
+.catalog-endpoint-edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.catalog-endpoint-edit-banner--brain {
+  border-left: 2px solid var(--role-brain);
+}
+
+.catalog-endpoint-edit-banner--worker {
+  border-left: 2px solid var(--role-worker);
+}
+
+.catalog-endpoint-edit-banner__label {
+  flex: 0 0 auto;
+  color: var(--theme-text);
+  font-weight: 700;
+}
+
+.catalog-endpoint-edit-banner__hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--theme-text-muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.catalog-endpoint-edit-banner__actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.catalog-endpoint-edit-banner__btn {
+  margin: 0;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.catalog-endpoint-edit-banner__btn--save {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.catalog-endpoint-edit-banner__btn:hover {
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+
+/* Seat cell inside bank — face only; bank owns the outer frame */
+.catalog-quick-seat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 44px;
+  overflow: hidden;
+  isolation: isolate;
+  /* No role wash: the seats are two rows of one table, so the role is a 2px edge plus its
+     chip. A filled card read as a different material per role instead of a different job. */
+  background: transparent;
+  border-left: 2px solid transparent;
+}
+
+.catalog-quick-seat + .catalog-quick-seat {
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+}
+
+.catalog-quick-seat--brain.catalog-quick-seat--filled {
+  border-left-color: var(--role-brain);
+}
+
+.catalog-quick-seat--worker.catalog-quick-seat--filled {
+  border-left-color: var(--role-worker);
+}
+
+.catalog-quick-seat--selected {
+  box-shadow: inset 0 0 0 1px var(--fixed-cyan-50-a4);
+}
+
+.catalog-quick-seat--editing {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
+
+
+
+
+/* Seat top line: role on the left, learned footprint / state on the right. */
+.catalog-quick-seat__top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.catalog-quick-seat__state {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-radius: 2px;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat--filled .catalog-quick-seat__state {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+}
+
+.catalog-quick-seat__body {
+  position: relative;
+  flex: 1 1 auto;
+  display: block;
+  width: 100%;
+  min-height: 0;
+}
+
+.catalog-quick-seat--brain .catalog-quick-seat__role {
+  color: var(--role-brain-ink);
+}
+
+.catalog-quick-seat--worker .catalog-quick-seat__role {
+  color: var(--role-worker-ink);
+}
+
+.catalog-quick-seat__main {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  z-index: 2;
+}
+
+.catalog-quick-seat__role {
+  flex: 0 0 auto;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  color: var(--theme-text-muted);
+}
+
+.catalog-quick-seat__name {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-sm);
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--theme-text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat__sub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* The action strip overlays the last line, so the name above it keeps full width. */
+.catalog-quick-seat--filled .catalog-quick-seat__sub {
+  padding-right: 128px;
+}
+
+.catalog-quick-seat__quant {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  border-radius: 2px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  color: var(--theme-text-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat__size {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.03em;
+  color: var(--theme-text-muted);
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat__hint {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  line-height: 1.2;
+  color: var(--theme-text-muted);
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__name {
+  color: var(--theme-text);
+  opacity: 0.8;
+  font-size: var(--type-body);
+  font-weight: 500;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__name::before {
+  content: "+";
+  margin-right: 5px;
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-weight: 700;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__role {
+  color: var(--theme-text);
+  opacity: 0.85;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__hint {
+  color: var(--theme-text-muted);
+  opacity: 0.95;
+}
+
+.catalog-quick-seat--empty .catalog-quick-seat__main:hover .catalog-quick-seat__name,
+.catalog-quick-seat--empty .catalog-quick-seat__main:hover .catalog-quick-seat__hint {
+  color: var(--theme-text);
+}
+
+.catalog-quick-seat__actions {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  z-index: 2;
+}
+
+.catalog-quick-seat__btn {
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  cursor: pointer;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.catalog-quick-seat__btn:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.catalog-quick-seat__btn--clear {
+  color: var(--theme-danger);
+}
+
+.catalog-quick-seat__btn--clear:hover {
+  color: var(--theme-danger);
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+
+.catalog-quick-seat__btn--save,
+.catalog-quick-seat__btn--edit {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-text) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+
+/* Seats disclosure — collapses the whole ENDPOINTS block down to its label
+   bar. FAVORITE is a separate section and is never affected. Pinned to the far
+   right of the label row so the title cluster stays centred. */
+.catalog-quick-section__head--seats .catalog-quick-section__collapse {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  width: 1.575rem;
+  height: 1.575rem;
+  padding: 0;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 45%, transparent);
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-md);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-section__head--seats .catalog-quick-section__collapse:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.catalog-quick-section--seats-collapsed .catalog-quick-section__sets,
+.catalog-quick-section--seats-collapsed .catalog-quick-seat-bank,
+.catalog-quick-section--seats-collapsed .catalog-quick-section__actions-row {
+  display: none;
+}
+
+/* Section chrome */
+.catalog-quick-section {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 5px;
+  min-width: 0;
+}
+
+.catalog-quick-section--seats {
+  position: relative;
+  overflow: hidden;
+}
+
+
+
+.catalog-quick-section__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 1.35rem;
+  padding: 0 3px 5px;
+  isolation: isolate;
+  border: 0;
+  border-bottom: 1px solid color-mix(
+    in srgb,
+    var(--theme-border-subtle, var(--theme-border)) 55%,
+    transparent
+  );
+  background: none;
+  box-shadow: none;
+}
+
+.catalog-quick-section__head--seats {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 3px 6px;
+  overflow: visible;
+  min-height: 0;
+}
+
+.catalog-quick-section__head-row--label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 1.55rem;
+  padding: 0 2.4rem 0 0;
+  flex: 1 1 auto;
+}
+
+.catalog-quick-section__title-cluster {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.catalog-quick-section__help {
+  flex: 0 0 auto;
+  margin: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 45%, transparent);
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-section__help:hover,
+.catalog-quick-section__help--active {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+/* Launch row — its own footer under the seat bank, not a second header row. */
+.catalog-quick-section__actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 3px 0;
+}
+
+.catalog-quick-section__head--pins {
+  justify-content: space-between;
+}
+
+.catalog-quick-section__star {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-size: var(--type-body);
+  line-height: 1;
+  transform: translateY(-0.02em);
+}
+
+/* Mode + launch sit far left; HARNESS CONNECT keeps the far right.
+   The 8px gap keeps a mode toggle from landing on LAUNCH by accident. */
+.catalog-quick-section__launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.catalog-quick-section__sets {
+  position: static;
+  transform: none;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.catalog-quick-set-btn {
+  margin: 0;
+  min-width: 1.1rem;
+  height: 1rem;
+  padding: 0 3px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 50%, transparent);
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.catalog-quick-set-btn:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  color: var(--theme-text);
+}
+
+.catalog-quick-set-btn--active {
+  border-color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
+
+.catalog-quick-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-align: left;
+  color: var(--theme-industrial-text, var(--theme-text-muted));
+  /* Two-tone label bevel via per-theme token (see app-themes.ts). Zero blur, so it is a
+     crisp edge, never a blurred ghost. Dark themes resolve to none; ARCTIC gets a
+     face-correct engraved bevel tuned for dark ink on the light aluminium bezel. */
+  text-shadow: var(--theme-catalog-label-shadow);
+}
+
+.catalog-quick-section__head .catalog-quick-section__title {
+  font-size: var(--type-label);
+  letter-spacing: 0.16em;
+}
+
+.catalog-quick-section__head--seats .catalog-quick-section__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-quick-section--seats .catalog-quick-section__title {
+  color: var(--theme-industrial-text, var(--theme-accent-bright, var(--theme-accent)));
+}
+
+.catalog-quick-section--pins .catalog-quick-section__title {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-quick-section__count {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  color: var(--theme-industrial-muted, var(--theme-text-muted));
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.catalog-quick-section__action {
+  margin: 0;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.catalog-quick-section__action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+}
+
+.catalog-quick-section__action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Launch control size and amber treatment. */
+.catalog-quick-section__action--launch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  padding: 1px 7px;
+  border-color: color-mix(in srgb, var(--theme-provider-pill-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-provider-pill-bg) 75%, transparent);
+  color: var(--theme-provider-pill-text);
+  font-size: var(--type-md);
+  text-align: center;
+}
+
+.catalog-quick-section__action--connect {
+  margin-left: auto;
+}
+
+.catalog-quick-section__action--launch:hover:not(:disabled) {
+  color: var(--theme-provider-pill-hover-text);
+  border-color: var(--theme-provider-pill-hover-border);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 18%, transparent);
+}
+
+.catalog-quick-section__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.catalog-quick-chip {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 46px;
+  margin: 0;
+  /* Right gutter reserves room for the corner unpin star. */
+  padding: 5px 18px 5px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 80%, transparent);
+  color: var(--theme-text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.catalog-quick-chip__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.catalog-quick-chip__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.catalog-quick-chip__size {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.02em;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* Filled star in the chip corner — click to unpin without hunting the catalog. */
+.catalog-quick-chip__unpin {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--theme-accent-bright, var(--theme-accent));
+  font-size: var(--type-tiny);
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.catalog-quick-chip:hover .catalog-quick-chip__unpin,
+.catalog-quick-chip__unpin:hover {
+  opacity: 1;
+}
+
+.catalog-quick-chip__unpin:hover {
+  color: var(--theme-warn, var(--theme-accent-bright, var(--theme-accent)));
+}
+
+.catalog-quick-chip__name,
+.catalog-quick-chip__quant {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+  line-height: 1.15;
+}
+
+.catalog-quick-chip__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--type-tiny);
+  font-weight: 600;
+  color: var(--theme-text);
+}
+
+.catalog-quick-chip__quant {
+  flex: 0 0 auto;
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+  color: var(--theme-text-muted);
+  opacity: 0.9;
+}
+
+.catalog-quick-section--pins .catalog-quick-chip__quant {
+  font-size: var(--type-hairline);
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+
+.catalog-quick-chip--pin {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+}
+
+.catalog-quick-chip--selected,
+.catalog-quick-chip:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+
+.catalog-quick-chip--selected .catalog-quick-chip__name,
+.catalog-quick-chip:hover .catalog-quick-chip__name {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.catalog-quick-chip--selected .catalog-quick-chip__quant,
+.catalog-quick-chip:hover .catalog-quick-chip__quant {
+  color: color-mix(in srgb, var(--theme-accent-bright, var(--theme-accent)) 75%, var(--theme-text-muted));
+}
+
+.catalog-sort-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 1px 2px;
+  background: color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+}
+
+/* Card pin / seat / fit-now chips */
+[data-model-catalog] .model-card-pin {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+[data-model-catalog] .model-card-pin--on {
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+[data-model-catalog] .model-card-pin--off:hover {
+  color: var(--theme-text);
+}
+
+[data-model-catalog] .model-card-endpoint {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent-bright, var(--theme-accent));
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  letter-spacing: 0.06em;
+}
+
+[data-model-catalog] .model-card-endpoint--worker {
+  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
+  color: var(--theme-nv-green);
+  background: color-mix(in srgb, var(--theme-nv-green) 10%, transparent);
+}
+
+[data-model-catalog] .model-card-fitnow {
+  letter-spacing: 0.06em;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  color: var(--theme-text-muted);
+  background: transparent;
+}
+
+[data-model-catalog] .model-card-fitnow--fits {
+  border-color: color-mix(in srgb, var(--theme-nv-green) 45%, transparent);
+  color: var(--theme-nv-green);
+}
+
+[data-model-catalog] .model-card-fitnow--tight {
+  border-color: var(--fixed-amber-500-a5);
+  color: var(--fixed-amber-500);
+}
+
+[data-model-catalog] .model-card-fitnow--no {
+  border-color: var(--fixed-red-500-a45);
+  color: var(--fixed-red-500-a85);
+}
+
+[data-model-catalog] .model-card-fitnow--unknown {
+  opacity: 0.7;
+}
+
+/* ── ModelCatalog (de-Tailwind surface classes) ───────────────────────────── */
+
+.cat-mut {
+  color: var(--theme-text-muted);
+}
+
+.cat-mut--soft {
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+}
+
+.cat-txt {
+  color: color-mix(in srgb, var(--theme-text) 90%, transparent);
+}
+
+.cat-warn {
+  color: var(--theme-warn);
+}
+
+.cat-dng {
+  color: var(--theme-danger);
+}
+
+.cat-dng--soft {
+  color: color-mix(in srgb, var(--theme-danger) 90%, transparent);
+}
+
+/* STOP / DEL scan+edit controls */
+.cat-scan-btn--danger {
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
+  color: var(--theme-danger);
+}
+
+.cat-scan-btn--danger:hover {
+  background: color-mix(in srgb, var(--theme-danger) 10%, transparent);
+}
+
+/* RESCAN — warn idle, info while scanning */
+.cat-scan-btn--rescan {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: var(--theme-warn);
+}
+
+.cat-scan-btn--rescan:hover {
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.cat-scan-btn--scanning {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+/* Header / SEARCH + FULL LIST buttons */
+.cat-header-btn {
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent);
+  color: var(--theme-text-muted);
+}
+
+.cat-header-btn:hover {
+  color: var(--theme-accent);
+}
+
+/* CONFIG [Ctrl+Enter] zone chip */
+.cat-zone-chip {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+/* Error banner + RELOAD */
+.cat-error-banner {
+  border-bottom-color: color-mix(in srgb, var(--theme-danger) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
+}
+
+.cat-error-reload {
+  border-color: color-mix(in srgb, var(--theme-danger) 60%, transparent);
+  color: var(--theme-danger);
+}
+
+.cat-error-reload:hover {
+  background: color-mix(in srgb, var(--theme-danger) 20%, transparent);
+}
+
+/* Chrome dialogs — neutral / warn / danger */
+.cat-dialog--neutral {
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, transparent);
+}
+
+.cat-dialog--warn {
+  border-color: color-mix(in srgb, var(--theme-warn) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 5%, transparent);
+}
+
+.cat-dialog--danger {
+  border-color: color-mix(in srgb, var(--theme-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-danger) 5%, transparent);
+}
+
+.cat-warn-btn {
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  color: var(--theme-warn);
+}
+
+.cat-dng-btn {
+  border-color: color-mix(in srgb, var(--theme-danger) 40%, transparent);
+  color: var(--theme-danger);
+}
+
+/* Empty-state CONFIG → PATHS button */
+.cat-paths-btn {
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  color: var(--theme-accent);
+}
+
+.cat-paths-btn:hover {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+/* ── ModelCard (de-Tailwind surface classes) ──────────────────────────────── */
+
+.mcard-author {
+  color: var(--theme-text-muted);
+}
+
+/* HF update chips — header = info, full = warn */
+.mcard-hf--header {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+.mcard-hf--header:hover {
+  background: color-mix(in srgb, var(--theme-info) 20%, transparent);
+}
+
+.mcard-hf--full {
+  border-color: color-mix(in srgb, var(--theme-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+  color: var(--theme-warn);
+}
+
+.mcard-hf--full:hover {
+  background: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+}
+
+/* Transient update-check result bubble — floats over the card (never in flow).
+   Verdict-only bubbles fade after ~6s; actionable (update-available) bubbles stay
+   and expose an UPDATE button. */
+.model-card-check-bubble {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px var(--fixed-black-a4);
+  pointer-events: none;
+  animation: model-card-check-bubble-fade 6s ease forwards;
+}
+
+.model-card-check-bubble__icon {
+  font-size: var(--type-label);
+  line-height: 1;
+}
+
+/* Actionable bubble has an UPDATE button — keep it interactive and on-screen. */
+.model-card-check-bubble--actionable {
+  pointer-events: auto;
+  gap: 5px;
+  padding-right: 3px;
+  animation: model-card-check-bubble-in 0.18s ease both;
+}
+
+.model-card-check-bubble__btn {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, var(--theme-panel) 70%, transparent);
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.model-card-check-bubble__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.model-card-check-bubble--current {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 92%, var(--theme-accent));
+  color: var(--theme-accent-bright, var(--theme-accent));
+}
+
+.model-card-check-bubble--header {
+  border-color: color-mix(in srgb, var(--theme-info) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-info));
+  color: var(--theme-info);
+}
+
+.model-card-check-bubble--full {
+  border-color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 90%, var(--theme-warn));
+  color: var(--theme-warn);
+}
+
+.model-card-check-bubble--none {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 92%, transparent);
+  color: var(--theme-text-muted);
+}
+
+@keyframes model-card-check-bubble-fade {
+  0% { opacity: 0; transform: translateY(-3px); }
+  8% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+
+@keyframes model-card-check-bubble-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-card-check-bubble,
+  .model-card-check-bubble--actionable {
+    animation: none;
+  }
+}
+
+.mcard-params {
+  color: var(--theme-text);
+}
+
+/* Arch / draft badge chips — dark ink chip */
+.mcard-inkchip {
+  background: color-mix(in srgb, var(--theme-text) 14%, transparent);
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+/* MULTIMODAL badge */
+.mcard-mm {
+  border-color: color-mix(in srgb, var(--theme-warn) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-warn) 60%, transparent);
+}
+
+/* Footer divider */
+.mcard-footer {
+  border-top-color: color-mix(in srgb, var(--theme-border) 30%, transparent);
+}
+
+.mcard-meta-mut {
+  color: var(--theme-text-muted);
+}
+
+.mcard-date {
+  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+
+/* ⚠ SCAN button (no metadata) — warn idle, info while scanning */
+.mcard-scan {
+  border-color: color-mix(in srgb, var(--theme-warn) 30%, transparent);
+  color: var(--theme-warn);
+}
+
+.mcard-scan:hover {
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.mcard-scan--scanning {
+  border-color: color-mix(in srgb, var(--theme-info) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 10%, transparent);
+  color: var(--theme-info);
+}
+
+/* Quant badge — NVFP = accent, other = info */
+.mcard-quant--nvfp {
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+  color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+}
+
+.mcard-quant--cyan {
+  border-color: color-mix(in srgb, var(--theme-info) 15%, transparent);
+  color: color-mix(in srgb, var(--theme-info) 50%, transparent);
+}
+
+/* ── Compact sort + tools row ───────────────────────────────────────────── */
+
+.catalog-sort-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.catalog-sort-compact__label {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: 0.14em;
+}
+
+.catalog-sort-select {
+  appearance: none;
+  padding: 2px 17px 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--theme-text) 4%, transparent);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--theme-text-muted) 50%),
+    linear-gradient(135deg, var(--theme-text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 9px) 52%,
+    calc(100% - 5px) 52%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  color: var(--theme-text);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.catalog-sort-select:hover {
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+}
+
+.catalog-sort-dir {
+  min-width: 18px;
+  padding: 2px 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  border-radius: 2px;
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  line-height: 1;
+}
+
+.catalog-sort-dir:hover {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+}
+
+/* Count is a readout, not a control — drop the chip chrome. */
+.catalog-search-count {
+  background: transparent;
+  border: 0;
+  opacity: 0.7;
+}
+
+/* Model names — Consolas Bold, all caps (owner pick, 2026-11-07). */
+.model-card-head .model-card-name,
+.catalog-quick-chip__name {
+  font-family: Consolas, "Consolas Bold", ui-monospace, monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* ── Catalog rows — one continuous list instead of a stack of tiles ─────── */
+
+.catalog-list-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.catalog-list-rows .catalog-list-card-wrap {
+  /* Keep the list's top padding when a favorite/pin is scrolled to the seam. */
+  scroll-margin-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 32%, transparent);
+}
+
+.catalog-list-rows .catalog-list-card-wrap:first-child {
+  border-top: 0;
+}
+
+/* Flatten the card face into a row; the list owns the separators. */
+[data-model-catalog] .catalog-list-rows .model-catalog-card,
+[data-model-catalog] .catalog-list-rows .model-catalog-card.buried-card {
+  padding: 6px 10px 6px 12px;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+[data-model-catalog] .catalog-list-rows .model-catalog-card:hover:not(.gunmetal-card),
+[data-model-catalog] .catalog-list-rows .buried-card:hover {
+  background-color: color-mix(in srgb, var(--theme-accent) 5%, transparent);
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+[data-model-catalog] .catalog-list-rows .model-catalog-card.gunmetal-card,
+[data-model-catalog] .catalog-list-rows .gunmetal-card {
+  border: 0;
+  border-radius: 0;
+  background-color: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+  background-image: none;
+  box-shadow: inset 2px 0 0 var(--theme-catalog-card-rail);
+}
+
+[data-model-catalog] .catalog-list-rows .gunmetal-card::before {
+  display: none; /* the selected row uses the inset rail, not an absolute bar */
+}
+
+/* ── Catalog rows — name / meta / foot, no reserved blank lines ─────────── */
+
+/* Three lines want tight leading, not the body's 1.5. */
+.model-catalog-card { line-height: 1.25; }
+
+.model-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.model-card-head .model-card-name {
+  flex: 1 1 auto;
+  line-height: 1.15;
+}
+
+.model-card-head .model-card-endpoint {
+  flex-shrink: 0;
+}
+
+.model-card-sub {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.05rem;
+  min-width: 0;
+}
+
+.model-card-sub .mcard-author {
+  flex: 0 1 auto;
+  max-width: 8.5rem;
+  font-size: var(--type-micro);
+  letter-spacing: 0.02em;
+}
+
+.model-card-sub .mcard-params {
+  font-size: var(--type-tiny);
+  letter-spacing: 0.02em;
+}
+
+.model-card-sub .mcard-inkchip {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-model-catalog] .model-card-footer {
+  align-items: center;
+  margin-top: 0.15rem;
+  padding-top: 0;
+  border-top: 0;
+  gap: 0.35rem;
+}
+
+[data-model-catalog] .model-card-badges {
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 0;
+}
+
+/* Per-card Hub check — quiet until the row is hovered. */
+.mcard-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: color-mix(in srgb, var(--theme-text-muted) 60%, transparent);
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-label);
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.model-catalog-card:hover .mcard-check,
+.mcard-check:focus-visible {
+  opacity: 1;
+}
+
+.mcard-check:hover:not(:disabled) {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 8%, transparent);
+}
+
+.mcard-check:disabled {
+  opacity: 0.8;
+  cursor: default;
+}
+/* Kind filter — the catalog's most used control, so it is a full-width four-stop bar
+   above the search field: every kind visible with its own count, no cycling.
+   Scoped with the parent class so it outranks the chrome-tools row layout. */
+.catalog-list-panel__chrome-tools .catalog-search-wrap {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+
+/* In a column the field's `flex-basis: 10rem` would become a height; pin it. */
+.catalog-list-panel__chrome-tools .catalog-search-wrap .catalog-search-field {
+  flex: 0 0 40px;
+  width: 100%;
 }
 
 .catalog-kind-bar {
@@ -255,7 +2511,6 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
-  margin-bottom: 4px;
 }
 
 .catalog-kind-bar__stop {
