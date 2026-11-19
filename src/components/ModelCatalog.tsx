@@ -715,7 +715,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         setCatalogDraftFilter(next);
       }}
       className="catalog-kind-cycler font-mono uppercase"
-      title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / EXTRAS / ALL)`}
+      title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / EXTRAS / ALL / INCOMPLETE)`}
       aria-label={`Model kind: ${draftFilterLabels[draftFilter]}. Click to cycle.`}
     >
       {draftFilterLabels[draftFilter]}
@@ -1086,7 +1086,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 )}
               </div>
             ) : (
-              <div className="catalog-list-rows">
+              <div className="catalog-list-rows" key={draftFilter}>
                 {catalogModels.map((model) => {
                   const isSelected = catalogSelectedModel?.path === model.path;
                   return (

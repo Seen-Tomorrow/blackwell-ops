@@ -239,7 +239,12 @@
   pointer-events: none;
 }
 
-.catalog-search-field__rail .catalog-kind-cycler {
+.catalog-search-field__rail /* Fixed width for the longest stop (INCOMPLETE) so cycling never reflows the toolbar. */
+.catalog-kind-cycler {
+  min-width: 6.6rem;
+  text-align: center;
+}
+.catalog-kind-cycler {
   pointer-events: auto;
 }
 
