@@ -4,7 +4,8 @@ import "../styles/config-page.css";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ModelPathEntry, PathDiskUsage, SwapStoreInfo } from "../lib/types";
+import type { ProviderConfig, ModelPathEntry, ModelEntry, PathDiskUsage, SwapStoreInfo } from "../lib/types";
+import { hfCooldownMs, noteHfError } from "../lib/hfCache";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import EngineConfig from "./EngineConfig";
 import SecretsConfig from "./SecretsConfig";
@@ -190,6 +191,8 @@ function ModelPathsPanel() {
   const [pathError, setPathError] = useState<string | null>(null);
   const [store, setStore] = useState<SwapStoreInfo | null>(null);
   const [storeBusy, setStoreBusy] = useState(false);
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairReport, setPairReport] = useState<string | null>(null);
 
   const loadStore = useCallback(async () => {
     try {
@@ -292,6 +295,65 @@ function ModelPathsPanel() {
     }
   }, []);
 
+  /**
+   * One-shot check of the Hub pairings the catalog derives from folder names
+   * (author/repo-GGUF/...). Those are trusted without asking the Hub, so a renamed or
+   * invented folder looks paired until an update check fails. This walks them
+   * sequentially, stops on a quota error, and reports the mismatches.
+   */
+  const verifyPairings = useCallback(async () => {
+    try {
+      setPairBusy(true);
+      setPairReport(null);
+      setPathError(null);
+      const report = await invoke<{ models: ModelEntry[] }>("list_models");
+      const candidates = (report.models ?? []).filter(
+        (m) => m.hfMeta?.hfModelId && m.path,
+      );
+      let checked = 0;
+      let confirmed = 0;
+      let mismatched = 0;
+      let stopped: string | null = null;
+      for (const entry of candidates) {
+        if (hfCooldownMs() > 0) {
+          stopped = "Hub quota reached — continuing would only deepen it.";
+          break;
+        }
+        if (checked >= 25) {
+          stopped = "stopped after 25 models to stay inside the hourly quota";
+          break;
+        }
+        const repoId = entry.hfMeta?.hfModelId ?? "";
+        const fileName = entry.path.split(/[\\/]/).pop() ?? "";
+        const sizeBytes = entry.metadata?.file_size_bytes ?? 0;
+        try {
+          const ok = await invoke<boolean>("verify_hf_pairing", {
+            modelPath: entry.path,
+            repoId,
+            fileName,
+            sizeBytes,
+          });
+          checked += 1;
+          if (ok) confirmed += 1;
+          else mismatched += 1;
+        } catch (e) {
+          noteHfError(e);
+          stopped = typeof e === "string" ? e : "pairing check failed";
+          break;
+        }
+      }
+      const unpaired = (report.models ?? []).filter((m) => !m.hfMeta?.hfModelId).length;
+      setPairReport(
+        `${confirmed}/${checked} confirmed · ${mismatched} mismatched · ${unpaired} without a Hub id${
+          stopped ? ` · ${stopped}` : ""
+        }`,
+      );
+    } catch (e) {
+      setPathError(typeof e === "string" ? e : "Pairing check failed");
+    } finally {
+      setPairBusy(false);
+    }
+  }, []);
   const fmtBytes = (bytes: number): string => {
     if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(1)} TB`;
     if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
@@ -318,6 +380,14 @@ function ModelPathsPanel() {
         <h2 className="text-xs font-mono cfg-acc tracking-wider">MODEL PATHS</h2>
         <div className="flex items-center gap-2">
           <button
+            onClick={verifyPairings}
+            disabled={pairBusy}
+            title="Ask the Hub about each pairing the catalog derived from folder names"
+            className="px-3 py-1 type-label font-mono border cfg-bord cfg-mut hover:cfg-fill--a15 transition-colors disabled:opacity-50"
+          >
+            {pairBusy ? "CHECKING…" : "VERIFY HUB PAIRINGS"}
+          </button>
+          <button
             onClick={handleAddPath}
             data-onboarding="add-folder"
             className="px-3 py-1 type-label font-mono border cfg-bord--acc--a60 cfg-acc hover:cfg-fill--a15 transition-colors"
@@ -326,6 +396,12 @@ function ModelPathsPanel() {
           </button>
         </div>
       </div>
+
+      {pairReport && (
+        <div className="px-4 py-2 border-b cfg-bord type-label font-mono cfg-mut">
+          {pairReport}
+        </div>
+      )}
 
       {pathError && (
         <div className="px-4 py-2 border-b cfg-bord--dng--a30 cfg-fill--dng--a5 type-label font-mono cfg-dng">

@@ -684,6 +684,7 @@ async fn main() {
             hf_search::get_hf_quant_dates,
             hf_search::check_hf_repo_updates,
             hf_search::check_model_hf_update,
+            hf_search::verify_hf_pairing,
             secrets::list_app_secrets,
             swap_store::swap_store_info,
             swap_store::set_swap_store,

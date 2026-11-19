@@ -57,3 +57,46 @@ pub async fn check_model_hf_update(
     let hf_token = crate::secrets::get_secret("hf_token")?;
     crate::hf_api::check_local_model_update(&local_path, hf_token.as_deref()).await
 }
+/// Confirm a candidate Hub pairing for one local file and persist it on a match.
+///
+/// The catalog already derives `author/repo` from an LM Studio-shaped path and stores it
+/// as a pairing — but it trusts the folder name. This asks the Hub, so a wrong folder
+/// name is caught instead of failing later at update-check time. One request per model;
+/// the caller runs the list sequentially and stops on a quota error.
+#[tauri::command]
+pub async fn verify_hf_pairing(
+    model_path: String,
+    repo_id: String,
+    file_name: String,
+    size_bytes: u64,
+) -> Result<bool, String> {
+    crate::config::validate_hf_model_id(&repo_id)?;
+    let hf_token = crate::secrets::get_secret("hf_token")?;
+    let files = crate::hf_api::list_repo_gguf_files(&repo_id, hf_token.as_deref()).await?;
+    let matched = files.iter().any(|file| {
+        let Some(path_in_repo) = crate::types::hf_resolve_path_from_url(&file.url) else {
+            return false;
+        };
+        let name = path_in_repo.rsplit('/').next().unwrap_or("");
+        name.eq_ignore_ascii_case(&file_name)
+            && (size_bytes == 0 || file.size_bytes == size_bytes)
+    });
+    if !matched {
+        return Ok(false);
+    }
+    let slash = repo_id.find('/').unwrap_or(0);
+    let meta = crate::types::HfMetadata {
+        hf_model_id: repo_id.clone(),
+        author: repo_id[..slash].to_string(),
+        repo_name: repo_id[slash + 1..].to_string(),
+        tags: Vec::new(),
+        downloads: 0,
+        likes_count: 0,
+        quant_type: String::new(),
+        file_size_bytes: size_bytes,
+        last_modified: String::new(),
+        lfs_oid: String::new(),
+    };
+    crate::model_cache::set_hf_metadata(&model_path, meta)?;
+    Ok(true)
+}
