@@ -980,6 +980,43 @@ pub async fn repo_companions(
     list_repo_companions(&repo_id, role).await
 }
 
+/// Draft heads a repo publishes — the SAME listing the Model Hub download screen shows,
+/// so the picker cannot disagree with it. The old draft search walked HF for candidate
+/// repos and guessed by size; this asks the repo the user actually named.
+#[tauri::command]
+pub async fn repo_draft_files(model_id: String) -> Result<Vec<RepoCompanion>, String> {
+    crate::config::validate_hf_model_id(&model_id)?;
+    let repo_id = normalize_repo_id(&model_id)
+        .ok_or_else(|| format!("'{model_id}' is not an org/repo id"))?;
+    let hf_token = crate::secrets::get_secret("hf_token")?;
+    let files = crate::hf_api::list_repo_gguf_files(&repo_id, hf_token.as_deref()).await?;
+    let mut out = Vec::new();
+    for file in files {
+        // Multi-shard weights are not heads; the role verdict comes from the same
+        // classifier the Hub screen renders.
+        if file.shard_count > 1 || file.role != crate::types::GgufRole::Draft {
+            continue;
+        }
+        let Some(path_in_repo) = crate::types::hf_resolve_path_from_url(&file.url) else {
+            continue;
+        };
+        let file_name = path_in_repo.rsplit('/').next().unwrap_or("").to_string();
+        let precision = crate::model_catalog::extract_quant(&file_name);
+        out.push(RepoCompanion {
+            repo_id: repo_id.to_string(),
+            path_in_repo,
+            file_name,
+            size_bytes: file.size_bytes,
+            size_str: crate::model_catalog::calc_size_str_from_bytes(file.size_bytes),
+            precision: if precision == "GGUF" { String::new() } else { precision },
+            url: file.url.clone(),
+            lfs_oid: file.lfs_oid.clone(),
+        });
+    }
+    out.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes));
+    Ok(out)
+}
+
 /// Companions from any repo the user pastes into the picker's HF-ID field. Nothing is
 /// downloaded until a row is clicked; the file then lands in the SWAP store like any
 /// other companion.

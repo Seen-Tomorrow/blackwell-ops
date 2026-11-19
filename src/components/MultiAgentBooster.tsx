@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { SpecCapability } from "../lib/specDraft";
-import type { CompanionCandidate, CompanionReport, CompanionRole } from "../lib/types";
+import type { CompanionCandidate, CompanionReport, CompanionRole, RepoCompanion } from "../lib/types";
 import type { DflashDraftOffer } from "../lib/dflashGetDraft";
 import { ConfigChipSegment } from "./EngineParamGroups";
 import {
@@ -84,6 +84,10 @@ export interface MultiAgentBoosterProps {
   onPickSpecFile?: (path: string) => void;
   specFileBusy?: boolean;
   specFileError?: string | null;
+  /** The model's own Hub repo id — the DRAFT lane lists it like the Hub screen. */
+  modelHubId?: string;
+  /** A draft head listed from a repo: download and pin it. */
+  onPickRepoDraft?: (item: RepoCompanion) => void;
   onResolveSpecHf?: (id: string) => void;
   /** Absolute draft head paths, so the picker can mark the landed one. */
   dflashDraftPath?: string | null;
@@ -197,6 +201,8 @@ export default function MultiAgentBooster({
   onPickSpecFile,
   specFileBusy = false,
   specFileError = null,
+  modelHubId,
+  onPickRepoDraft,
   onResolveSpecHf,
   dflashDraftPath = null,
   mtpDraftPath = null,
@@ -970,37 +976,11 @@ export default function MultiAgentBooster({
                   })
                 : undefined
             }
-            hfInput={
-              pickSlot.role === null && onResolveSpecHf
-                ? {
-                    placeholder: "author/model",
-                    busy: specFileBusy,
-                    error: specFileError,
-                    onSubmit: (id) => onResolveSpecHf(id),
-                  }
-                : undefined
-            }
-            remoteRows={
-              pickSlot.role === null
-                ? specRemoteOffers.map((offer) => {
-                    const gb = offer.sizeBytes / 1e9;
-                    // GgufFile carries no name; the URL's tail is the file.
-                    const fileName = offer.file.url.split("/").pop() ?? offer.label;
-                    return {
-                      key: `${offer.hfModelId}/${fileName}`,
-                      quant: offer.quantType,
-                      // Same shape the local rows use: size in GB/MB, never bytes.
-                      size: gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.max(1, Math.round(offer.sizeBytes / 1e6))} MB`,
-                      name: fileName,
-                      onPick: () => {
-                        onPickSpecRemote?.(offer);
-                        setPickSlot(null);
-                      },
-                    };
-                  })
-                : undefined
-            }
-            onSearchRemote={pickSlot.role === null ? onSearchSpecRemote : undefined}
+            modelHubId={modelHubId}
+            onPickDraftFile={(item) => {
+              onPickRepoDraft?.(item);
+              setPickSlot(null);
+            }}
             modelPath={modelPath ?? ""}
             onAttach={(role, path) => void setCompanion(role, path)}
             onDetach={(role) => void setCompanion(role, null)}

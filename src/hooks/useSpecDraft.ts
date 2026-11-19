@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry } from "../lib/types";
 import type { DflashGetUiState } from "../components/MultiAgentBooster";
 import type { DraftPickListItem } from "../lib/specDraft";
+import type { RepoCompanion } from "../lib/types";
 import { hfCooldownMs, noteHfError } from "../lib/hfCache";
 import {
   findDflashDraftCandidates,
@@ -193,6 +194,33 @@ export function useSpecDraft({
     }
   }, []);
 
+  /**
+   * Confirm a draft head that came from the repo listing (the same one the Model Hub
+   * downloads from) instead of from the HF search heuristic. It is downloaded and pinned
+   * exactly like a picked offer.
+   */
+  const handlePickRepoDraft = useCallback(
+    (item: RepoCompanion) => {
+      const offer: DflashDraftOffer = {
+        hfModelId: item.repo_id,
+        hfAuthor: item.repo_id.split("/")[0] || "unknown",
+        quantType: item.precision || "FILE",
+        file: {
+          type: item.precision || item.file_name,
+          size_bytes: item.size_bytes,
+          url: item.url,
+          lfsOid: item.lfs_oid,
+        },
+        sizeBytes: item.size_bytes,
+        label: `${item.repo_id} · ${item.precision || item.file_name}`,
+        score: 0,
+        matchNotes: ["repo listing"],
+        downloads: 0,
+      };
+      void handleConfirmDflashPick(offer);
+    },
+    [handleConfirmDflashPick],
+  );
   const handleConfirmDflashManual = useCallback(
     async (hfModelId: string) => {
       if (!model) return;
@@ -341,6 +369,7 @@ export function useSpecDraft({
     specLocalFileRows,
     clearSpecFileError,
     handleConfirmDflashPick,
+    handlePickRepoDraft,
     handleConfirmDflashManual,
     handleConfirmLibraryDraft,
     loadDflashHfCandidates,

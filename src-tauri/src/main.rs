@@ -511,6 +511,7 @@ async fn main() {
             companions::clear_companion_pin,
             companions::repo_companions,
             companions::repo_companions_for,
+            companions::repo_draft_files,
             downloads::download_companion,
             engine::launch_engine,
             engine::stop_engine,

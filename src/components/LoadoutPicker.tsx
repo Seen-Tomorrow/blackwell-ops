@@ -35,6 +35,10 @@ interface LoadoutPickerProps {
   remoteRows?: LocalFileRow[];
   onSearchRemote?: () => void;
   modelPath: string;
+  /** The model's own Hub repo id, so the DRAFT lane can list its repo like the Hub does. */
+  modelHubId?: string;
+  /** A listed draft head the user picked: download + pin it. */
+  onPickDraftFile?: (item: RepoCompanion) => void;
   onAttach: (role: CompanionRole, path: string) => void;
   onDetach: (role: CompanionRole) => void;
   onClear: (role: CompanionRole) => void;
@@ -58,6 +62,8 @@ export default function LoadoutPicker({
   remoteRows,
   onSearchRemote,
   modelPath,
+  modelHubId,
+  onPickDraftFile,
   onAttach,
   onDetach,
   onClear,
@@ -86,27 +92,6 @@ export default function LoadoutPicker({
   const [hfValue, setHfValue] = useState("");
 
 
-  /**
-   * Nothing here touches the Hub on its own. Every remote read is a click: flipping
-   * through slots while the local library already has the file must not spend quota.
-   */
-  const loadRemote = useCallback(() => {
-    if (hfCooldownMs() > 0) return;
-    if (!role) {
-      onSearchRemote?.();
-      return;
-    }
-    setRemoteLoading(true);
-    cachedInvoke<RepoCompanion[]>("repo_companions", { modelPath, role })
-      .then((items) => setRepoItems(items))
-      .catch((err) => {
-        noteHfError(err);
-        setRepoItems([]);
-      })
-      .finally(() => setRemoteLoading(false));
-  }, [modelPath, onSearchRemote, role]);
-
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -118,7 +103,6 @@ export default function LoadoutPicker({
   /** List a pasted repo's files for this role — nothing downloads until a row is clicked. */
   const submitHfRepo = useCallback(
     async (modelId: string) => {
-      if (!role) return;
       const cool = hfCooldownMs();
       if (cool > 0) {
         setHfRepoError(`Hub quota reached — retry in ${Math.ceil(cool / 60000)} min`);
@@ -127,17 +111,21 @@ export default function LoadoutPicker({
       setHfRepoBusy(true);
       setHfRepoError(null);
       try {
-        const items = await invoke<RepoCompanion[]>("repo_companions_for", {
-          modelId,
-          role,
-        });
+        // One listing path for both lanes, the same one the Model Hub renders: the repo's
+        // own files with the Hub's role verdict. No HF-wide search, no size guessing.
+        const items = role
+          ? await invoke<RepoCompanion[]>("repo_companions_for", { modelId, role })
+          : await invoke<RepoCompanion[]>("repo_draft_files", { modelId });
         setHfRepoRows(
           items.map((item) => ({
             key: `${item.repo_id}/${item.path_in_repo}`,
             quant: item.precision || "file",
             size: item.size_str,
             name: item.file_name,
-            onPick: () => void downloadRow(item),
+            onPick: () => {
+              if (role) void downloadRow(item);
+              else onPickDraftFile?.(item);
+            },
           })),
         );
         setRemoteRequested(true);
@@ -148,8 +136,36 @@ export default function LoadoutPicker({
         setHfRepoBusy(false);
       }
     },
-    [role],
+    [role, onPickDraftFile],
   );
+
+  /**
+   * Nothing here touches the Hub on its own. Every remote read is a click: flipping
+   * through slots while the local library already has the file must not spend quota.
+   */
+  const loadRemote = useCallback(() => {
+    if (hfCooldownMs() > 0) return;
+    if (!role) {
+      // Draft lane: list the model's own repo, exactly what the Hub screen shows.
+      if (modelHubId) {
+        setRemoteRequested(true);
+        void submitHfRepo(modelHubId);
+        return;
+      }
+      onSearchRemote?.();
+      return;
+    }
+    setRemoteLoading(true);
+    cachedInvoke<RepoCompanion[]>("repo_companions", { modelPath, role })
+      .then((items) => setRepoItems(items))
+      .catch((err) => {
+        noteHfError(err);
+        setRepoItems([]);
+      })
+      .finally(() => setRemoteLoading(false));
+  }, [modelPath, modelHubId, onSearchRemote, role, submitHfRepo]);
+
+
   const downloadRow = async (item: RepoCompanion) => {
     if (!role) return;
     setBusy(item.path_in_repo);
@@ -210,18 +226,14 @@ export default function LoadoutPicker({
    * caller's resolver (which downloads into the draft slot), the companion lanes list the
    * pasted repo here and download on a row click.
    */
-  const hfRow =
-    hfInput ??
-    (role
-      ? {
-          placeholder: "author/model",
-          busy: hfRepoBusy,
-          error: hfRepoError,
-          onSubmit: (id: string) => {
-            void submitHfRepo(id);
-          },
-        }
-      : undefined);
+  const hfRow = hfInput ?? {
+    placeholder: "author/model",
+    busy: hfRepoBusy,
+    error: hfRepoError,
+    onSubmit: (id: string) => {
+      void submitHfRepo(id);
+    },
+  };
 
   return (
     <div className="gp-scrim" onClick={onClose}>
