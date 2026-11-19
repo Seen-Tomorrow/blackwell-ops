@@ -18,6 +18,7 @@ import {
   signalContainsMtpHead,
 } from "./specDraft";
 import { KEYS, readJsonStorage, writeJsonStorage } from "./storage";
+import { modelSizeBytes } from "./modelSize";
 
 const DFLASH_FAMILY_HINTS = new Set([
   "qwen3",
@@ -119,14 +120,9 @@ function writeDiskCache(map: DflashCandidateCacheMap): void {
   writeJsonStorage(KEYS.dflashHfCandidates, map);
 }
 
-/** Drop stale cache rows that predate size hard-gates (full 15GB "drafts"). */
+/** Drop stale cache rows that are structurally unusable (no file, no score). */
 function sanitizeCachedOffers(offers: DflashDraftOffer[]): DflashDraftOffer[] {
-  return offers.filter(
-    (o) =>
-      o.file?.size_bytes > 0 &&
-      o.file.size_bytes <= DFLASH_DRAFT_MAX_FILE_BYTES &&
-      o.score >= DFLASH_SCORE_SUGGEST,
-  );
+  return offers.filter((o) => o.file?.size_bytes > 0 && o.score >= DFLASH_SCORE_SUGGEST);
 }
 
 function getCachedEntry(key: string): DflashCandidateCacheEntry | null {
@@ -367,8 +363,25 @@ function dflashSearchQueries(main: ModelEntry): string[] {
   return uniqueStrings(queries).slice(0, 8);
 }
 
-/** True draft packs are small; full 27B Q4 ≈15GB must never pass as DFlash. */
-const DFLASH_DRAFT_MAX_FILE_BYTES = 6 * 1024 * 1024 * 1024; // 6 GiB
+/**
+ * How big a draft head may be, RELATIVE to the model it drafts for.
+ *
+ * An absolute cap cannot work: DFlash/MTP heads range from ~800 MB to 10 GB+ depending
+ * on the model and precision, and a 233 GB main's head is legitimately 7.9 GB. What must
+ * never happen is offering a full main as a draft - so the check is "not most of the
+ * model", with the model's own size as the yardstick. When that size is unknown, the
+ * repo's own role classification decides and no size opinion is applied.
+ */
+const DRAFT_MAX_SIZE_RATIO = 0.6;
+
+function headFitsModel(bytes: number, mainBytes: number | null): boolean {
+  if (mainBytes == null || mainBytes <= 0) return true;
+  return bytes <= mainBytes * DRAFT_MAX_SIZE_RATIO;
+}
+
+function shipsDraftRole(m: HfModel): boolean {
+  return (m.gguf_files ?? []).some((f) => f.role === 'draft');
+}
 
 function smallestGgufBytes(m: HfModel): number | null {
   const sizes = (m.gguf_files || [])
@@ -379,15 +392,13 @@ function smallestGgufBytes(m: HfModel): number | null {
 }
 
 /**
- * True for a tiny file whose repo id carries a bare "mtp" token — a standalone MTP head.
- * Main models with baked-in MTP are far larger (e.g. Qwen3.6-27B-MTP is 16GB+), so the
- * 6 GiB size gate keeps them out while still catching ~4-5 GiB head exports like
- * ddh0/DeepSeek-V4-Flash-MTP-Q8_0.
+ * True for a repo that carries a bare "mtp" token and ships a file the Hub classifier
+ * called a draft head. Size plays no part: an MTP head is 800 MB on a small model and
+ * 10 GB on a bf16 large one, and a baked-in-MTP main cannot be told apart by bytes.
  */
-function isTinyMtpHeadRepo(m: HfModel): boolean {
+function isStandaloneMtpHeadRepo(m: HfModel): boolean {
   if (!/\bmtp\b/i.test(m.id || "")) return false;
-  const smallest = smallestGgufBytes(m);
-  return smallest != null && smallest <= DFLASH_DRAFT_MAX_FILE_BYTES;
+  return shipsDraftRole(m);
 }
 
 function repoLooksLikeDflash(m: HfModel): boolean {
@@ -395,14 +406,14 @@ function repoLooksLikeDflash(m: HfModel): boolean {
   // Prefer repo id — tags alone often hitch-hike onto full-model cards from search.
   if (signalContainsDflash(id)) return true;
   if (signalContainsMtpHead(id)) return true;
-  if (isTinyMtpHeadRepo(m)) return true;
+  if (isStandaloneMtpHeadRepo(m)) return true;
   if ((m.gguf_files || []).some((f) => signalContainsDflash(f.type) || signalContainsDflash(f.url))) {
     return true;
   }
-  // Tags only: require at least one compact GGUF so we don't promote 15GB mains.
+  // Tags only: require the repo to actually ship a draft-classified file, so a fully
+  // tagged main card cannot be promoted to a draft pack.
   if ((m.tags || []).some((t) => signalContainsDflash(t))) {
-    const smallest = smallestGgufBytes(m);
-    return smallest != null && smallest <= DFLASH_DRAFT_MAX_FILE_BYTES;
+    return shipsDraftRole(m);
   }
   return false;
 }
@@ -498,9 +509,11 @@ function distinctiveTokens(main: ModelEntry): string[] {
 }
 function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   if (!repoLooksLikeDflash(m)) return null;
+  // The yardstick for "is this a head or a main": the model's own file size.
+  const mainFileBytes = modelSizeBytes(main);
   const idLower = m.id.toLowerCase();
   // MTP head repos are valid — don't reject them here (explicit head name OR tiny head file).
-  if (idLower.includes("mtp") && !signalContainsDflash(m.id) && !signalContainsMtpHead(m.id) && !isTinyMtpHeadRepo(m)) return null;
+  if (idLower.includes("mtp") && !signalContainsDflash(m.id) && !signalContainsMtpHead(m.id) && !isStandaloneMtpHeadRepo(m)) return null;
 
   // ── Relation gate (naming-independent) ─────────────────────────────────
   // Model names have no standard, so a family-token match cannot be trusted. The Hub
@@ -540,15 +553,10 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
     }
   }
 
-  // Hard gate: full-size weights are not draft packs (e.g. 15GB Q4_K_M of 27B). A repo
-  // that ships a classified draft head is exempt — a huge main's DFlash head is itself
-  // several GiB, so the flat cap cannot apply to heads.
+  // Hard gate: a draft pack cannot be most of the model. Compared against the model's
+  // own size, never an absolute cap.
   const smallestKnown = smallestGgufBytes(m);
-  if (
-    !shipsDraft &&
-    smallestKnown != null &&
-    smallestKnown > DFLASH_DRAFT_MAX_FILE_BYTES
-  ) {
+  if (!shipsDraft && smallestKnown != null && !headFitsModel(smallestKnown, mainFileBytes)) {
     return null;
   }
 
@@ -586,7 +594,7 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   if (signalContainsDflash(m.id)) {
     score += 30;
     notes.push("DFlash pack");
-  } else if (signalContainsMtpHead(m.id) || isTinyMtpHeadRepo(m)) {
+  } else if (signalContainsMtpHead(m.id) || isStandaloneMtpHeadRepo(m)) {
     score += 30;
     notes.push("MTP head");
   } else if ((m.tags || []).some((t) => signalContainsDflash(t))) {
@@ -664,12 +672,13 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
     notes.push("same author");
   }
 
-  // Prefer compact draft packs (≤2 GiB strong, ≤6 GiB ok).
-  if (smallestKnown != null) {
-    if (smallestKnown <= 2 * 1024 * 1024 * 1024) {
+  // Prefer a head that is a small fraction of the model it drafts for.
+  if (smallestKnown != null && mainFileBytes != null && mainFileBytes > 0) {
+    const ratio = smallestKnown / mainFileBytes;
+    if (ratio <= 0.15) {
       score += 3;
       notes.push("compact draft size");
-    } else if (smallestKnown <= DFLASH_DRAFT_MAX_FILE_BYTES) {
+    } else if (ratio <= DRAFT_MAX_SIZE_RATIO) {
       score += 1;
     }
   }
@@ -695,17 +704,17 @@ const QUANT_PREF = [
 
 function pickDflashQuant(files: GgufFile[], main: ModelEntry): GgufFile | null {
   if (!files.length) return null;
+  const mainFileBytes = modelSizeBytes(main);
   // Never offer full-size mains as "draft" (15GB Q4 of 27B, etc.), and never offer a
   // swap piece / sidecar — those are not launchable heads even when they are small.
   const usable = files.filter((f) => {
     const role = f.role ?? 'quant';
     if (role === 'swap' || role === 'aux' || role === 'extra') return false;
     if (!f.url?.trim() || f.size_bytes <= 0) return false;
-    // The catalog already classified this as a draft head — that beats any size guess.
-    // The cap exists only to stop a full main being mistaken for a draft, and it has to
-    // scale with the model: a 233GB main's DFlash head is 7.9GB, well over the 6GiB cap.
+    // The Hub already classified this as a draft head — that beats any size guess.
     if (role === 'draft') return true;
-    return f.size_bytes <= DFLASH_DRAFT_MAX_FILE_BYTES;
+    // Unclassified (role=quant): allow it only if it is not most of the model.
+    return headFitsModel(f.size_bytes, mainFileBytes);
   });
   if (!usable.length) return null;
 
