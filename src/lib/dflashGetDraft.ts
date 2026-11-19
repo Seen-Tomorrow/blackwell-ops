@@ -342,11 +342,10 @@ function dflashSearchQueries(main: ModelEntry): string[] {
               : familyLabel(family);
 
   const queries: string[] = [];
-  // Most specific first — size + family + dflash
-  if (familySearch && sizeToken) {
-    queries.push(`${familySearch} ${sizeToken} dflash`);
-    queries.push(`${familySearch}-${sizeToken} dflash`);
-  }
+  // MOST SPECIFIC FIRST. The loop stops as soon as it has enough hits, so a broad
+  // "Qwen3.8 dflash" query at the front spent the whole search on a different line of
+  // the same family (27B dense packs for a Flash-Next main) and never ran the precise
+  // ones. The repo/name stems identify this exact model; family is the fallback.
   if (repoStem) {
     queries.push(`${repoStem} dflash`);
     if (sizeToken && !repoStem.toLowerCase().includes(sizeToken.toLowerCase())) {
@@ -355,6 +354,10 @@ function dflashSearchQueries(main: ModelEntry): string[] {
   }
   if (nameStem && nameStem.toLowerCase() !== repoStem.toLowerCase()) {
     queries.push(`${nameStem} dflash`);
+  }
+  if (familySearch && sizeToken) {
+    queries.push(`${familySearch} ${sizeToken} dflash`);
+    queries.push(`${familySearch}-${sizeToken} dflash`);
   }
   if (familySearch) {
     queries.push(`${familySearch} dflash gguf`);
@@ -481,6 +484,18 @@ function mainRepoIdentities(main: ModelEntry): string[] {
   }
   return [...ids];
 }
+/**
+ * Family words alone say nothing about which model of that family a pack belongs to:
+ * "Qwen3.8" covers 27B dense, Flash-Next, Coder… Tokens like `flash`, `next`, `gsq` are
+ * what actually identify the line, so a candidate that shares only the family must not
+ * be auto-suggested when the main has something more specific to match.
+ */
+const FAMILY_ONLY_TOKEN =
+  /^(qwen\d+(?:_?\d+)?|llama\d*|gemma\d*|deepseek\w*|mistral\w*|mixtral\w*|phi\d*|glm\d*|yi|internlm\w*|minimax\w*|kimi\w*|exaone\w*|command\w*|gptoss\w*)$/;
+
+function distinctiveTokens(main: ModelEntry): string[] {
+  return mainNameTokens(main).filter((t) => t.length >= 4 && !FAMILY_ONLY_TOKEN.test(t));
+}
 function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   if (!repoLooksLikeDflash(m)) return null;
   const idLower = m.id.toLowerCase();
@@ -504,6 +519,25 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
     // No relation and no structural proof (a file the catalog classifies as a draft
     // head). Keep it out of auto-suggestions; the manual HF-id path still resolves it.
     return null;
+  }
+
+  // Sharing a family word is not evidence: "Qwen3.8 dflash" matches the 27B dense packs
+  // while the main is Flash-Next. When the main carries a more specific token, the
+  // candidate has to share one (or the param count), or declare its relation above.
+  if (!baseMatch) {
+    const distinctive = distinctiveTokens(main);
+    if (distinctive.length > 0) {
+      // Whole tokens, never substrings: "dflash" contains "flash", so an includes()
+      // test would let every DFlash pack of the whole family through.
+      const candTokens = new Set(
+        idLower.split(/[^a-z0-9]+/).filter(Boolean),
+      );
+      const shares = distinctive.some((token) => candTokens.has(token));
+      const mainB = extractParamBillions(mainIdentityHay(main));
+      const candB = extractParamBillions(m.id);
+      const sameSize = mainB != null && candB != null && sizesClose(mainB, candB);
+      if (!shares && !sameSize) return null;
+    }
   }
 
   // Hard gate: full-size weights are not draft packs (e.g. 15GB Q4_K_M of 27B). A repo

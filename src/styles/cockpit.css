@@ -3183,6 +3183,30 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.7;
 }
 
+/* The one control that reaches the Hub. Amber on purpose: it spends a rate-limited
+   request, so it must not look like the free local rows. */
+.gp-search {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+  padding: 2px 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--theme-warn) 55%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-warn) 12%, transparent);
+  color: var(--theme-warn);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.gp-search:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-warn) 22%, transparent);
+}
+
+.gp-search:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* One row for a direct HF id, under both columns. */
 .gp-panel__hf {
   display: flex;

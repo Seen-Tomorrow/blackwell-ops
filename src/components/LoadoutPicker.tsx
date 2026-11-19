@@ -11,7 +11,7 @@
  * The surface is the cockpit's neutral `--theme-panel-accent`, never `--theme-panel`.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { cachedInvoke } from "../lib/hfCache";
 import type { CompanionRole, CompanionSlot, RepoCompanion } from "../lib/types";
@@ -66,26 +66,27 @@ export default function LoadoutPicker({
   onClose,
 }: LoadoutPickerProps) {
   const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteRequested, setRemoteRequested] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [hfValue, setHfValue] = useState("");
 
 
-  useEffect(() => {
-    if (!role) return;
-    let alive = true;
-    setRepoItems(null);
-    // Cached: slot-hopping re-lists the same repo, and anonymous HF calls are capped.
+  /**
+   * Nothing here touches the Hub on its own. Every remote read is a click: flipping
+   * through slots while the local library already has the file must not spend quota.
+   */
+  const loadRemote = useCallback(() => {
+    if (!role) {
+      onSearchRemote?.();
+      return;
+    }
+    setRemoteLoading(true);
     cachedInvoke<RepoCompanion[]>("repo_companions", { modelPath, role })
-      .then((items) => {
-        if (alive) setRepoItems(items);
-      })
-      .catch(() => {
-        if (alive) setRepoItems([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [modelPath, role]);
+      .then((items) => setRepoItems(items))
+      .catch(() => setRepoItems([]))
+      .finally(() => setRemoteLoading(false));
+  }, [modelPath, onSearchRemote, role]);
 
   // Same behaviour as the companion lanes: ask for remote rows as soon as it opens,
   // so there is no "manual button" only drafts have.
@@ -221,12 +222,12 @@ export default function LoadoutPicker({
           <div className="gp-col">
             <span className="gp-col__label font-mono">REMOTE {remoteList.length || ""}</span>
             <div className="gp-col__rows">
-              {remoteRows ? null : repoItems === null ? (
+              {remoteLoading ? (
                 <span className="gp-empty font-mono">reading the Hub tree…</span>
               ) : null}
-              {remoteList.length === 0 ? (
+              {!remoteLoading && remoteList.length === 0 ? (
                 <span className="gp-empty font-mono">
-                  {onSearchRemote ? "no packs found yet" : "repo publishes no file of its own"}
+                  {remoteRequested ? "nothing found on the Hub" : "not searched yet"}
                 </span>
               ) : (
                 remoteList.map((row) => (
@@ -248,6 +249,22 @@ export default function LoadoutPicker({
               )}
 
             </div>
+            <button
+              type="button"
+              className="gp-search font-mono"
+              onClick={() => {
+                setRemoteRequested(true);
+                loadRemote();
+              }}
+              disabled={remoteLoading}
+              title="Ask the Hub for this repo's files — nothing is requested until you click"
+            >
+              {remoteLoading
+                ? "SEARCHING…"
+                : remoteRequested
+                  ? "SEARCH AGAIN"
+                  : "SEARCH HF"}
+            </button>
           </div>
         </div>
 
