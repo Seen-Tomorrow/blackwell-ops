@@ -2649,14 +2649,18 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 
-/* ── LOADOUT rail — one continuous line, two functional groups ────────────── */
+/* ── LOADOUT rail — one continuous line, two equal halves ────────────────── */
+/* SPEC and SWAPS split the full width 50/50, so the dotted bridge lands exactly on the
+   centre line; the hint is lifted out of the grid so it cannot skew that split. */
 .loadout-rail {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(14rem, 1fr) minmax(2rem, 3.5rem) minmax(15rem, 0.62fr) auto;
+  grid-template-columns: minmax(0, 1fr) 3.5rem minmax(0, 1fr);
   align-items: start;
   gap: 0.6rem;
-  padding: 0.25rem 0.1rem 0.1rem;
+  /* Same height as the CTX hero bar — the rail reads as its peer, not a footnote. */
+  min-height: 4.5rem;
+  padding: 0.15rem 0.1rem 0.1rem;
   min-width: 0;
 }
 
@@ -2676,15 +2680,15 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 @media (max-width: 1180px) {
   .loadout-rail {
-    grid-template-columns: minmax(12rem, 1fr) auto minmax(13rem, 0.8fr);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "spec spec spec"
-      "swaps swaps note";
+      "spec"
+      "swaps";
+    gap: 0.35rem;
   }
   .loadout-rail__group--spec { grid-area: spec; }
   .loadout-rail__group--swaps { grid-area: swaps; }
-  .loadout-rail__dots { display: none; }
-  .loadout-rail__note { grid-area: note; }
+  .loadout-rail__bridge { display: none; }
 }
 
 .loadout-rail__zone {
@@ -2697,7 +2701,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* Dotted connector on the track line — reads as one rail, not two widgets. */
 .loadout-rail__bridge {
   align-self: start;
-  margin-top: calc(2.4rem + 2px);
+  margin-top: 2.5rem;
   height: 8px;
   background-image: repeating-linear-gradient(
     90deg,
@@ -2707,24 +2711,12 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.4;
 }
 
-.loadout-rail__note {
-  align-self: center;
-  margin-left: auto;
-  margin-top: 0.7rem;
-  font-size: 0.6rem;
-  letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 42%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* SWAPS: the same grammar as a slider — one line, one thumb per role, role above,
    attached precision below, state under that. Thumb positions are fixed stops; this is
-   not a single-choice control. */
+   not a single-choice control. Compacted so the stops sit on the SPEC slider's line. */
 .loadout-swaps {
   position: relative;
-  height: 4.15rem;
+  height: 3.1rem;
   min-width: 0;
 }
 
@@ -2732,7 +2724,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: absolute;
   left: 0;
   right: 0;
-  top: 1.5rem;
+  top: 1.45rem;
   height: 6px;
   z-index: 0;
 }
@@ -2742,7 +2734,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   top: 0;
   transform: translateX(-50%);
   width: 8.2rem;
-  height: 4.15rem;
+  height: 3.1rem;
   background: transparent;
   border: 0;
   padding: 0;
@@ -2768,7 +2760,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop__thumb {
   position: absolute;
-  top: 1.28rem;
+  top: 1.1rem;
   left: 50%;
   transform: translateX(-50%);
   width: 16px;
@@ -2784,7 +2776,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop__value {
   position: absolute;
-  top: 2.2rem;
+  top: 1.95rem;
   left: 50%;
   transform: translateX(-50%);
   font-size: 0.55rem;
@@ -2797,7 +2789,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop__state {
   position: absolute;
-  top: 2.95rem;
+  top: 2.6rem;
   left: 50%;
   transform: translateX(-50%);
   font-size: 0.42rem;

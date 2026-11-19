@@ -132,10 +132,6 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
         </div>
       </div>
 
-      <span className="loadout-rail__note font-mono">
-        {report ? "attach independently · wheel to cycle · click to pick" : "scan a model to resolve companions"}
-      </span>
-
       {openRole && report ? (
         <CompanionPickPanel
           slot={openRole === "mmproj" ? report.mmproj : report.engram}

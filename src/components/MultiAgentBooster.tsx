@@ -483,7 +483,7 @@ export default function MultiAgentBooster({
   const boostCell = showBoost ? (
     <div className="loadout-spec-cell">
             <CockpitSlider
-              label="Boost"
+              label=""
               value={boostSliderValue}
               onChange={(id) => {
                 // One parent apply only — do NOT call onRawSpecType(null) before MTP/DFlash/Off.

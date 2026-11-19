@@ -207,7 +207,7 @@ export default function CockpitSlider({
 
   return (
     <div className={`cockpit-slider-row flex items-center gap-x-1 gap-y-1 min-w-0 ${className}`}>
-      {cornerLabel ? null : (
+      {cornerLabel || !label ? null : (
         <span className="full-auto-cockpit__row-label font-mono tracking-wider uppercase flex-shrink-0">
           {label}
         </span>
