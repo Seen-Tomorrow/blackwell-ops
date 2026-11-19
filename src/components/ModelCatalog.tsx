@@ -704,28 +704,39 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     );
   };
 
-  // ── Kind cycler (MAIN / DRAFT / ALL) — single button, docked in the search row ──
-  const renderKindCycler = () => (
-    <button
-      type="button"
-      data-kind={draftFilter}
-      onClick={() => {
-        const idx = DRAFT_FILTER_CYCLE.indexOf(draftFilter);
-        const next = DRAFT_FILTER_CYCLE[(idx + 1) % DRAFT_FILTER_CYCLE.length];
-        setCatalogDraftFilter(next);
-      }}
-      className="catalog-kind-cycler font-mono uppercase"
-      title={`Model kind — ${draftFilterLabels[draftFilter]} (click to cycle MAIN / EXTRAS / ALL / INCOMPLETE)`}
-      aria-label={`Model kind: ${draftFilterLabels[draftFilter]}. Click to cycle.`}
-    >
-      {draftFilterLabels[draftFilter]}
-    </button>
+  /**
+   * Kind filter as a four-stop bar above the search field: it is the most used control in
+   * the catalog, so every stop is visible with its count instead of hidden behind a cycle.
+   */
+  const renderKindBar = () => (
+    <div className="catalog-kind-bar" role="tablist" aria-label="Model kind">
+      {DRAFT_FILTER_CYCLE.map((kind) => (
+        <button
+          key={kind}
+          type="button"
+          role="tab"
+          aria-selected={draftFilter === kind}
+          data-kind={draftFilter === kind ? draftFilter : undefined}
+          onClick={() => setCatalogDraftFilter(kind)}
+          className={`catalog-kind-bar__stop font-mono uppercase${
+            draftFilter === kind ? " catalog-kind-bar__stop--on" : ""
+          }`}
+          title={`${draftFilterLabels[kind]} — ${catalog.kindCounts[kind]} entr${
+            catalog.kindCounts[kind] === 1 ? "y" : "ies"
+          }`}
+        >
+          <span className="catalog-kind-bar__label">{draftFilterLabels[kind]}</span>
+          <span className="catalog-kind-bar__count">{catalog.kindCounts[kind]}</span>
+        </button>
+      ))}
+    </div>
   );
 
   // ── List toolbar — search is contextual with the sort + library tools, so it
   // sits directly above the list instead of floating at the top of the panel. ──
   const renderSearchField = () => (
     <div className="catalog-search-wrap min-w-0">
+      {renderKindBar()}
       <div className="catalog-search-field">
         <input
           ref={catalogSearchInputRef}
@@ -743,7 +754,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           className="catalog-search-input theme-input w-full text-xs font-mono rounded-sm"
         />
         <div className="catalog-search-field__rail">
-          {renderKindCycler()}
           <span
             className="catalog-search-count"
             aria-hidden="true"
