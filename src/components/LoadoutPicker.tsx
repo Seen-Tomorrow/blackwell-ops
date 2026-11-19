@@ -31,9 +31,7 @@ interface LoadoutPickerProps {
   role: CompanionRole | null;
   slot: CompanionSlot | null;
   localRows?: LocalFileRow[];
-  /** Remote rows supplied by the caller (drafts); otherwise fetched for the role. */
-  remoteRows?: LocalFileRow[];
-  onSearchRemote?: () => void;
+
   modelPath: string;
   /** The model's own Hub repo id, so the DRAFT lane can list its repo like the Hub does. */
   modelHubId?: string;
@@ -43,12 +41,7 @@ interface LoadoutPickerProps {
   onDetach: (role: CompanionRole) => void;
   onClear: (role: CompanionRole) => void;
   onDownloaded: () => void;
-  hfInput?: {
-    placeholder: string;
-    busy: boolean;
-    error: string | null;
-    onSubmit: (id: string) => void;
-  };
+
   onClose: () => void;
 }
 
@@ -59,8 +52,6 @@ export default function LoadoutPicker({
   role,
   slot,
   localRows,
-  remoteRows,
-  onSearchRemote,
   modelPath,
   modelHubId,
   onPickDraftFile,
@@ -68,7 +59,6 @@ export default function LoadoutPicker({
   onDetach,
   onClear,
   onDownloaded,
-  hfInput,
   onClose,
 }: LoadoutPickerProps) {
   const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
@@ -152,10 +142,6 @@ export default function LoadoutPicker({
         void submitHfRepo(modelHubId);
         return;
       }
-      if (onSearchRemote) {
-        onSearchRemote();
-        return;
-      }
       // No Hub id means there is nothing to list — say so instead of doing nothing.
       setRemoteRequested(true);
       setHfRepoError(
@@ -171,7 +157,7 @@ export default function LoadoutPicker({
         setRepoItems([]);
       })
       .finally(() => setRemoteLoading(false));
-  }, [modelPath, modelHubId, onSearchRemote, role, submitHfRepo]);
+  }, [modelPath, modelHubId, role, submitHfRepo]);
 
 
   const downloadRow = async (item: RepoCompanion) => {
@@ -219,22 +205,20 @@ export default function LoadoutPicker({
   // No cap: the column scrolls, so a big library is never truncated into a "show more".
   const remoteList: LocalFileRow[] =
     hfRepoRows ??
-    (remoteRows
-      ? remoteRows
-      : (repoItems ?? []).map((item) => ({
+    (repoItems ?? []).map((item) => ({
           key: item.path_in_repo,
           quant: item.precision || "file",
           size: item.size_str,
           name: item.file_name,
           onPick: () => void downloadRow(item),
-        })));
+        }));
 
   /**
    * The HF-ID row is the same control on all three lanes: the draft lane hands it to the
    * caller's resolver (which downloads into the draft slot), the companion lanes list the
    * pasted repo here and download on a row click.
    */
-  const hfRow = hfInput ?? {
+  const hfRow = {
     placeholder: "author/model",
     busy: hfRepoBusy,
     error: hfRepoError,

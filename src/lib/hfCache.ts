@@ -5,8 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
  *
  * Anonymous Hub API calls are rate-limited per hour, and the picker asks for the same
  * repo tree every time a slot opens — opening MMPROJ, then ENGRAM, then MMPROJ again is
- * three listings of the same repo. The draft *search* already caches its offers
- * (`dflashGetDraft`), but the companion listings went to the network every time.
+ * three listings of the same repo. The draft-picker listings go through this too.
  *
  * Cache the command result for a short TTL and de-duplicate in-flight calls, so a panel
  * that opens twice while the first listing is still streaming makes one request.

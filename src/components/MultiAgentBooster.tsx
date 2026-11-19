@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { invoke } from "@tauri-apps/api/core";
 import type { SpecCapability } from "../lib/specDraft";
 import type { CompanionCandidate, CompanionReport, CompanionRole, RepoCompanion } from "../lib/types";
-import type { DflashDraftOffer } from "../lib/dflashGetDraft";
 import { ConfigChipSegment } from "./EngineParamGroups";
 import {
   BRAINS_OPTIONS,
@@ -82,19 +81,13 @@ export interface MultiAgentBoosterProps {
   specFileRows?: { id: string; title: string; meta?: string; score?: number }[];
   /** Applies a picked draft head path. */
   onPickSpecFile?: (path: string) => void;
-  specFileBusy?: boolean;
-  specFileError?: string | null;
   /** The model's own Hub repo id — the DRAFT lane lists it like the Hub screen. */
   modelHubId?: string;
   /** A draft head listed from a repo: download and pin it. */
   onPickRepoDraft?: (item: RepoCompanion) => void;
-  onResolveSpecHf?: (id: string) => void;
   /** Absolute draft head paths, so the picker can mark the landed one. */
   dflashDraftPath?: string | null;
   mtpDraftPath?: string | null;
-  specRemoteOffers?: DflashDraftOffer[];
-  onPickSpecRemote?: (offer: DflashDraftOffer) => void;
-  onSearchSpecRemote?: () => void;
   /** Clears a stale Hub error when a picker opens. */
   onClearSpecError?: () => void;
   kvQuantValues: (string | number)[];
@@ -199,16 +192,10 @@ export default function MultiAgentBooster({
   mtpBakedIn = false,
   specFileRows = [],
   onPickSpecFile,
-  specFileBusy = false,
-  specFileError = null,
   modelHubId,
   onPickRepoDraft,
-  onResolveSpecHf,
   dflashDraftPath = null,
   mtpDraftPath = null,
-  specRemoteOffers = [],
-  onPickSpecRemote,
-  onSearchSpecRemote,
   onClearSpecError,
   kvQuantValues,
   parallelValues,

@@ -12,8 +12,6 @@ import type { DraftPickListItem } from "../lib/specDraft";
 import type { RepoCompanion } from "../lib/types";
 import { hfCooldownMs, noteHfError } from "../lib/hfCache";
 import {
-  findDflashDraftCandidates,
-  resolveDflashOfferFromHfId,
   startDflashDraftDownload,
   type DflashDraftOffer,
 } from "../lib/dflashGetDraft";
@@ -74,9 +72,7 @@ export function useSpecDraft({
   const [dflashGetState, setDflashGetState] = useState<DflashGetUiState>("idle");
   const [dflashGetError, setDflashGetError] = useState<string | null>(null);
   const [dflashGetOfferLabel, setDflashGetOfferLabel] = useState<string | null>(null);
-  const [dflashCandidates, setDflashCandidates] = useState<DflashDraftOffer[]>([]);
 
-  const [dflashResolving, setDflashResolving] = useState(false);
   const [dflashResolveError, setDflashResolveError] = useState<string | null>(null);
   const dflashDownloadIdsRef = useRef<Set<string>>(new Set());
   const dflashScannedBatchRef = useRef("");
@@ -137,38 +133,6 @@ export function useSpecDraft({
     [buildLocalPickItems],
   );
 
-  const loadDflashHfCandidates = useCallback(async () => {
-    if (!model) return;
-    // A quota hit must not be followed by more requests: wait it out.
-    const cool = hfCooldownMs();
-    if (cool > 0) {
-      setDflashGetState("idle");
-      setDflashResolveError(
-        `Hub quota reached — retry in ${Math.ceil(cool / 60000)} min`,
-      );
-      return;
-    }
-    setDflashGetState("searching");
-    setDflashResolveError(null);
-    try {
-      const offers = await findDflashDraftCandidates(model, 3);
-      setDflashCandidates(offers);
-      setDflashGetState("idle");
-    } catch (err) {
-      console.error("[dflashGetDraft] search failed:", err);
-      noteHfError(err);
-      setDflashCandidates([]);
-      setDflashGetState("idle");
-      setDflashResolveError(
-        typeof err === "string"
-          ? err
-          : err instanceof Error
-            ? err.message
-            : "Search failed — paste HF id manually",
-      );
-    }
-  }, [model]);
-
   /** A stale 429 from an earlier attempt must not greet the next open. */
   const clearSpecFileError = useCallback(() => {
     setDflashResolveError(null);
@@ -176,7 +140,6 @@ export function useSpecDraft({
 
   const handleConfirmDflashPick = useCallback(async (offer: DflashDraftOffer) => {
     setDflashResolveError(null);
-    setDflashResolving(false);
     setDflashGetError(null);
     setDflashGetOfferLabel(offer.label);
     setDflashGetState("downloading");
@@ -221,64 +184,6 @@ export function useSpecDraft({
     },
     [handleConfirmDflashPick],
   );
-  const handleConfirmDflashManual = useCallback(
-    async (hfModelId: string) => {
-      if (!model) return;
-      setDflashResolving(true);
-      setDflashResolveError(null);
-      try {
-        const offer = await resolveDflashOfferFromHfId(model, hfModelId);
-        await handleConfirmDflashPick(offer);
-      } catch (err) {
-        console.error("[dflashGetDraft] manual resolve failed:", err);
-        noteHfError(err);
-        setDflashResolveError(
-          typeof err === "string"
-            ? err
-            : err instanceof Error
-              ? err.message
-              : "Could not resolve HF repo",
-        );
-      } finally {
-        setDflashResolving(false);
-      }
-    },
-    [model, handleConfirmDflashPick],
-  );
-
-  const handleConfirmLibraryDraft = useCallback(
-    (path: string) => {
-      if (!model) return;
-      const method =
-        speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
-          ? speedBoost
-          : "off";
-      const adapter = adapterForMethod(method);
-      const draftKey = adapter?.knobs.draftModel;
-      if (!adapter || !draftKey) return;
-      updateParam(draftKey, path);
-      stageDraftPairing(model.path, cliTypeForMethod(method) ?? adapter.cliType, path);
-      setDflashResolveError(null);
-      setDflashGetState("idle");
-      setDflashGetError(null);
-      // Keep current Boost method (mtp, dflash or dspark) when confirming a path
-      void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {
-        powerUser: powerCockpitMode,
-        preferredDraftPath: path,
-      });
-    },
-    [
-      model,
-      updateParam,
-      applyFullAutoCockpit,
-      codingMode,
-      brains,
-      think,
-      powerCockpitMode,
-      speedBoost,
-    ],
-  );
-
   /** The active lane's local heads, built unconditionally for the LOADOUT picker. */
   const specLocalFileRows = useMemo(
     () => buildLocalDflashPickItems(),
@@ -290,8 +195,6 @@ export function useSpecDraft({
     setDflashGetState("idle");
     setDflashGetError(null);
     setDflashGetOfferLabel(null);
-    setDflashCandidates([]);
-    setDflashResolving(false);
     setDflashResolveError(null);
     dflashDownloadIdsRef.current = new Set();
     prevDflashReadyRef.current = false;
@@ -350,6 +253,41 @@ export function useSpecDraft({
     })();
   }, [hfDownloads, dflashGetState]);
 
+  const handleConfirmLibraryDraft = useCallback(
+    (path: string) => {
+      if (!model) return;
+      const method =
+        speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
+          ? speedBoost
+          : "off";
+      const adapter = adapterForMethod(method);
+      const draftKey = adapter?.knobs.draftModel;
+      if (!adapter || !draftKey) return;
+      updateParam(draftKey, path);
+      stageDraftPairing(model.path, cliTypeForMethod(method) ?? adapter.cliType, path);
+      setDflashResolveError(null);
+      setDflashGetState("idle");
+      setDflashGetError(null);
+      // Keep current Boost method (mtp, dflash or dspark) when confirming a path
+      void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {
+        powerUser: powerCockpitMode,
+        preferredDraftPath: path,
+      });
+    },
+    [
+      model,
+      updateParam,
+      applyFullAutoCockpit,
+      codingMode,
+      brains,
+      think,
+      powerCockpitMode,
+      speedBoost,
+    ],
+  );
+
+  /** The active lane's local heads, built unconditionally for the LOADOUT picker. */
+
   // Capability drop away from external-draft boost → clear CTA noise
   useEffect(() => {
     if (speedBoost !== "dflash" && speedBoost !== "dspark") {
@@ -363,15 +301,11 @@ export function useSpecDraft({
     dflashGetState,
     dflashGetError,
     dflashGetOfferLabel,
-    dflashCandidates,
-    dflashResolving,
     dflashResolveError,
     specLocalFileRows,
     clearSpecFileError,
     handleConfirmDflashPick,
     handlePickRepoDraft,
-    handleConfirmDflashManual,
     handleConfirmLibraryDraft,
-    loadDflashHfCandidates,
   };
 }

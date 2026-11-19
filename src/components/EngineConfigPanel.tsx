@@ -49,7 +49,6 @@ import CockpitCtxStrip from "./CockpitCtxStrip";
 import {
   FULL_AUTO_COLLAPSE_GROUPS,
 } from "../lib/multiAgentBooster";
-import type { DflashDraftOffer } from "../lib/dflashGetDraft";
 import {
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
@@ -948,16 +947,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     applyFullAutoCockpit,
   });
   const {
-    dflashCandidates,
-    dflashResolving,
     dflashResolveError,
     specLocalFileRows,
     clearSpecFileError,
     handlePickRepoDraft,
     handleConfirmDflashPick,
-    handleConfirmDflashManual,
     handleConfirmLibraryDraft,
-    loadDflashHfCandidates,
   } = dflash;
 
   /** FULL AUTO owns the cockpit until the user takes control back. */
@@ -3293,12 +3288,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           mtpBakedIn={mtpBakedIn}
           specFileRows={specLocalFileRows}
           onPickSpecFile={handleConfirmLibraryDraft}
-          specFileBusy={dflashResolving}
-          specFileError={dflashResolveError}
-          onResolveSpecHf={handleConfirmDflashManual}
-          specRemoteOffers={dflashCandidates}
-          onPickSpecRemote={(offer) => void handleConfirmDflashPick(offer)}
-          onSearchSpecRemote={() => void loadDflashHfCandidates()}
           onClearSpecError={clearSpecFileError}
           modelHubId={
             model?.hfModelId

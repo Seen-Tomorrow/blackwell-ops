@@ -1,4 +1,3 @@
-import type { DflashDraftOffer } from "../lib/dflashGetDraft";
 import type { ReactNode } from "react";
 import type {
   BrainsId,
@@ -44,14 +43,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     mtpBakedIn,
     specFileRows = [],
   onPickSpecFile,
-  specFileBusy = false,
-  specFileError = null,
-  onResolveSpecHf,
   dflashDraftPath = null,
   mtpDraftPath = null,
-  specRemoteOffers = [],
-  onPickSpecRemote,
-  onSearchSpecRemote,
   onClearSpecError,
   modelHubId,
   onPickRepoDraft,
@@ -125,14 +118,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         mtpBakedIn={mtpBakedIn}
         specFileRows={specFileRows}
         onPickSpecFile={onPickSpecFile}
-        specFileBusy={specFileBusy}
-        specFileError={specFileError}
-        onResolveSpecHf={onResolveSpecHf}
         dflashDraftPath={dflashDraftPath}
         mtpDraftPath={mtpDraftPath}
-        specRemoteOffers={specRemoteOffers}
-        onPickSpecRemote={onPickSpecRemote}
-        onSearchSpecRemote={onSearchSpecRemote}
         onClearSpecError={onClearSpecError}
         modelHubId={modelHubId}
         onPickRepoDraft={onPickRepoDraft}
@@ -214,16 +201,10 @@ export interface EngineBoostSectionProps {
   /** Applies a picked draft head path. */
   onPickSpecFile?: (path: string) => void;
   /** Resolver state for the HF-id field. */
-  specFileBusy?: boolean;
-  specFileError?: string | null;
-  onResolveSpecHf?: (id: string) => void;
   /** Absolute draft head paths, so the picker can mark the landed one. */
   dflashDraftPath?: string | null;
   mtpDraftPath?: string | null;
   /** HF draft packs found for the active lane. */
-  specRemoteOffers?: DflashDraftOffer[];
-  onPickSpecRemote?: (offer: DflashDraftOffer) => void;
-  onSearchSpecRemote?: () => void;
   /** Clears a stale Hub error when a picker opens. */
   onClearSpecError?: () => void;
   /** Hub repo id of the selected model (DRAFT lane lists it like the Hub). */
