@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { CatalogDraftFilter } from "../lib/specDraft";
+import { isUnclassifiedModel } from "../lib/specDraft";
 import type { CatalogUpdateEntry, EngineConfig, ExtraFileEntry, HfModelInfo, ModelEntry, ModelPathScan, ProviderConfig, StackEntry } from "../lib/types";
 import { invoke } from "@tauri-apps/api/core";
 import EngineConfigPanel from "./EngineConfigPanel";
@@ -168,7 +169,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     zone } = catalog;
 
   const catalogModels = useMemo(
-    () => (updatesOnly ? catalogModelsRaw.filter((m) => updateByPath.has(m.path)) : catalogModelsRaw),
+    () => {
+      // Unclassified files (a stray file with no recognisable GGUF header) are not
+      // models: keep them out of the grid instead of offering them as launchable.
+      const classified = catalogModelsRaw.filter((m) => !isUnclassifiedModel(m));
+      return updatesOnly ? classified.filter((m) => updateByPath.has(m.path)) : classified;
+    },
     [updatesOnly, catalogModelsRaw, updateByPath],
   );
 

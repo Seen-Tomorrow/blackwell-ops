@@ -373,9 +373,11 @@ pub async fn list_models(
         extras_roots.len()
     );
     let (entries, path_scans, _conflicts) = tokio::task::spawn_blocking(move || {
-        // Diagnostics first — a directory walk with no metadata work — so the
-        // report can still name a path that contributed nothing.
-        let scans = model_catalog::scan_path_report(&paths_for_scan);
+        // Report only the configured model paths: the extras root is scanned into the
+        // catalog but is not a library the user added. Diagnostics run first — a
+        // directory walk with no metadata work — so the report can still name a path
+        // that contributed nothing.
+        let scans = model_catalog::scan_path_report(&paths);
         let (entries, conflicts) =
             model_catalog::merge_catalogs(&paths_for_scan, None, Some(&exclusions))?;
         Ok::<_, String>((entries, scans, conflicts))

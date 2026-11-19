@@ -339,6 +339,16 @@ export function isAttachmentModel(
   return role === "ple" || role === "mmproj" || role === "adapter";
 }
 
+/**
+ * Files the classifier could not place (`file_role = unknown`). They are not
+ * launchable, and a stray extras file with no recognisable header must not appear in
+ * the model list as if it were one.
+ */
+export function isUnclassifiedModel(
+  model: Pick<ModelEntry, "fileRole">,
+): boolean {
+  return model.fileRole === "unknown";
+}
 export function matchesCatalogDraftFilter(
   model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "fileRole">,
   filter: CatalogDraftFilter,

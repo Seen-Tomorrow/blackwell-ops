@@ -317,6 +317,24 @@ async fn main() {
                     log::warn!("[secrets] Failed to clear legacy hf_token from config: {e}");
                 }
             }
+            // SWAP store: derived from the DEFAULT model path on first run, then
+            // PERSISTED as an explicit extras path. Without this, changing the default
+            // later would silently start a second model_EXTRAS folder and split the
+            // extras across libraries.
+            if app_config.extras_paths.is_empty() {
+                if let Some(dir) = config::default_extras_dir(&app_config) {
+                    app_config.extras_paths.push(crate::types::ModelPathEntry {
+                        path: dir.to_string_lossy().to_string(),
+                        label: config::EXTRAS_DIR_NAME.to_string(),
+                        is_default: false,
+                    });
+                    if let Err(e) = config::save_config(&mut app_config) {
+                        log::warn!("[startup] could not persist the extras store path: {e}");
+                    } else {
+                        log::info!("[startup] SWAP store: {}", dir.display());
+                    }
+                }
+            }
             runtime_settings::apply_saved_session_log();
             // Private job: engines die with the app process (KILL_ON_JOB_CLOSE).
             crate::engine_job::init_engine_job();
