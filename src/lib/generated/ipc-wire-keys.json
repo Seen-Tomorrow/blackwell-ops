@@ -62,6 +62,7 @@
   "SlotCtxInfo": ["id", "n_decoded", "sessionNDecoded", "totalTokensLifetime", "is_processing", "promptTokens", "promptTokensProcessed", "promptTokensCache", "nRemain", "idTask", "speculative", "nCtxSlot"],
   "SpawnProfile": ["model_flag", "port_flag", "alias_flag", "verbosity_args", "spawn_flags", "fit_binary_provider", "enable_metrics", "supports_fusion", "fusion_adapter", "fit_adapter", "gpu_env", "ngl_flag", "mmproj_flag", "max_engine_slots", "help_flag_max_indent", "auto_vram", "fit_style", "simple_param_keys", "essentialParamKeys", "tensor_split"],
   "StackEntry": ["idx", "alias", "model_name", "port", "gpu", "status", "slot_id", "provider_type", "binaryProfile", "model_path", "vram_mib", "gpu_breakdown_mib", "n_ctx", "provider_name", "build_info", "supportsFusion", "splitMode", "parallel", "vision"],
+  "SwapStoreInfo": ["path", "exists", "files", "bytes"],
   "SystemEvent": ["slot", "alias", "text", "timestamp"],
   "SystemInfo": ["total_memory_mib", "available_memory_mib", "total_memory_manufactured_mib"],
   "UpdateChannelOffering": ["channel", "available", "version", "tag", "sizeBytes", "label", "summary", "releaseNotes"],

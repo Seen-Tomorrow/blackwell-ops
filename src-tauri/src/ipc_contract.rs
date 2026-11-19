@@ -171,6 +171,7 @@ ipc_registry! {
     "ModelPathScan" => crate::types::ModelPathScan,
     "ModelLibraryValidation" => crate::types::ModelLibraryValidation,
     "PathDiskUsage" => crate::types::PathDiskUsage,
+    "SwapStoreInfo" => crate::swap_store::SwapStoreInfo,
     "DiskCheckResult" => crate::types::DiskCheckResult,
 
     // ── downloads / HF ────────────────────────────────────────────────
