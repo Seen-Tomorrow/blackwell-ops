@@ -48,6 +48,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
   onClearSpecError,
   modelHubId,
   onPickRepoDraft,
+  onClearDraft,
     kvQuantValues,
     parallelValues,
     showAgents,
@@ -123,6 +124,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         onClearSpecError={onClearSpecError}
         modelHubId={modelHubId}
         onPickRepoDraft={onPickRepoDraft}
+        onClearDraft={onClearDraft}
         kvQuantValues={kvQuantValues}
         parallelValues={parallelValues}
         showAgents={showAgents}
@@ -210,6 +212,7 @@ export interface EngineBoostSectionProps {
   /** Hub repo id of the selected model (DRAFT lane lists it like the Hub). */
   modelHubId?: string;
   onPickRepoDraft?: (item: import("../lib/types").RepoCompanion) => void;
+  onClearDraft?: () => void;
   kvQuantValues: (string | number)[];
   parallelValues: (string | number)[];
   showAgents: boolean;

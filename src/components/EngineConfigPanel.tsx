@@ -950,6 +950,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     dflashResolveError,
     specLocalFileRows,
     clearSpecFileError,
+    handleClearDraft,
     handlePickRepoDraft,
     handleConfirmDflashPick,
     handleConfirmLibraryDraft,
@@ -3300,6 +3301,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               : undefined
           }
           onPickRepoDraft={handlePickRepoDraft}
+          onClearDraft={handleClearDraft}
           kvQuantValues={cockpitKvValuesBound}
           parallelValues={cockpitParallelValues}
           showAgents={cockpitShowAgents}

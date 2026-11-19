@@ -39,6 +39,10 @@ interface LoadoutPickerProps {
   modelHubId?: string;
   /** Which head kind the current SPEC lane accepts (mtp / dflash / dspark). */
   laneKind?: "mtp" | "dflash" | "dspark" | "eagle3" | null;
+  /** The head currently paired for the draft lane, if any. */
+  pairedDraftPath?: string | null;
+  /** Unpair it; the file stays on disk. */
+  onClearDraft?: () => void;
   /** A listed draft head the user picked: download + pin it. */
   onPickDraftFile?: (item: RepoCompanion) => void;
   onAttach: (role: CompanionRole, path: string) => void;
@@ -59,6 +63,8 @@ export default function LoadoutPicker({
   modelPath,
   modelHubId,
   laneKind,
+  pairedDraftPath,
+  onClearDraft,
   onPickDraftFile,
   onAttach,
   onDetach,
@@ -286,6 +292,19 @@ export default function LoadoutPicker({
               onClick={() => onClear(role)}
             >
               AUTO
+            </button>
+          ) : null}
+          {!role && pairedDraftPath && onClearDraft ? (
+            <button
+              type="button"
+              className="gp-panel__btn font-mono"
+              onClick={() => {
+                onClearDraft();
+                onClose();
+              }}
+              title="Unpair this draft head from the model (the file stays on disk)"
+            >
+              DECOUPLE
             </button>
           ) : null}
           <button

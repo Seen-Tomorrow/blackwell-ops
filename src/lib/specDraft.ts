@@ -649,6 +649,40 @@ type StagedDraftPairing = {
 };
 
 /**
+ * Decouple a head from a main model: forget the pairing record, drop anything staged for
+ * it, and remove its value from the model's spec bag. The file stays on disk — this only
+ * unpairs it, which is the action the picker was missing.
+ */
+export function clearDraftPairing(mainPath: string, draftKey: string): void {
+  if (!mainPath) return;
+  const key = normalizeModelPathKey(mainPath);
+
+  const staged = stagedDraftPairings.get(key);
+  if (staged?.length) {
+    const rest = staged.filter((s) => s.draftKey !== draftKey);
+    if (rest.length) stagedDraftPairings.set(key, rest);
+    else stagedDraftPairings.delete(key);
+  }
+  const values = stagedDraftValues.get(key);
+  if (values && Object.prototype.hasOwnProperty.call(values, draftKey)) {
+    delete values[draftKey];
+    if (!Object.keys(values).length) stagedDraftValues.delete(key);
+  }
+
+  const pairings = readJsonStorage<Record<string, DraftPairing>>(KEYS.draftPairings) ?? {};
+  const pairing = pairings[key];
+  if (pairing) {
+    delete pairings[key];
+    writeJsonStorage(KEYS.draftPairings, pairings);
+  }
+
+  const spec = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(mainPath)) ?? {};
+  if (Object.prototype.hasOwnProperty.call(spec, draftKey)) {
+    delete spec[draftKey];
+    writeJsonStorage(modelSpecOverrideKey(mainPath), spec);
+  }
+}
+/**
  * Manual draft heads are staged, not persisted: a head only earns its place in the
  * model's saved config after the engine reaches RUNNING. A failed launch then cannot
  * leave a bad head glued to the model. Keyed by normalized main path.

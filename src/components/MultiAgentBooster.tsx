@@ -85,6 +85,8 @@ export interface MultiAgentBoosterProps {
   modelHubId?: string;
   /** A draft head listed from a repo: download and pin it. */
   onPickRepoDraft?: (item: RepoCompanion) => void;
+  /** Unpair the draft lane head from this model. */
+  onClearDraft?: () => void;
   /** Absolute draft head paths, so the picker can mark the landed one. */
   dflashDraftPath?: string | null;
   mtpDraftPath?: string | null;
@@ -194,6 +196,7 @@ export default function MultiAgentBooster({
   onPickSpecFile,
   modelHubId,
   onPickRepoDraft,
+  onClearDraft,
   dflashDraftPath = null,
   mtpDraftPath = null,
   onClearSpecError,
@@ -974,6 +977,8 @@ export default function MultiAgentBooster({
                 : undefined
             }
             modelHubId={modelHubId}
+            pairedDraftPath={draftHeadPath}
+            onClearDraft={onClearDraft}
             laneKind={
               displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark"
                 ? displayBoost

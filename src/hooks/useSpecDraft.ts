@@ -17,6 +17,7 @@ import {
 } from "../lib/dflashGetDraft";
 import {
   catalogDraftSignals,
+  clearDraftPairing,
   draftRoleForSpecType,
   draftRoleFromModel,
   resolveDraftPathLabel,
@@ -154,6 +155,25 @@ export function useSpecDraft({
     [buildLocalPickItems, laneDraftRole],
   );
 
+  /**
+   * Unpair the current lane's head from this model: clears the config value, the saved
+   * pairing and any staged copy. The file itself is untouched.
+   */
+  const handleClearDraft = useCallback(() => {
+    if (!model) return;
+    const method =
+      speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
+        ? speedBoost
+        : "off";
+    const adapter = adapterForMethod(method);
+    const draftKey = adapter?.knobs.draftModel;
+    if (!adapter || !draftKey) return;
+    updateParam(draftKey, "");
+    clearDraftPairing(model.path, draftKey);
+    setDflashResolveError(null);
+    setDflashGetError(null);
+    dispatchAppEvent(EVENTS.paramConfigChanged);
+  }, [model, speedBoost, updateParam, dispatchAppEvent]);
   /** A stale 429 from an earlier attempt must not greet the next open. */
   const clearSpecFileError = useCallback(() => {
     setDflashResolveError(null);
@@ -325,6 +345,7 @@ export function useSpecDraft({
     dflashResolveError,
     specLocalFileRows,
     clearSpecFileError,
+    handleClearDraft,
     handleConfirmDflashPick,
     handlePickRepoDraft,
     handleConfirmLibraryDraft,
