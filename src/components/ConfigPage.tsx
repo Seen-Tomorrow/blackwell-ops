@@ -346,6 +346,9 @@ function ModelPathsPanel() {
                 <span className="type-label font-mono cfg-mut">
                   DRAFT HEADS · MMPROJ · ENGRAM
                 </span>
+                <span className="type-label font-mono cfg-mut opacity-70">
+                  — its own folder, e.g. &lt;library&gt;\model_EXTRAS
+                </span>
               </div>
               <div className="type-body font-mono cfg-txt truncate">
                 {store?.path || "not created yet — first download creates it"}

@@ -58,6 +58,36 @@ fn info_for(path: &Path) -> SwapStoreInfo {
     }
 }
 
+/// A store must be its own folder. Accepting a model library (or its parent) turns every
+/// model file into an "extra", and the catalog then counts the library twice.
+fn reject_library_target(cfg: &crate::config::AppConfig, target: &Path) -> Result<(), String> {
+    let norm = |raw: &str| {
+        raw.replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    let t = norm(&target.to_string_lossy());
+    for entry in crate::config::get_model_paths(cfg) {
+        let m = norm(&entry.path);
+        if t == m {
+            return Err(format!(
+                "{} is a model library. Put the SWAP store in a folder of its own, e.g. {}\\{}",
+                entry.path,
+                entry.path,
+                crate::config::EXTRAS_DIR_NAME
+            ));
+        }
+        if m.starts_with(&format!("{t}\\")) {
+            return Err(format!(
+                "{} contains the model library {} - one folder cannot be both.",
+                target.display(),
+                entry.path
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn swap_store_info() -> SwapStoreInfo {
     match store_path() {
@@ -87,6 +117,7 @@ pub fn set_swap_store(path: String) -> Result<SwapStoreInfo, String> {
         .map_err(|e| format!("Failed to create {}: {e}", dir.display()))?;
 
     let mut cfg = crate::config::load_config();
+    reject_library_target(&cfg, &dir)?;
     cfg.extras_paths = vec![crate::types::ModelPathEntry {
         path: dir.to_string_lossy().to_string(),
         label: crate::config::EXTRAS_DIR_NAME.to_string(),
@@ -104,6 +135,20 @@ pub fn set_swap_store(path: String) -> Result<SwapStoreInfo, String> {
 pub fn move_swap_store(target: String) -> Result<SwapStoreInfo, String> {
     let from = store_path().ok_or_else(|| "No SWAP store configured".to_string())?;
     let to = PathBuf::from(target.trim());
+    {
+        let cfg = crate::config::load_config();
+        reject_library_target(&cfg, &to)?;
+        // A store that is currently a model library must not be "moved": that would
+        // relocate the whole library. CHANGE points the setting instead; the user moves
+        // the handful of real extras files themselves.
+        if reject_library_target(&cfg, &from).is_err() {
+            return Err(format!(
+                "The current store ({}) is a model library, not an extras folder. Use CHANGE \
+                 to point the store at a dedicated folder first — MOVE would relocate the library.",
+                from.display()
+            ));
+        }
+    }
     if to.as_os_str().is_empty() {
         return Err("Pick a destination folder".to_string());
     }
