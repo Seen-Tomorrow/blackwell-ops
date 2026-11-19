@@ -1,37 +1,48 @@
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import type { CompanionCandidate, CompanionRole, CompanionReport, CompanionSlot } from "../lib/types";
+import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot } from "../lib/types";
 
 /**
- * LOADOUT — one rail, two groups, plus the always-on status line under it.
+ * LOADOUT — the mode rail and the file row it feeds.
  *
- * SPEC is the Boost slider (passed in whole) and it is the MODE control: clicking a
- * stop changes the mode and nothing else. Picking the external file a mode needs is a
- * separate affordance ("SELECT EXTERNAL" beside the current mode), because that is a
- * different decision from choosing the mode.
+ * Two concerns, two controls:
  *
- * SWAPS is the same slider grammar used twice; clicking either stop opens the file
- * picker for that role, and the wheel cycles.
+ *  - SPEC is the MODE control (the Boost slider, passed in whole). Clicking a stop
+ *    changes the mode and nothing else.
+ *  - The file row is a multi-purpose row of SLOTS, one per extra file a mode can load:
+ *    DRAFT today, MMPROJ and ENGRAM from the companion report. Every slot renders from
+ *    the same data — role, badge line, thumb, filled value plate, state — so wiring a
+ *    fourth file kind is an entry in `slots`, not another hand-matched widget.
  *
- * Under the rail, the status line always says what each stop is currently on — SPEC
- * shows its single selected mode, the swaps show precision + state.
+ * Slots are evenly spaced and each one owns its ⊕ external badge, so the row speaks one
+ * language regardless of how many kinds end up in it.
  */
+export interface LoadoutFileSlot {
+  id: string;
+  /** Role word above the thumb: DRAFT / MMPROJ / ENGRAM. */
+  role: string;
+  /** Value in the plate under the thumb (precision, "built-in", "—"). */
+  value: string;
+  /** State under the plate: LOADED / MISSING / PINNED / AUTO / EMPTY. */
+  state: string;
+  /** Plate tint; unknown ids stay monochrome. */
+  tone: "draft" | "mmproj" | "engram" | "neutral";
+  active: boolean;
+  /** Number of files behind the slot, shown after the state when > 1. */
+  count: number;
+  /** Anchor is 0..1 across the rail — the slot knows its own position. */
+  onOpen: (anchor: number) => void;
+  /** Wheel cycles the slot's candidates; absent means the slot has none to cycle. */
+  onCycle?: () => void;
+}
+
 interface LoadoutRailProps {
   /** SPEC group — the Boost slider rendered inside the rail. */
   specSlot?: ReactNode;
-  /** Current SPEC mode name, printed in the header and in the status line. */
-  specLabel?: string;
-  /** True when the current mode reads an external draft file. */
-  canPickExternal?: boolean;
-  onPickExternal?: (anchor: number) => void;
-  /** 0..1 x of the selected SPEC mark, so its EXTERNAL badge sits over that stop. */
-  specMarkPct?: number;
+  /** File slots, in display order. */
+  slots?: LoadoutFileSlot[];
   report: CompanionReport | null;
   busy?: boolean;
-  /** Open the file picker for a stop; anchor is 0..1 across the rail. */
-  onOpenSlot?: (slot: CompanionRole, anchor: number) => void;
-  /** Cycle to a candidate — the wheel gesture. */
-  onCycle?: (role: CompanionRole, candidate: CompanionCandidate) => void;
 }
 
 const ROLE_LABEL: Record<CompanionRole, string> = {
@@ -72,54 +83,51 @@ function nextCandidate(slot: CompanionSlot): CompanionCandidate | null {
   return slot.candidates[(idx + 1) % slot.candidates.length] ?? null;
 }
 
+/** Build the file slots from the companion report plus the caller's extra slots. */
+export function companionSlots(
+  report: CompanionReport | null,
+  open: (role: CompanionRole, anchor: number) => void,
+  cycle: (role: CompanionRole, candidate: CompanionCandidate) => void,
+): LoadoutFileSlot[] {
+  if (!report) return [];
+  return ([report.mmproj, report.engram] as CompanionSlot[]).map((slot) => {
+    const state = stopState(slot);
+    const active =
+      slot.pinned != null || (slot.auto != null && slot.confidence === "strong");
+    return {
+      id: slot.role,
+      role: ROLE_LABEL[slot.role],
+      value: state.value,
+      state: state.state,
+      tone: slot.role,
+      active,
+      count: slot.candidates.length,
+      onOpen: (anchor) => open(slot.role, anchor),
+      onCycle:
+        slot.candidates.length > 0
+          ? () => {
+              const next = nextCandidate(slot);
+              if (next) cycle(slot.role, next);
+            }
+          : undefined,
+    };
+  });
+}
+
 export default function LoadoutRail({
   specSlot,
-  specLabel,
-  canPickExternal = false,
-  onPickExternal,
-  specMarkPct = 0,
-  report,
+  slots = [],
+  report: _report,
   busy = false,
-  onOpenSlot,
-  onCycle,
 }: LoadoutRailProps) {
   const railRef = useRef<HTMLDivElement | null>(null);
-  const slots = report ? [report.mmproj, report.engram] : [];
-
-  /** Where the clicked control sits across the rail, so the panel opens above it. */
-  const anchorOf = (el: HTMLElement | null): number => {
-    const rail = railRef.current;
-    if (!el || !rail) return 0.5;
-    const r = el.getBoundingClientRect();
-    const rr = rail.getBoundingClientRect();
-    if (rr.width <= 0) return 0.5;
-    return Math.min(1, Math.max(0, (r.left + r.width / 2 - rr.left) / rr.width));
-  };
-
   return (
     <div className="loadout-rail" data-busy={busy ? "1" : undefined} ref={railRef}>
       <div className="loadout-rail__group loadout-rail__group--spec">
         <div className="loadout-rail__zone-row">
           <span className="loadout-rail__zone font-mono">SPEC</span>
         </div>
-        {/* Same anatomy as the SWAPS half: one band that owns its badge line and its
-            content, so both sides position the badge, role and value from one set of
-            numbers instead of two. */}
         <div className="loadout-rail__band">
-          {canPickExternal ? (
-            <button
-              type="button"
-              className="loadout-rail__external font-mono"
-              style={{ left: `${specMarkPct * 100}%` }}
-              onClick={(e) => onPickExternal?.(anchorOf(e.currentTarget))}
-              title="Pick the external file this mode reads"
-            >
-              <span className="loadout-rail__external-icon" aria-hidden>
-                ⊕
-              </span>
-              external
-            </button>
-          ) : null}
           <div className="loadout-rail__spec">{specSlot}</div>
         </div>
       </div>
@@ -128,78 +136,86 @@ export default function LoadoutRail({
 
       <div className="loadout-rail__group loadout-rail__group--swaps">
         <span className="loadout-rail__zone font-mono">SWAPS</span>
-        <div className="loadout-rail__band loadout-swaps">
-          <div className="cockpit-slider-track loadout-swaps__line" aria-hidden="true" />
+        <div className="loadout-rail__band loadout-files">
+          <div className="cockpit-slider-track loadout-files__line" aria-hidden="true" />
           {slots.map((slot, i) => (
-            <CompanionStop
-              key={slot.role}
+            <FileStop
+              key={slot.id}
               slot={slot}
-              leftPct={slots.length > 1 ? 26 + i * 48 : 50}
+              railRef={railRef}
+              leftPct={((i + 0.5) / Math.max(1, slots.length)) * 100}
               disabled={busy}
-              onOpen={(el) => onOpenSlot?.(slot.role, anchorOf(el))}
-              onCycle={(candidate) => onCycle?.(slot.role, candidate)}
             />
           ))}
         </div>
       </div>
-
     </div>
   );
 }
 
-interface CompanionStopProps {
-  slot: CompanionSlot;
+function FileStop({
+  slot,
+  railRef,
+  leftPct,
+  disabled,
+}: {
+  slot: LoadoutFileSlot;
+  railRef: React.RefObject<HTMLDivElement | null>;
   leftPct: number;
   disabled: boolean;
-  onOpen: (el: HTMLElement | null) => void;
-  onCycle: (candidate: CompanionCandidate) => void;
-}
-
-function CompanionStop({ slot, leftPct, disabled, onOpen, onCycle }: CompanionStopProps) {
-  const state = stopState(slot);
-  const active = slot.pinned != null || (slot.auto != null && slot.confidence === "strong");
+}) {
   const ref = useRef<HTMLButtonElement | null>(null);
 
-  // Wheel must not scroll the cockpit — non-passive listener so the cycle can
-  // preventDefault. Only files already trusted enough to be candidates are cycled.
+  // Wheel must not scroll the cockpit — non-passive listener so cycling can prevent it.
   useEffect(() => {
     const el = ref.current;
-    if (!el || disabled) return;
+    if (!el || disabled || !slot.onCycle) return;
     const onWheel = (e: WheelEvent) => {
-      const next = nextCandidate(slot);
-      if (!next) return;
       e.preventDefault();
-      onCycle(next);
+      slot.onCycle?.();
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [slot, disabled, onCycle]);
+  }, [slot, disabled]);
 
   return (
     <button
       ref={ref}
       type="button"
-      className={`loadout-stop loadout-stop--${state.tone}${active ? " loadout-stop--active" : ""} loadout-stop--role-${slot.role}`}
+      className={`loadout-stop loadout-stop--tone-${slot.tone}${
+        slot.active ? " loadout-stop--active" : ""
+      }`}
       style={{ left: `${leftPct}%` }}
-      onClick={() => onOpen(ref.current)}
+      onClick={() => {
+        // Anchor across the whole rail, not the half this row lives in.
+        const rail = railRef.current;
+        const el = ref.current;
+        if (!rail || !el) return;
+        const r = rail.getBoundingClientRect();
+        const e = el.getBoundingClientRect();
+        if (r.width <= 0) return;
+        slot.onOpen(Math.min(1, Math.max(0, (e.left + e.width / 2 - r.left) / r.width)));
+      }}
       disabled={disabled}
-      title={slot.reason || `${state.state} — click to pick a file, wheel to cycle`}
-      aria-label={`${ROLE_LABEL[slot.role]}: ${state.state}, ${state.value}`}
+      title={`${slot.role} — ${slot.state}. Click to pick a file${
+        slot.onCycle ? ", wheel to cycle" : ""
+      }`}
+      aria-label={`${slot.role}: ${slot.state}, ${slot.value}`}
     >
       <span className="loadout-stop__external font-mono" aria-hidden>
         <span className="loadout-rail__external-icon">⊕</span>
         external
       </span>
-      <span className="loadout-stop__role font-mono">{ROLE_LABEL[slot.role]}</span>
+      <span className="loadout-stop__role font-mono">{slot.role}</span>
       <span className="cockpit-slider-thumb loadout-stop__thumb" aria-hidden="true" />
       <span
-        className={`loadout-stop__value font-mono${active ? " loadout-stop__value--on" : ""}`}
+        className={`loadout-stop__value font-mono${slot.active ? " loadout-stop__value--on" : ""}`}
       >
-        {state.value}
+        {slot.value}
       </span>
       <span className="loadout-stop__state font-mono">
-        {state.state}
-        {slot.candidates.length > 1 ? ` · ${slot.candidates.length}` : ""}
+        {slot.state}
+        {slot.count > 1 ? ` · ${slot.count}` : ""}
       </span>
     </button>
   );

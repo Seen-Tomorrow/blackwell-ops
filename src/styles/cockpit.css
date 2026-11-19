@@ -2699,31 +2699,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   min-width: 0;
 }
 
-/* Sits on the badge line, directly over the selected SPEC stop. */
-.loadout-rail__external {
-  position: absolute;
-  top: -0.42rem;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0 0.28rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-panel-accent) 70%, transparent);
-  color: var(--theme-text-muted);
-  font-size: var(--type-hairline);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.loadout-rail__external:hover {
-  color: var(--theme-accent-bright);
-  border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border));
-}
-
 .loadout-rail__external-icon {
   color: var(--theme-accent-bright);
   font-size: var(--type-hairline);
@@ -2745,14 +2720,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.4;
 }
 
-.loadout-swaps {
+.loadout-files {
   position: relative;
   /* Same band as the SPEC slider: badge line, role, thumb on the track, value below. */
   height: 3.7rem;
   min-width: 0;
 }
 
-.loadout-swaps__line {
+.loadout-files__line {
   position: absolute;
   left: 0;
   right: 0;
@@ -2847,14 +2822,20 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-shadow: 0 0 6px var(--theme-accent-glow);
 }
 
-.loadout-stop--role-engram .loadout-stop__value--on {
+.loadout-stop--tone-engram .loadout-stop__value--on {
   border-color: var(--fixed-amber-400);
   background: var(--fixed-amber-400);
 }
 
-.loadout-stop--role-mmproj .loadout-stop__value--on {
+.loadout-stop--tone-mmproj .loadout-stop__value--on {
   border-color: var(--fixed-cyan-400);
   background: var(--fixed-cyan-400);
+}
+
+/* Draft heads take the MTP green, the same accent the rail already uses for drafts. */
+.loadout-stop--tone-draft .loadout-stop__value--on {
+  border-color: var(--cockpit-mtp);
+  background: var(--cockpit-mtp);
 }
 
 .loadout-stop__state {

@@ -22,7 +22,7 @@ import {
   type ThinkOption,
 } from "../lib/multiAgentBooster";
 import CockpitCtxStrip from "./CockpitCtxStrip";
-import LoadoutRail from "./LoadoutRail";
+import LoadoutRail, { companionSlots, type LoadoutFileSlot } from "./LoadoutRail";
 import LoadoutPicker from "./LoadoutPicker";
 import CockpitSlider from "./CockpitSlider";
 import CockpitNavSegment from "./CockpitNavSegment";
@@ -368,6 +368,31 @@ export default function MultiAgentBooster({
   const canPickSpecFile =
     (displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark") &&
     Boolean(onChangeMtpDraft || onChangeDflashDraft);
+  // The DRAFT slot: the file affordance for the current mode. It shows what that mode
+  // will load and opens the same picker the companion slots use — the mode itself is
+  // only ever changed by the SPEC slider.
+  const draftHeadName = displayBoost === "mtp" ? mtpDraftLabel : dflashDraftLabel;
+  const draftFileSlot: LoadoutFileSlot | null = canPickSpecFile
+    ? {
+        id: "draft",
+        role: "DRAFT",
+        value: draftHeadName
+          ? (draftHeadName.split(/[\\/]/).pop() ?? draftHeadName).replace(/\.gguf$/i, "").slice(0, 14)
+          : displayBoost === "mtp" && mtpBakedIn
+            ? "built-in"
+            : "—",
+        state:
+          displayBoost === "mtp" && mtpBakedIn && !mtpDraftLabel
+            ? "BAKED-IN"
+            : draftHeadName
+              ? "LOADED"
+              : "MISSING",
+        tone: "draft",
+        active: true,
+        count: 1,
+        onOpen: (anchor) => setPickSlot({ role: null, anchor }),
+      }
+    : null;
 
   const externalDraftBoost =
     displayBoost === "dflash" || displayBoost === "dspark";
@@ -931,19 +956,16 @@ export default function MultiAgentBooster({
             row owns the independently attachable companions. */}
         <LoadoutRail
           specSlot={boostCell}
-          specLabel={boostRows.find(({ m }) => m.id === boostSliderValue)?.m.label}
-          specMarkPct={
-            boostRows.length > 1
-              ? Math.max(0, boostRows.findIndex(({ m }) => m.id === boostSliderValue)) /
-                (boostRows.length - 1)
-              : 0.5
-          }
-          canPickExternal={canPickSpecFile}
-          onPickExternal={(anchor) => setPickSlot({ role: null, anchor })}
+          slots={[
+            ...(draftFileSlot ? [draftFileSlot] : []),
+            ...companionSlots(
+              companionReport,
+              (role, anchor) => setPickSlot({ role, anchor }),
+              (role, candidate) => void setCompanion(role, candidate.path),
+            ),
+          ]}
           report={companionReport}
           busy={companionBusy}
-          onOpenSlot={(role, anchor) => setPickSlot({ role, anchor })}
-          onCycle={(role, candidate) => void setCompanion(role, candidate.path)}
         />
 
         {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
