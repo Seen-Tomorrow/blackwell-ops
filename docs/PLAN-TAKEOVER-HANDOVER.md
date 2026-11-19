@@ -100,6 +100,47 @@ The 27B and DSV4.1 are the two useful models: uniform-ish blocks vs blocks that 
    util next to the switch, so "takeover" is a decision with numbers, not a toggle.
 5. **Is the plan needed at all with one GPU?** Split none + one card means the plan only adds noise.
 
+## MoE expert placement — the second dimension (new in the 2026-11 engine)
+
+The engine now carries three merged upstream changes that make expert placement tunable, and none of
+them is wired into the app yet. This is the piece the plan/takeover review should absorb, because
+"where do the layers go" is no longer the whole placement question for a MoE model.
+
+| PR | what it does |
+|---|---|
+| [#31569](https://github.com/ggml-org/llama.cpp/pull/31569) | fit counted `n_layer+1` while the loader counted `n_layer_all+1`; on a multi-GPU layer split fit said "offloaded 65/66" and left layer 0 on the CPU. Fixed: skipped NextN layers now land in `n_gpu_layers` and the output device's split. **Our rebuilt engine includes it; a fit-on multi-card launch is one layer closer to the plan now.** |
+| [#30966](https://github.com/ggml-org/llama.cpp/pull/30966) | `llama_moe_cache`: missed experts can be **computed on the CPU** (`--moe-cache-cpu-share`) instead of uploaded, and `--moe-cache-mib` / `--moe-cache-cpu-share` became real knobs. Ships `scripts/moe-cache-tune.py`, which sweeps cache MiB × share and prints a recommendation. |
+| [#31233](https://github.com/ggml-org/llama.cpp/pull/31233) | Replaces the cache policy with ClassLRU (8 classes, decaying CRF), +6–7 % decode at the same cache size, and enables the cache's auto mode. |
+
+Measured by the user on a 16 GB 5070 Ti: **5 → ~100 t/s** by keeping some experts in VRAM instead of
+offloading all of them.
+
+### What this changes for the forecast
+
+- **VRAM need for a MoE model with the cache on** is `non-expert weights + KV + compute + moe_cache_mib`,
+  and the cache is **split across devices like the layers** (`--tensor-split`) per the flag's own help
+  text. The experts themselves stay in host RAM, so the cache is an extra VRAM copy — it does **not**
+  reduce `ramNeed`.
+- **"Spill" is no longer binary.** For MoE on a small card the honest verdict is a *recommendation*
+  ("cache 24 GiB of experts in VRAM, keep the rest on host") rather than FIT/SPILL. The tuned example
+  recommended `share 0` at 24 GiB because once the cache covers the working set the CPU share only
+  costs time.
+- **Parameters to wire, in this order:** template rows for `cpu_moe` (bool), `n_cpu_moe` (int,
+  per-layer experts), `moe_cache_mib` (int), `moe_cache_cpu_share` (0–1) — first the template (a CLI
+  key absent from the param list must not be invented), then the launch whitelist, then the forecast.
+- **Cache size heuristic (no sweep):** `cache = min(free − (weights + KV + compute), ~1.2 × single
+  token working set)`; below ~1.0× ClassLRU loses to the old policy, above ~1.2× it wins, so do not
+  recommend a token-sized cache.
+- **Do not model routing.** Hit rate is a workload property; the forecast owns the memory, the engine
+  owns the cache. The one number the forecast can honestly add is the cache cap.
+
+### Verify after the rebuild
+
+`llama-server --help` on our artifact must list `-cmoe/--cpu-moe`, `-ncmoe/--n-cpu-moe`,
+`--moe-cache-mib`, `--moe-cache-cpu-share` (build 12548 / `f8caa5ea3` does). Then one launch of a MoE
+model with `-cmoe --moe-cache-mib N` and check that VRAM ≈ non-expert + KV + compute + N in the memory
+log's `CORE` ledger, and that host still holds the full expert set.
+
 ## Landmines
 
 - `--fit` on WDDM is blind (budget). Never trust its "will leave N free".
