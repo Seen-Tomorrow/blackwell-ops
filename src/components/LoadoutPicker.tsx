@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { cachedInvoke } from "../lib/hfCache";
 import type { CompanionRole, CompanionSlot, RepoCompanion } from "../lib/types";
 
 export interface LocalFileRow {
@@ -73,7 +74,8 @@ export default function LoadoutPicker({
     if (!role) return;
     let alive = true;
     setRepoItems(null);
-    invoke<RepoCompanion[]>("repo_companions", { modelPath, role })
+    // Cached: slot-hopping re-lists the same repo, and anonymous HF calls are capped.
+    cachedInvoke<RepoCompanion[]>("repo_companions", { modelPath, role })
       .then((items) => {
         if (alive) setRepoItems(items);
       })
