@@ -964,6 +964,11 @@ export default function MultiAgentBooster({
                 : undefined
             }
             modelHubId={modelHubId}
+            laneKind={
+              displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark"
+                ? displayBoost
+                : null
+            }
             onPickDraftFile={(item) => {
               onPickRepoDraft?.(item);
               setPickSlot(null);

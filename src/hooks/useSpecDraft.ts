@@ -17,6 +17,7 @@ import {
 } from "../lib/dflashGetDraft";
 import {
   catalogDraftSignals,
+  draftRoleForSpecType,
   draftRoleFromModel,
   resolveDraftPathLabel,
   scoreDraftPair,
@@ -24,7 +25,11 @@ import {
   stageDraftPairing,
   type DraftRole,
 } from "../lib/specDraft";
-import { DFLASH_DRAFT_MODEL, MTP_DRAFT_MODEL } from "../lib/specProfiles";
+import {
+  DFLASH_DRAFT_MODEL,
+  MTP_DRAFT_MODEL,
+  cliSpecTypeForMethod,
+} from "../lib/specProfiles";
 import { adapterForMethod, cliTypeForMethod } from "../lib/spec/adapters";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { useDownloadTasks } from "./useDownloadTasks";
@@ -128,9 +133,25 @@ export function useSpecDraft({
     [model, models, config, speedBoost],
   );
 
+  /** The head kind the CURRENT lane accepts (mtp / dflash / eagle3). */
+  const laneDraftRole: DraftRole = useMemo(() => {
+    const specType =
+      speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
+        ? cliSpecTypeForMethod(speedBoost)
+        : null;
+    return (
+      (specType ? draftRoleForSpecType(specType) : null) ??
+      (speedBoost === "mtp" ? "external_mtp" : "external_dflash")
+    );
+  }, [speedBoost]);
+
   const buildLocalDflashPickItems = useCallback(
-    () => buildLocalPickItems("external_dflash", DFLASH_DRAFT_MODEL),
-    [buildLocalPickItems],
+    () =>
+      buildLocalPickItems(
+        laneDraftRole,
+        laneDraftRole === "external_mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL,
+      ),
+    [buildLocalPickItems, laneDraftRole],
   );
 
   /** A stale 429 from an earlier attempt must not greet the next open. */

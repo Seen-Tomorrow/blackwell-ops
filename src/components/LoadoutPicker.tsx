@@ -35,6 +35,8 @@ interface LoadoutPickerProps {
   modelPath: string;
   /** The model's own Hub repo id, so the DRAFT lane can list its repo like the Hub does. */
   modelHubId?: string;
+  /** Which head kind the current SPEC lane accepts (mtp / dflash / dspark). */
+  laneKind?: "mtp" | "dflash" | "dspark" | "eagle3" | null;
   /** A listed draft head the user picked: download + pin it. */
   onPickDraftFile?: (item: RepoCompanion) => void;
   onAttach: (role: CompanionRole, path: string) => void;
@@ -54,6 +56,7 @@ export default function LoadoutPicker({
   localRows,
   modelPath,
   modelHubId,
+  laneKind,
   onPickDraftFile,
   onAttach,
   onDetach,
@@ -68,6 +71,7 @@ export default function LoadoutPicker({
   const [hfRepoRows, setHfRepoRows] = useState<LocalFileRow[] | null>(null);
   const [hfRepoBusy, setHfRepoBusy] = useState(false);
   const [hfRepoError, setHfRepoError] = useState<string | null>(null);
+  const [hiddenHeads, setHiddenHeads] = useState<string[]>([]);
   // Hub quota countdown: while it runs, no button can spend a request and the reason is
   // visible, never a blinking error.
   const [cooldownMs, setCooldownMs] = useState(() => hfCooldownMs());
@@ -90,6 +94,25 @@ export default function LoadoutPicker({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  /**
+   * The head kind from the file's own name. This is reading a label the publisher
+   * already put there — not a guess, and not a ranking.
+   */
+  const headKindOf = (name: string): "mtp" | "dflash" | "dspark" | "eagle3" | "other" => {
+    if (/dspark/i.test(name)) return "dspark";
+    if (/dflash/i.test(name)) return "dflash";
+    if (/eagle/i.test(name)) return "eagle3";
+    if (/mtp/i.test(name)) return "mtp";
+    return "other";
+  };
+
+  /** Heads this lane can actually use. DSpark pairs through the DFlash slot. */
+  const acceptsKind = (kind: ReturnType<typeof headKindOf>): boolean => {
+    if (!laneKind || kind === "other") return true;
+    if (laneKind === "mtp") return kind === "mtp";
+    if (laneKind === "dspark") return kind === "dspark" || kind === "dflash";
+    return kind === "dflash" || kind === "dspark";
+  };
   /** List a pasted repo's files for this role — nothing downloads until a row is clicked. */
   const submitHfRepo = useCallback(
     async (modelId: string) => {
@@ -106,8 +129,18 @@ export default function LoadoutPicker({
         const items = role
           ? await invoke<RepoCompanion[]>("repo_companions_for", { modelId, role })
           : await invoke<RepoCompanion[]>("repo_draft_files", { modelId });
+        // A repo can mix head kinds; only the ones this lane can use are offered. The
+        // rest are counted so the list is never silently short.
+        const usable = items.filter(
+          (item) => role != null || acceptsKind(headKindOf(item.file_name)),
+        );
+        setHiddenHeads(
+          items.length - usable.length > 0
+            ? [...new Set(items.filter((i2) => !usable.includes(i2)).map((i2) => headKindOf(i2.file_name)))]
+            : [],
+        );
         setHfRepoRows(
-          items.map((item) => ({
+          usable.map((item) => ({
             key: `${item.repo_id}/${item.path_in_repo}`,
             quant: item.precision || "file",
             size: item.size_str,
