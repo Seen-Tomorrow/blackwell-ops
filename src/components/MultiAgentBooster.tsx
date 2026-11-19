@@ -316,32 +316,6 @@ export default function MultiAgentBooster({
     return s.startsWith("draft") || s.includes("draft");
   }, [specDetailParams.length, displayBoost, activeRawSpecType]);
 
-  const showDflashGet =
-    Boolean(onGetDflashDraft) &&
-    displayBoost === "dflash" &&
-    (plan.needsDflashDraft ||
-      !dflashLibraryReady ||
-      dflashGetState === "searching" ||
-      dflashGetState === "downloading" ||
-      dflashGetState === "error");
-
-  const showDflashChange =
-    Boolean(onChangeDflashDraft) &&
-    (displayBoost === "dspark"
-      || (displayBoost === "dflash" && dflashLibraryReady));
-
-  /**
-   * MTP head strip. Mirrors the DFlash shape: the row shows whether or not a head
-   * is already chosen, so the picker is reachable on a first run and not only
-   * after a head happens to be in config. Baked-in MTP is a property of the target
-   * and has nothing to choose — the engine builds the draft context from the target
-   * model itself — so that case reads `Baked-in` with no button.
-   */
-  const mtpHasHead = displayBoost === "mtp" && Boolean(mtpDraftLabel);
-  const showMtp = displayBoost === "mtp";
-  const showMtpChange = showMtp && Boolean(onChangeMtpDraft);
-  const showMtpBakedIn = showMtp && !mtpHasHead && mtpBakedIn;
-
   const mtpAvailable = capSet.has("mtp");
   /**
    * MTP is a manual lane, like DSpark: a baked-in target or a user-picked
@@ -571,133 +545,12 @@ export default function MultiAgentBooster({
         ? "dflash"
         : "neutral";
 
-  const showDraftStrip =
-    showDflashGet || showDflashChange || showMtp || showMtpBakedIn;
-  const showVioletStrip =
-    showDraftStrip || (showSpecExtra && specDetailParams.length > 0);
+  // The strip is SPEC-EXTRA only now: the draft-head status and Change draft moved out
+  // (the draft lane is being reworked in the LOADOUT picker work), which is what keeps
+  // this row to a single line instead of two lines plus a button.
+  const showVioletStrip = showSpecExtra && specDetailParams.length > 0;
 
-  const draftActions = showDraftStrip ? (
-    <div className="full-auto-cockpit__dflash-get-actions">
-      {showMtpChange ? (
-        <button
-          type="button"
-          className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
-          onClick={() => onChangeMtpDraft?.()}
-          title={
-            showMtpBakedIn
-              ? "Target already has a built-in MTP head. Pick an external MTP head only to override it."
-              : "Pick a different MTP head GGUF from your library"
-          }
-        >
-          {showMtpBakedIn ? "Override with external MTP" : "Change draft"}
-        </button>
-      ) : null}
-      {showDflashChange ? (
-        <button
-          type="button"
-          className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
-          onClick={() => onChangeDflashDraft?.()}
-          title={
-            displayBoost === "dspark"
-              ? "Pick DSpark draft GGUF from your library"
-              : "Pick a different DFlash draft from your library"
-          }
-        >
-          Change draft
-        </button>
-      ) : null}
-      {showDflashGet ? (
-        <button
-          type="button"
-          className="full-auto-cockpit__dflash-get-btn"
-          disabled={
-            !onGetDflashDraft ||
-            dflashGetState === "searching" ||
-            dflashGetState === "downloading"
-          }
-          onClick={() => onGetDflashDraft?.()}
-          title="Search Hugging Face for DFlash drafts — you confirm before download"
-        >
-          {dflashGetState === "searching"
-            ? "Searching…"
-            : dflashGetState === "downloading"
-              ? "Downloading…"
-              : dflashGetState === "error"
-                ? "Retry Get draft"
-                : "Get draft"}
-        </button>
-      ) : null}
-    </div>
-  ) : null;
 
-  const draftStripInner = showDraftStrip ? (
-    <>
-      <div className="full-auto-cockpit__dflash-get-main min-w-0 flex-1">
-        {showDflashGet ? (
-          <>
-            <div className="full-auto-cockpit__dflash-get-line">
-              {dflashGetState === "searching"
-                ? "Searching HF for matching drafts…"
-                : dflashGetState === "downloading"
-                  ? "Downloading draft…"
-                  : dflashGetState === "error"
-                    ? dflashGetError || "No DFlash draft found"
-                    : "DFlash needs a draft model in your library"}
-            </div>
-            {dflashGetState === "downloading" && dflashGetOfferLabel ? (
-              <div className="full-auto-cockpit__dflash-get-name" title={dflashGetOfferLabel}>
-                {dflashGetOfferLabel}
-              </div>
-            ) : dflashGetState === "idle" || dflashGetState === "error" ? (
-              <div className="full-auto-cockpit__dflash-get-sub">Confirm pack to download</div>
-            ) : null}
-          </>
-        ) : showMtpBakedIn ? (
-          <>
-            <div className="full-auto-cockpit__dflash-get-line">MTP head</div>
-            <div className="full-auto-cockpit__dflash-get-name">Baked-in</div>
-          </>
-        ) : displayBoost === "mtp" && !mtpDraftLabel ? (
-          <>
-            <div className="full-auto-cockpit__dflash-get-line">
-              MTP needs a head in your library
-            </div>
-            <div className="full-auto-cockpit__dflash-get-sub">
-              Pick MTP draft via Change draft
-            </div>
-          </>
-        ) : displayBoost === "dspark" && !dflashLibraryReady && !dflashDraftLabel ? (
-          <>
-            <div className="full-auto-cockpit__dflash-get-line">
-              DSpark needs a draft GGUF
-            </div>
-            <div className="full-auto-cockpit__dflash-get-sub">
-              Pick dspark-*.gguf via Change draft
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="full-auto-cockpit__dflash-get-line">
-              {displayBoost === "dspark"
-                ? "DSpark draft"
-                : displayBoost === "mtp"
-                  ? "MTP head"
-                  : "Paired draft"}
-            </div>
-            <div
-              className="full-auto-cockpit__dflash-get-name"
-              title={
-                (displayBoost === "mtp" ? mtpDraftLabel : dflashDraftLabel) ?? undefined
-              }
-            >
-              {(displayBoost === "mtp" ? mtpDraftLabel : dflashDraftLabel) || "—"}
-            </div>
-          </>
-        )}
-      </div>
-      {draftActions}
-    </>
-  ) : null;
 
   const specExtraValueCount = specDetailParams.reduce(
     (count, param) => count + param.values.length,
@@ -764,20 +617,7 @@ export default function MultiAgentBooster({
       className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1 full-auto-cockpit__dflash-get--spec-extra`}
       style={{ maxWidth: "none", width: "100%", flexWrap: "nowrap", overflowX: "auto" }}
     >
-      {draftStripInner && specExtraInline ? (
-        <>
-          {specExtraInline}
-          <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
-            |
-          </span>
-          {draftStripInner}
-        </>
-      ) : (
-        <>
-          {draftStripInner}
-          {specExtraInline}
-        </>
-      )}
+      {specExtraInline}
     </div>
   ) : null;
 
