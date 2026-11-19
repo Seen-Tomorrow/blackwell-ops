@@ -2748,7 +2748,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .loadout-stop:disabled { opacity: 0.45; cursor: default; }
 
 /* Badge line: the same "external" affordance the SPEC half carries. */
-.loadout-stop:hover /* Role word: same voice and same line as the slider's above-mark label. */
+/* Role word: same voice and same line as the slider's above-mark label. */
 .loadout-stop__role {
   position: absolute;
   top: 0.62rem;
