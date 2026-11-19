@@ -3285,6 +3285,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dflashLibraryReady={dflashLibraryReady}
           dflashGettable={dflashGettable}
           dflashDraftLabel={dflashDraftLabel}
+          dflashDraftPath={currentDraftPath}
           dflashGetState={dflashGetState}
           dflashGetError={dflashGetError}
           dflashGetOfferLabel={dflashGetOfferLabel}
@@ -3293,6 +3294,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dflashSampling={config.dflash_sampling === "probabilistic" ? "probabilistic" : "greedy"}
           onDflashSampling={(sampling) => updateParam("dflash_sampling", sampling)}
           mtpDraftLabel={mtpDraftLabel}
+          mtpDraftPath={mtpDraftPath}
           mtpBakedIn={mtpBakedIn}
           onChangeMtpDraft={handleChangeMtpDraft}
           specFileRows={specLocalFileRows}

@@ -53,6 +53,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
   specFileBusy = false,
   specFileError = null,
   onResolveSpecHf,
+  dflashDraftPath = null,
+  mtpDraftPath = null,
   specRemoteOffers = [],
   onPickSpecRemote,
   onSearchSpecRemote,
@@ -135,6 +137,8 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         specFileBusy={specFileBusy}
         specFileError={specFileError}
         onResolveSpecHf={onResolveSpecHf}
+        dflashDraftPath={dflashDraftPath}
+        mtpDraftPath={mtpDraftPath}
         specRemoteOffers={specRemoteOffers}
         onPickSpecRemote={onPickSpecRemote}
         onSearchSpecRemote={onSearchSpecRemote}
@@ -225,6 +229,9 @@ export interface EngineBoostSectionProps {
   specFileBusy?: boolean;
   specFileError?: string | null;
   onResolveSpecHf?: (id: string) => void;
+  /** Absolute draft head paths, so the picker can mark the landed one. */
+  dflashDraftPath?: string | null;
+  mtpDraftPath?: string | null;
   /** HF draft packs found for the active lane. */
   specRemoteOffers?: DflashDraftOffer[];
   onPickSpecRemote?: (offer: DflashDraftOffer) => void;

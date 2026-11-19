@@ -182,7 +182,7 @@ export default function LoadoutPicker({
           </button>
         </div>
 
-        <div className={`gp-panel__cols${role ? "" : " gp-panel__cols--single"}`}>
+        <div className="gp-panel__cols">
           <div className="gp-col">
             <span className="gp-col__label font-mono">LOCAL {localList.length || ""}</span>
             <div className="gp-col__rows">

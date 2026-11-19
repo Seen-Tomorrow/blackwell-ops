@@ -3063,10 +3063,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   min-height: 0;
 }
 
-/* Draft lane has no remote source, so its local list gets the whole width. */
-.gp-panel__cols--single {
-  grid-template-columns: minmax(0, 1fr);
-}
 
 .gp-col {
   display: flex;

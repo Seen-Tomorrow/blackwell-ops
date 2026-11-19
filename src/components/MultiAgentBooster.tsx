@@ -91,6 +91,9 @@ export interface MultiAgentBoosterProps {
   specFileBusy?: boolean;
   specFileError?: string | null;
   onResolveSpecHf?: (id: string) => void;
+  /** Absolute draft head paths, so the picker can mark the landed one. */
+  dflashDraftPath?: string | null;
+  mtpDraftPath?: string | null;
   specRemoteOffers?: DflashDraftOffer[];
   onPickSpecRemote?: (offer: DflashDraftOffer) => void;
   onSearchSpecRemote?: () => void;
@@ -205,6 +208,8 @@ export default function MultiAgentBooster({
   specFileBusy = false,
   specFileError = null,
   onResolveSpecHf,
+  dflashDraftPath = null,
+  mtpDraftPath = null,
   specRemoteOffers = [],
   onPickSpecRemote,
   onSearchSpecRemote,
@@ -379,6 +384,7 @@ export default function MultiAgentBooster({
   // will load and opens the same picker the companion slots use — the mode itself is
   // only ever changed by the SPEC slider.
   const draftHeadName = displayBoost === "mtp" ? mtpDraftLabel : dflashDraftLabel;
+  const draftHeadPath = displayBoost === "mtp" ? mtpDraftPath : dflashDraftPath;
   const draftFileSlot: LoadoutFileSlot | null = canPickSpecFile
     ? {
         id: "draft",
@@ -390,12 +396,21 @@ export default function MultiAgentBooster({
           const quant = base.match(/(IQ\d[_A-Z0-9]*|Q\d[_A-Z0-9]*|BF16|F16|FP8|F8)/i);
           return quant?.[0].toUpperCase() ?? "FILE";
         })(),
-        state:
-          displayBoost === "mtp" && mtpBakedIn && !mtpDraftLabel
-            ? "BAKED-IN"
-            : draftHeadName
-              ? "LOADED"
-              : "MISSING",
+        // The state slot carries the model name, so the stop reads quant + name together.
+        state: (() => {
+          if (!draftHeadName) {
+            return displayBoost === "mtp" && mtpBakedIn ? "BAKED-IN" : "MISSING";
+          }
+          const base = (draftHeadName.split(/[\\/]/).pop() ?? draftHeadName).replace(
+            /\.gguf$/i,
+            "",
+          );
+          const stripped = base
+            .replace(/(IQ\d[_A-Z0-9]*|Q\d[_A-Z0-9]*|BF16|F16|FP8|F8)/i, "")
+            .replace(/[-_.]+/g, " ")
+            .trim();
+          return (stripped || base).slice(0, 20);
+        })(),
         tone: "draft",
         active: true,
         count: 1,
@@ -950,7 +965,7 @@ export default function MultiAgentBooster({
                       size: parts.find((p) => /(GB|MB|KB)$/i.test(p)) ?? "—",
                       name: row.title,
                       // The landed head is the one that will launch: mark it.
-                      active: Boolean(draftHeadName) && row.id === draftHeadName,
+                      active: Boolean(draftHeadPath) && row.id === draftHeadPath,
                       onPick: () => {
                         onPickSpecFile?.(row.id);
                         setPickSlot(null);
