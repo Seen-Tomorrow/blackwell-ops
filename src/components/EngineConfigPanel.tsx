@@ -1468,6 +1468,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           declared: model.declaredShards ?? 0,
         }
       : null;
+  /** Drafts, attachments and interrupted sets cannot launch: no cockpit for them at all. */
+  const modelIsNonLaunchable =
+    modelIsDraftOnly || modelIsAttachment || modelIncomplete != null;
 
   const activeSpecType = cliSpecTypeForMethod(specBoostMethod) ?? undefined;
   const specNeedsExternalDraft =
@@ -3165,6 +3168,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         params column below keeps the main-column class.
       */}
       <div className="config-panel-center flex flex-col flex-shrink-0 min-h-0 min-w-0">
+      {!modelIsNonLaunchable && (
       <EngineToolbar
         fullAutoFixed={fullAutoFixed}
         configView={configView}
@@ -3198,6 +3202,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           setServiceOpen(true);
         }}
       />
+      )}
       </div>
 
       {hwBelowDisplay && (
@@ -3341,7 +3346,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onAutoFix={fullAutoFixed ? () => { void handleAutoFit(); } : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
-        {!(model && !modelIsDraftOnly && !modelIsAttachment && !modelIncomplete && showCockpitSurface) && (
+        {!modelIsNonLaunchable && !(model && !modelIsDraftOnly && !modelIsAttachment && !modelIncomplete && showCockpitSurface) && (
           <CockpitInstruments
             defs={allParamsResolved}
             config={config}
@@ -3355,7 +3360,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
         {/* PRE-FLIGHT — resolved machine state, not a form. */}
-        {!fullAutoFixed && (
+        {!fullAutoFixed && !modelIsNonLaunchable && (
           <PreflightStrip
             templateVersion={currentProvider?.templateVersion}
             ctxLabel={ctxNumericForStrip > 0 ? formatTokenLabel(ctxNumericForStrip) : "—"}
@@ -3381,7 +3386,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         )}
 
         {/* USER'S EXTRA — closed by default; every remaining param + catalog additions. */}
-        {!fullAutoFixed && serviceOpen && (
+        {!fullAutoFixed && serviceOpen && !modelIsNonLaunchable && (
           <div className={paramsBypassedClass}>
             <div className="service-bay">
               <div className="service-bay__bar">
