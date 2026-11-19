@@ -85,6 +85,15 @@ export default function LoadoutPicker({
     };
   }, [modelPath, role]);
 
+  // Same behaviour as the companion lanes: ask for remote rows as soon as it opens,
+  // so there is no "manual button" only drafts have.
+  useEffect(() => {
+    if (!onSearchRemote || (remoteRows?.length ?? 0) > 0) return;
+    onSearchRemote();
+    // Only on mount / lane change — remoteRows becoming non-empty must not re-fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSearchRemote]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -235,15 +244,7 @@ export default function LoadoutPicker({
                   </button>
                 ))
               )}
-              {onSearchRemote ? (
-                <button
-                  type="button"
-                  className="gp-more font-mono"
-                  onClick={onSearchRemote}
-                >
-                  SEARCH HF
-                </button>
-              ) : null}
+
             </div>
           </div>
         </div>

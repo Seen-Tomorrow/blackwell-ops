@@ -591,15 +591,16 @@ function pickDflashQuant(files: GgufFile[], main: ModelEntry): GgufFile | null {
   if (!files.length) return null;
   // Never offer full-size mains as "draft" (15GB Q4 of 27B, etc.), and never offer a
   // swap piece / sidecar — those are not launchable heads even when they are small.
-  const usable = files.filter(
-    (f) =>
-      (f.role ?? 'quant') !== 'swap' &&
-      (f.role ?? 'quant') !== 'aux' &&
-      (f.role ?? 'quant') !== 'extra' &&
-      f.url?.trim() &&
-      f.size_bytes > 0 &&
-      f.size_bytes <= DFLASH_DRAFT_MAX_FILE_BYTES,
-  );
+  const usable = files.filter((f) => {
+    const role = f.role ?? 'quant';
+    if (role === 'swap' || role === 'aux' || role === 'extra') return false;
+    if (!f.url?.trim() || f.size_bytes <= 0) return false;
+    // The catalog already classified this as a draft head — that beats any size guess.
+    // The cap exists only to stop a full main being mistaken for a draft, and it has to
+    // scale with the model: a 233GB main's DFlash head is 7.9GB, well over the 6GiB cap.
+    if (role === 'draft') return true;
+    return f.size_bytes <= DFLASH_DRAFT_MAX_FILE_BYTES;
+  });
   if (!usable.length) return null;
 
   // A repo that ships its own draft head (`dspark/`) is the best possible match.
