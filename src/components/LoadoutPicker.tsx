@@ -23,6 +23,8 @@ export interface LocalFileRow {
   name: string;
   active?: boolean;
   disabled?: boolean;
+  /** Optional kind chip (DFLASH / DSPARK / MTP) shown at the row end. */
+  tag?: string;
   onPick: () => void;
 }
 
@@ -313,6 +315,7 @@ export default function LoadoutPicker({
                   <span className="gp-row__quant font-mono">{row.quant}</span>
                   <span className="gp-row__size font-mono">{row.size}</span>
                   <span className="gp-row__name font-mono">{row.name}</span>
+                  {row.tag ? <span className="gp-row__tag font-mono">{row.tag}</span> : null}
                 </button>
               ))}
               {localList.length === 0 ? (

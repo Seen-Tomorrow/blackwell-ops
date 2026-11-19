@@ -953,6 +953,16 @@ export default function MultiAgentBooster({
                         "—",
                       size: parts.find((p) => /(GB|MB|KB)$/i.test(p)) ?? "—",
                       name: row.title,
+                      // Which kind of head this is, from its own name. The lane accepts a
+                      // family (DFlash + DSpark), so a DSPARK row inside the DFLASH lane is
+                      // correct but confusing without the label.
+                      tag: /dspark/i.test(row.title)
+                        ? "DSPARK"
+                        : /dflash/i.test(row.title)
+                          ? "DFLASH"
+                          : /mtp/i.test(row.title)
+                            ? "MTP"
+                            : undefined,
                       // The landed head is the one that will launch: mark it.
                       active: Boolean(draftHeadPath) && row.id === draftHeadPath,
                       onPick: () => {
