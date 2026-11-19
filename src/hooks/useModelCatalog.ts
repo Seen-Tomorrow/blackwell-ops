@@ -20,6 +20,7 @@ import {
   isExternalDraftOnly,
   isAttachmentModel,
   isLaunchableMain,
+  isUnclassifiedModel,
   matchesCatalogDraftFilter,
 } from "../lib/specDraft";
 import {
@@ -665,9 +666,15 @@ export function useModelCatalog({
   // MAIN = launchable model rows; EXTRAS = every companion (attachments + draft heads);
   // ALL = the whole library, models and companions together (debug view).
   const kindRows = useMemo(() => {
+    // Unclassified files carry no recognisable header: they cannot be launched, so they
+    // belong with the extras rather than in MAIN — and they must stay visible as cards
+    // instead of vanishing behind a counter.
+    const unknownRows = models.filter((m) => isUnclassifiedModel(m));
     const draftRows = models.filter((m) => isExternalDraftOnly(m));
-    const mainRows = models.filter((m) => !isExternalDraftOnly(m) && !isAttachmentModel(m));
-    return { mainRows, draftRows, extrasRows: extras.map(extraAsModel) };
+    const mainRows = models.filter(
+      (m) => !isExternalDraftOnly(m) && !isAttachmentModel(m) && !isUnclassifiedModel(m),
+    );
+    return { mainRows, draftRows, unknownRows, extrasRows: [...extras.map(extraAsModel), ...unknownRows] };
   }, [models, extras]);
 
   const kindCounts = useMemo(
@@ -688,7 +695,9 @@ export function useModelCatalog({
       draftFilter === "extras"
         ? [...extrasRows, ...draftRows]
         : draftFilter === "all"
-          ? [...models, ...extrasRows]
+          ? // ALL is models + companion files. Unknown rows are already in `models`, and
+            // `extrasRows` carries them for the EXTRAS filter — do not add them twice.
+            [...models, ...extras.map(extraAsModel)]
           : mainRows;
     let sorted = [...pool].sort((a, b) =>
       compareCatalogModels(a, b, sortField, sortDirection),

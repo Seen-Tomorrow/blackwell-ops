@@ -315,8 +315,15 @@ export function draftRoleFromModel(
 }
 
 export function isExternalDraftOnly(
-  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
+  model: Pick<
+    ModelEntry,
+    "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "fileRole"
+  >,
 ): boolean {
+  // A file the catalog classified as a draft head is a draft wherever it lives — the
+  // path/name hints miss heads that sit in the extras store with no model dir around
+  // them, which put them in MAIN.
+  if (model.fileRole === "draft") return true;
   const role = draftRoleFromModel(model);
   return role === "external_dflash" || role === "external_eagle3" || role === "external_mtp";
 }

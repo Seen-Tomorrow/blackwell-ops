@@ -358,12 +358,25 @@ pub async fn list_models(
     // <default>/model_EXTRAS/draft is a catalog entry like any other, so the DRAFT
     // picker sees it, while its mmproj/ple siblings classify as attachments and land in
     // the extras pool. One catalog, no second index.
+    // The extras store usually lives INSIDE a library (the default
+    // <library>/model_EXTRAS), and libraries are walked recursively — adding it again
+    // indexed every extras file twice. Only scan it separately when it is actually
+    // outside every configured library.
+    let norm = |raw: &str| raw.replace('/', "\\").trim_end_matches('\\').to_lowercase();
     let mut paths_for_scan = paths.clone();
     for entry in &extras_roots {
-        if entry.path.trim().is_empty() {
+        let candidate = norm(&entry.path);
+        if candidate.is_empty() {
             continue;
         }
-        if !paths_for_scan.iter().any(|p| p.path == entry.path) {
+        let covered = paths
+            .iter()
+            .map(|p| norm(&p.path))
+            .any(|lib| candidate == lib || candidate.starts_with(&format!("{lib}\\")));
+        if covered {
+            continue;
+        }
+        if !paths_for_scan.iter().any(|p| norm(&p.path) == candidate) {
             paths_for_scan.push(entry.clone());
         }
     }
