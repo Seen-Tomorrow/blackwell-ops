@@ -484,7 +484,33 @@ pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
 }
 
 /// Resolved extras roots — the shared store for drafts, projectors and PLE tables.
+/// Where a SWAP download lands when the user has not configured a store of their own:
+/// `<default model path>/model_EXTRAS`, created lazily by the download that needs it.
+/// Deliberately under the DEFAULT path only — one canonical tree, never scattered across
+/// the other library roots.
+pub fn default_extras_dir(config: &AppConfig) -> Option<PathBuf> {
+    let base = get_default_download_path(config);
+    if base.trim().is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(base).join(EXTRAS_DIR_NAME))
+}
+
+pub const EXTRAS_DIR_NAME: &str = "model_EXTRAS";
+
+/// The extras store: the user's own paths when set, else the default one.
 pub fn get_extras_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
+    if config.extras_paths.is_empty() {
+        return default_extras_dir(config)
+            .map(|path| {
+                vec![ModelPathEntry {
+                    path: path.to_string_lossy().to_string(),
+                    label: EXTRAS_DIR_NAME.to_string(),
+                    is_default: false,
+                }]
+            })
+            .unwrap_or_default();
+    }
     config
         .extras_paths
         .iter()
@@ -494,6 +520,39 @@ pub fn get_extras_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
             is_default: false,
         })
         .collect()
+}
+
+/// Destination file for a SWAP download:
+/// `<extras>/<role>/<author>__<repo>__<basename>`.
+pub fn build_extras_dest_path(
+    config: &AppConfig,
+    role: &str,
+    hf_model_id: &str,
+    path_in_repo: &str,
+) -> Result<String, String> {
+    validate_hf_model_id(hf_model_id)?;
+    let repo_path = path_in_repo.trim().replace('\\', "/");
+    if repo_path.is_empty() || repo_path.contains("..") {
+        return Err("Invalid repo path".to_string());
+    }
+    let dir = extras_dir_for(config, role)
+        .ok_or_else(|| "No extras directory configured".to_string())?;
+    let author = hf_model_id.split('/').next().unwrap_or("");
+    let repo = hf_model_id.split('/').nth(1).unwrap_or("");
+    let base = repo_path.rsplit('/').next().unwrap_or(&repo_path);
+    Ok(dir
+        .join(format!("{author}__{repo}__{base}"))
+        .to_string_lossy()
+        .to_string())
+}
+/// Destination directory for a SWAP download of `role` (draft / mmproj / engram).
+pub fn extras_dir_for(config: &AppConfig, role: &str) -> Option<PathBuf> {
+    let root = get_extras_paths(config).into_iter().next()?;
+    let root = root.path;
+    if root.trim().is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(root).join(role))
 }
 
 pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String>) {

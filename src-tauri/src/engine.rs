@@ -326,9 +326,12 @@ pub async fn list_models(
     downloads: tauri::State<'_, Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<crate::types::CatalogScanReport, String> {
-    let paths = {
+    let (paths, extras_roots) = {
         let cfg = config.lock().map_err(|e| e.to_string())?;
-        crate::config::get_model_paths(&cfg)
+        (
+            crate::config::get_model_paths(&cfg),
+            crate::config::get_extras_paths(&cfg),
+        )
     };
 
     if paths.is_empty() {
@@ -351,8 +354,24 @@ pub async fn list_models(
     };
 
     let t0 = std::time::Instant::now();
-    log::info!("[list_models] start ({} path(s))", paths.len());
-    let paths_for_scan = paths.clone();
+    // The extras store is scanned with the library: a draft head downloaded into
+    // <default>/model_EXTRAS/draft is a catalog entry like any other, so the DRAFT
+    // picker sees it, while its mmproj/ple siblings classify as attachments and land in
+    // the extras pool. One catalog, no second index.
+    let mut paths_for_scan = paths.clone();
+    for entry in &extras_roots {
+        if entry.path.trim().is_empty() {
+            continue;
+        }
+        if !paths_for_scan.iter().any(|p| p.path == entry.path) {
+            paths_for_scan.push(entry.clone());
+        }
+    }
+    log::info!(
+        "[list_models] start ({} path(s), {} extras root(s))",
+        paths.len(),
+        extras_roots.len()
+    );
     let (entries, path_scans, _conflicts) = tokio::task::spawn_blocking(move || {
         // Diagnostics first — a directory walk with no metadata work — so the
         // report can still name a path that contributed nothing.

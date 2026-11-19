@@ -101,19 +101,24 @@ pub async fn download_companion(
 
     let dest_path = {
         let cfg = app_config.lock().map_err(|e| e.to_string())?;
-        let extras = crate::config::get_extras_paths(&cfg);
-        let dest_dir = extras
-            .first()
-            .map(|entry| std::path::PathBuf::from(&entry.path))
+        // SWAP files keep to one shape: <extras>/<role>/<author>__<repo>__<file>.
+        // The prefix carries provenance (which Hub repo it came from) so two repos that
+        // ship the same file name cannot collide in a flat role directory.
+        let dest_dir = crate::config::extras_dir_for(&cfg, &role)
             .or_else(|| {
                 std::path::Path::new(&model_path)
                     .parent()
-                    .map(|parent| parent.to_path_buf())
+                    .map(|parent| parent.join(crate::config::EXTRAS_DIR_NAME).join(&role))
             })
             .ok_or_else(|| "No destination for the companion download".to_string())?;
         std::fs::create_dir_all(&dest_dir)
             .map_err(|e| format!("Failed to create {}: {e}", dest_dir.display()))?;
-        let dest = dest_dir.join(&file_name).to_string_lossy().to_string();
+        let author = repo_id.split('/').next().unwrap_or("");
+        let repo = repo_id.split('/').nth(1).unwrap_or("");
+        let dest = dest_dir
+            .join(format!("{author}__{repo}__{file_name}"))
+            .to_string_lossy()
+            .to_string();
         crate::config::validate_download_dest(&dest, &cfg)?;
         dest
     };
@@ -187,8 +192,16 @@ pub async fn start_quant_download(
 
     let mut batch_parts: Vec<crate::types::QuantBatchPart> = Vec::with_capacity(parts.len());
     for part in &parts {
-        let dest_path =
-            crate::config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?;
+        // A draft head is a SWAP file, not a model: it belongs in the extras store with
+        // the rest of them, never beside the launchable quants.
+        let dest_path = {
+            let cfg = app_config.lock().map_err(|e| e.to_string())?;
+            if gguf_file.role == crate::types::GgufRole::Draft {
+                crate::config::build_extras_dest_path(&cfg, "draft", &hf_model_id, &part.path_in_repo)?
+            } else {
+                crate::config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?
+            }
+        };
         {
             let cfg = app_config.lock().map_err(|e| e.to_string())?;
             crate::config::validate_download_dest(&dest_path, &cfg)?;
@@ -245,8 +258,16 @@ pub async fn start_quant_download(
     };
 
     for part in parts {
-        let dest_path =
-            crate::config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?;
+        // A draft head is a SWAP file, not a model: it belongs in the extras store with
+        // the rest of them, never beside the launchable quants.
+        let dest_path = {
+            let cfg = app_config.lock().map_err(|e| e.to_string())?;
+            if gguf_file.role == crate::types::GgufRole::Draft {
+                crate::config::build_extras_dest_path(&cfg, "draft", &hf_model_id, &part.path_in_repo)?
+            } else {
+                crate::config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?
+            }
+        };
 
         if crate::config::quant_part_already_downloaded(&dest_path, part.size_bytes, &part.lfs_oid) {
             skipped_complete += 1;
