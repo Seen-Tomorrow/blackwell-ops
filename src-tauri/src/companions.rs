@@ -940,7 +940,10 @@ pub async fn repo_companions(
     let repo_id = repo_id_for(&model_path)
         .and_then(|id| normalize_repo_id(&id))
         .ok_or_else(|| format!("no Hub repo for '{model_path}'"))?;
-    let files = crate::hf_api::list_repo_gguf_files(&repo_id, None).await?;
+    // Same token path as every other Hub read: without it this listing ran anonymously
+    // while the rest of the app authenticated, which is how the picker burned the quota.
+    let hf_token = crate::secrets::get_secret("hf_token")?;
+    let files = crate::hf_api::list_repo_gguf_files(&repo_id, hf_token.as_deref()).await?;
     let mut out = Vec::new();
     for file in files {
         // Multi-shard weights are not companions; only single files make sense here.
