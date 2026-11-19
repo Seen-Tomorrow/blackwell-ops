@@ -68,6 +68,10 @@ export default function LoadoutPicker({
   const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteRequested, setRemoteRequested] = useState(false);
+  // Rows from a repo the user pasted in the HF-ID field (companion lanes).
+  const [hfRepoRows, setHfRepoRows] = useState<LocalFileRow[] | null>(null);
+  const [hfRepoBusy, setHfRepoBusy] = useState(false);
+  const [hfRepoError, setHfRepoError] = useState<string | null>(null);
   // Hub quota countdown: while it runs, no button can spend a request and the reason is
   // visible, never a blinking error.
   const [cooldownMs, setCooldownMs] = useState(() => hfCooldownMs());
@@ -111,7 +115,42 @@ export default function LoadoutPicker({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const download = async (item: RepoCompanion) => {
+  /** List a pasted repo's files for this role — nothing downloads until a row is clicked. */
+  const submitHfRepo = useCallback(
+    async (modelId: string) => {
+      if (!role) return;
+      const cool = hfCooldownMs();
+      if (cool > 0) {
+        setHfRepoError(`Hub quota reached — retry in ${Math.ceil(cool / 60000)} min`);
+        return;
+      }
+      setHfRepoBusy(true);
+      setHfRepoError(null);
+      try {
+        const items = await invoke<RepoCompanion[]>("repo_companions_for", {
+          modelId,
+          role,
+        });
+        setHfRepoRows(
+          items.map((item) => ({
+            key: `${item.repo_id}/${item.path_in_repo}`,
+            quant: item.precision || "file",
+            size: item.size_str,
+            name: item.file_name,
+            onPick: () => void downloadRow(item),
+          })),
+        );
+        setRemoteRequested(true);
+      } catch (err) {
+        noteHfError(err);
+        setHfRepoError(typeof err === "string" ? err : "Could not read that repo");
+      } finally {
+        setHfRepoBusy(false);
+      }
+    },
+    [role],
+  );
+  const downloadRow = async (item: RepoCompanion) => {
     if (!role) return;
     setBusy(item.path_in_repo);
     try {
@@ -154,15 +193,35 @@ export default function LoadoutPicker({
       : [];
 
   // No cap: the column scrolls, so a big library is never truncated into a "show more".
-  const remoteList: LocalFileRow[] = remoteRows
-    ? remoteRows
-    : (repoItems ?? []).map((item) => ({
-        key: item.path_in_repo,
-        quant: item.precision || "file",
-        size: item.size_str,
-        name: item.file_name,
-        onPick: () => void download(item),
-      }));
+  const remoteList: LocalFileRow[] =
+    hfRepoRows ??
+    (remoteRows
+      ? remoteRows
+      : (repoItems ?? []).map((item) => ({
+          key: item.path_in_repo,
+          quant: item.precision || "file",
+          size: item.size_str,
+          name: item.file_name,
+          onPick: () => void downloadRow(item),
+        })));
+
+  /**
+   * The HF-ID row is the same control on all three lanes: the draft lane hands it to the
+   * caller's resolver (which downloads into the draft slot), the companion lanes list the
+   * pasted repo here and download on a row click.
+   */
+  const hfRow =
+    hfInput ??
+    (role
+      ? {
+          placeholder: "author/model",
+          busy: hfRepoBusy,
+          error: hfRepoError,
+          onSubmit: (id: string) => {
+            void submitHfRepo(id);
+          },
+        }
+      : undefined);
 
   return (
     <div className="gp-scrim" onClick={onClose}>
@@ -278,28 +337,28 @@ export default function LoadoutPicker({
           </div>
         </div>
 
-        {hfInput ? (
+        {hfRow ? (
           <div className="gp-panel__hf">
             <span className="gp-col__label font-mono">HF ID</span>
             <input
               className="gp-hf__input font-mono"
               value={hfValue}
-              placeholder={hfInput.placeholder}
+              placeholder={hfRow.placeholder}
               onChange={(e) => setHfValue(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && hfValue.trim()) hfInput.onSubmit(hfValue.trim());
+                if (e.key === "Enter" && hfValue.trim()) hfRow.onSubmit(hfValue.trim());
               }}
             />
             <button
               type="button"
               className="gp-hf__go font-mono"
-              disabled={hfInput.busy || !hfValue.trim()}
-              onClick={() => hfInput.onSubmit(hfValue.trim())}
+              disabled={hfRow.busy || !hfValue.trim()}
+              onClick={() => hfRow.onSubmit(hfValue.trim())}
             >
-              {hfInput.busy ? "…" : "RESOLVE"}
+              {hfRow.busy ? "…" : "RESOLVE"}
             </button>
-            {hfInput.error ? (
-              <span className="gp-empty font-mono">{hfInput.error}</span>
+            {hfRow.error ? (
+              <span className="gp-empty font-mono">{hfRow.error}</span>
             ) : null}
           </div>
         ) : null}

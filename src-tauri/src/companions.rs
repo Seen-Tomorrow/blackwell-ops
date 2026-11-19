@@ -931,15 +931,11 @@ fn repo_file_matches(role: CompanionRole, file: &crate::types::GgufFile) -> bool
 
 /// Companions for one role that the model's Hub repo publishes — offered in the
 /// LOADOUT picker, downloaded only on an explicit click.
-#[tauri::command]
-pub async fn repo_companions(
-    model_path: String,
-    role: String,
+/// Files one role's companion may be taken from, for one explicitly named Hub repo.
+async fn list_repo_companions(
+    repo_id: &str,
+    role: CompanionRole,
 ) -> Result<Vec<RepoCompanion>, String> {
-    let role = parse_role(&role)?;
-    let repo_id = repo_id_for(&model_path)
-        .and_then(|id| normalize_repo_id(&id))
-        .ok_or_else(|| format!("no Hub repo for '{model_path}'"))?;
     // Same token path as every other Hub read: without it this listing ran anonymously
     // while the rest of the app authenticated, which is how the picker burned the quota.
     let hf_token = crate::secrets::get_secret("hf_token")?;
@@ -958,7 +954,7 @@ pub async fn repo_companions(
         };
         let precision = crate::model_catalog::extract_quant(&file_name);
         out.push(RepoCompanion {
-            repo_id: repo_id.clone(),
+            repo_id: repo_id.to_string(),
             path_in_repo,
             file_name,
             size_bytes: file.size_bytes,
@@ -970,6 +966,35 @@ pub async fn repo_companions(
     }
     Ok(out)
 }
+
+/// Companions for one role from the model's own Hub repo.
+#[tauri::command]
+pub async fn repo_companions(
+    model_path: String,
+    role: String,
+) -> Result<Vec<RepoCompanion>, String> {
+    let role = parse_role(&role)?;
+    let repo_id = repo_id_for(&model_path)
+        .and_then(|id| normalize_repo_id(&id))
+        .ok_or_else(|| format!("no Hub repo for '{model_path}'"))?;
+    list_repo_companions(&repo_id, role).await
+}
+
+/// Companions from any repo the user pastes into the picker's HF-ID field. Nothing is
+/// downloaded until a row is clicked; the file then lands in the SWAP store like any
+/// other companion.
+#[tauri::command]
+pub async fn repo_companions_for(
+    model_id: String,
+    role: String,
+) -> Result<Vec<RepoCompanion>, String> {
+    crate::config::validate_hf_model_id(&model_id)?;
+    let role = parse_role(&role)?;
+    let repo_id = normalize_repo_id(&model_id)
+        .ok_or_else(|| format!("'{model_id}' is not an org/repo id"))?;
+    list_repo_companions(&repo_id, role).await
+}
+
 #[cfg(test)]
 mod tests {    use super::*;
 

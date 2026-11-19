@@ -168,6 +168,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     isPinned, getEndpointRole,
     zone } = catalog;
 
+  /** Files hidden from the grid because the classifier could not place them. */
+  const unclassifiedCount = useMemo(
+    () => catalogModelsRaw.filter((m) => isUnclassifiedModel(m)).length,
+    [catalogModelsRaw],
+  );
+
   const catalogModels = useMemo(
     () => {
       // Unclassified files (a stray file with no recognisable GGUF header) are not
@@ -751,6 +757,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           >
             {catalogModels.length} / {catalog.kindCounts[draftFilter]}
           </span>
+          {unclassifiedCount > 0 ? (
+            <span
+              className="catalog-search-count"
+              title={`${unclassifiedCount} file(s) carry no recognisable GGUF header and are not offered as models`}
+            >
+              {unclassifiedCount} UNCLASSIFIED
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

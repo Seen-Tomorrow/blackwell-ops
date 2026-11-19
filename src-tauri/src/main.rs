@@ -510,6 +510,7 @@ async fn main() {
             companions::set_companion_pin,
             companions::clear_companion_pin,
             companions::repo_companions,
+            companions::repo_companions_for,
             downloads::download_companion,
             engine::launch_engine,
             engine::stop_engine,
