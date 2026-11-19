@@ -59,6 +59,13 @@ export interface ExtraFileEntry {
 /** LOADOUT rail — one attachable companion role. */
 export type CompanionRole = "mmproj" | "engram";
 
+/** CONFIG → MODEL PATHS: the shared store for every non-quant SWAP file. */
+export interface SwapStoreInfo {
+  path: string;
+  exists: boolean;
+  files: number;
+  bytes: number;
+}
 export interface CompanionCandidate {
   path: string;
   /** Name shown on the card (header name, else file stem). */

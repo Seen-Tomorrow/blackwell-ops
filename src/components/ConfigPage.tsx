@@ -4,7 +4,7 @@ import "../styles/config-page.css";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ModelPathEntry, PathDiskUsage } from "../lib/types";
+import type { ProviderConfig, ModelPathEntry, PathDiskUsage, SwapStoreInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import EngineConfig from "./EngineConfig";
 import SecretsConfig from "./SecretsConfig";
@@ -188,6 +188,16 @@ function ModelPathsPanel() {
   const [diskUsage, setDiskUsage] = useState<PathDiskUsage[]>([]);
   const [loading, setLoading] = useState(true);
   const [pathError, setPathError] = useState<string | null>(null);
+  const [store, setStore] = useState<SwapStoreInfo | null>(null);
+  const [storeBusy, setStoreBusy] = useState(false);
+
+  const loadStore = useCallback(async () => {
+    try {
+      setStore(await invoke<SwapStoreInfo>("swap_store_info"));
+    } catch (e) {
+      console.error("Failed to read the SWAP store:", e);
+    }
+  }, []);
 
   const loadPaths = useCallback(async () => {
     try {
@@ -204,7 +214,7 @@ function ModelPathsPanel() {
     }
   }, []);
 
-  useEffect(() => { loadPaths(); }, [loadPaths]);
+  useEffect(() => { loadPaths(); loadStore(); }, [loadPaths, loadStore]);
 
   const handleAddPath = useCallback(async () => {
     try {
@@ -248,6 +258,47 @@ function ModelPathsPanel() {
     }
   }, [loadPaths]);
 
+  const changeStore = useCallback(async () => {
+    try {
+      setStoreBusy(true);
+      setPathError(null);
+      const selected: string | null = await invoke("open_folder_dialog", {
+        title: "Select the SWAP store folder",
+      });
+      if (!selected) return;
+      setStore(await invoke<SwapStoreInfo>("set_swap_store", { path: selected }));
+      dispatchAppEvent(EVENTS.modelPathsChanged);
+    } catch (e) {
+      setPathError(typeof e === "string" ? e : "Could not change the SWAP store");
+    } finally {
+      setStoreBusy(false);
+    }
+  }, []);
+
+  const moveStore = useCallback(async () => {
+    try {
+      setStoreBusy(true);
+      setPathError(null);
+      const selected: string | null = await invoke("open_folder_dialog", {
+        title: "Move the SWAP store into…",
+      });
+      if (!selected) return;
+      setStore(await invoke<SwapStoreInfo>("move_swap_store", { target: selected }));
+      dispatchAppEvent(EVENTS.modelPathsChanged);
+    } catch (e) {
+      setPathError(typeof e === "string" ? e : "Could not move the SWAP store");
+    } finally {
+      setStoreBusy(false);
+    }
+  }, []);
+
+  const fmtBytes = (bytes: number): string => {
+    if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(1)} TB`;
+    if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+    if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+    return `${Math.round(bytes / 1e3)} KB`;
+  };
+
   const getUsage = useCallback((path: string): PathDiskUsage | undefined => {
     return diskUsage.find(d => d.path === path);
   }, [diskUsage]);
@@ -281,6 +332,50 @@ function ModelPathsPanel() {
           {pathError}
         </div>
       )}
+
+      {/* SWAP store: one place for every non-quant file. Its own row because it is not
+          a model library — it can live on a different drive and hold terabytes. */}
+      <div className="px-4 pt-4">
+        <div className="industrial-panel-face p-3 cfg-bord--acc--a40">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-1.5 py-0.5 type-label font-mono cfg-fill--a15 cfg-acc cfg-bord--acc--a60">
+                  SWAP STORE
+                </span>
+                <span className="type-label font-mono cfg-mut">
+                  DRAFT HEADS · MMPROJ · ENGRAM
+                </span>
+              </div>
+              <div className="type-body font-mono cfg-txt truncate">
+                {store?.path || "not created yet — first download creates it"}
+              </div>
+              <div className="type-label font-mono cfg-mut mt-1">
+                {store && store.exists
+                  ? `${store.files} FILES · ${fmtBytes(store.bytes)}`
+                  : "EMPTY"}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={changeStore}
+                disabled={storeBusy}
+                className="px-3 py-1 type-label font-mono border cfg-bord--acc--a60 cfg-acc hover:cfg-fill--a15 transition-colors disabled:opacity-50"
+              >
+                CHANGE
+              </button>
+              <button
+                onClick={moveStore}
+                disabled={storeBusy || !store?.exists || store.files === 0}
+                title="Move every file to another folder and re-point the setting"
+                className="px-3 py-1 type-label font-mono border cfg-bord cfg-mut hover:cfg-fill--a15 transition-colors disabled:opacity-40"
+              >
+                {storeBusy ? "WORKING…" : "MOVE…"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Path list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">

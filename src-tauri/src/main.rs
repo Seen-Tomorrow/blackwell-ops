@@ -72,6 +72,7 @@ mod github_releases;
 mod release_channels;
 mod profile_binaries;
 mod secrets;
+mod swap_store;
 
 mod foundry_toolchain;
 mod reactor_foundry;
@@ -682,6 +683,9 @@ async fn main() {
             hf_search::check_hf_repo_updates,
             hf_search::check_model_hf_update,
             secrets::list_app_secrets,
+            swap_store::swap_store_info,
+            swap_store::set_swap_store,
+            swap_store::move_swap_store,
             secrets::set_app_secret,
             secrets::delete_app_secret,
             // Model Path management commands
