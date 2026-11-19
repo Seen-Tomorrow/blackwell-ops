@@ -36,11 +36,11 @@ export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps
   if (tweaks.length === 0) return null;
 
   const changed = countTuned(tweaks, config);
-  // Row-major split so the visual order matches the old flat grid (1,2 / 3,4).
-  const columns = [
-    tweaks.filter((_, index) => index % 2 === 0),
-    tweaks.filter((_, index) => index % 2 === 1),
-  ];
+  // Two rows of three, sized for the tweaks we may add later rather than just today's.
+  const TWEAK_COLUMNS = 3;
+  const columns = Array.from({ length: TWEAK_COLUMNS }, (_, column) =>
+    tweaks.filter((_, index) => index % TWEAK_COLUMNS === column),
+  );
 
   return (
     <div

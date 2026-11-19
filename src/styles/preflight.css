@@ -1,9 +1,8 @@
 /* ── Engine surfaces: cockpit instruments, pre-flight strip, USER'S EXTRA ──
    Paint = theme tokens only. Sizes = type scale. */
 
-/* ══ Cockpit instruments: BATCH (left) · TASK + TWEAKS (right) ══
-   BATCH spans both right-hand rows, so the right column always ends level with
-   the batch block: TASK on top, TWEAKS collapsed underneath. */
+/* ══ Cockpit instruments: one full-width row — [TASK · PROMPT CACHE] | TWEAKS ══
+   Standalone keeps BATCH beside them; the cockpit renders BATCH in its own grid cell. */
 
 .cockpit-instruments {
   display: grid;
@@ -18,9 +17,59 @@
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
 }
 
-/* One panel face per instrument so the row reads as blocks, not a stack. */
+/* One continuous block: the compartments share a single frame and are separated only
+   by the same hairline the 2x2 grid uses, so the row reads as part of that surface. */
+.cockpit-instruments--row {
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-areas: "task tweaks";
+  gap: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 30%, transparent);
+  overflow: hidden;
+}
+
+.cockpit-instruments--row > * {
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.cockpit-instruments--row > * + * {
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+}
+
+/* TASK + PROMPT CACHE share this compartment, inline on one row. */
+.cockpit-instrument-group {
+  grid-area: task;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
+}
+
+/* In the row every compartment's label hangs from the same top line: TASK carries a
+   hidden preview line under the chips, so centring would drop PROMPT CACHE below it. */
+.cockpit-instruments--row .cockpit-instrument-group {
+  align-items: flex-start;
+}
+
+.cockpit-instruments--row .cockpit-instrument--tweaks {
+  justify-content: flex-start;
+}
+
+/* The TASK chips set the row's line height; giving the TWEAKS header the same one keeps
+   all three compartment labels on one line instead of the header riding 7px high. */
+.cockpit-instruments--row .cockpit-instrument--tweaks .cockpit-instrument__head {
+  min-height: 34px;
+}
+
+/* One panel face per compartment so the standalone row reads as blocks, not a stack. */
 .cockpit-instrument--batch,
-.cockpit-instrument--task,
+.cockpit-instrument-group,
 .cockpit-instrument--tweaks {
   padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
@@ -32,12 +81,16 @@
   grid-area: batch;
 }
 
-.cockpit-instrument--task {
-  grid-area: task;
-}
-
 .cockpit-instrument--tweaks {
   grid-area: tweaks;
+}
+
+/* Cache sits inline with the TASK chips — same grammar as the TASK label + segment.
+   Two classes so it beats the later `.cockpit-instrument` column rule. */
+.cockpit-instrument.cockpit-instrument--cache {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Collapsed bar is stretched to the batch height — keep its label centered. */
@@ -58,14 +111,6 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  min-width: 0;
-}
-
-.cockpit-instrument__cache {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
   min-width: 0;
 }
 

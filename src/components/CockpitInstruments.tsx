@@ -116,23 +116,6 @@ export function SamplerTask({
   const repeat = Number(config.repeat_penalty ?? 1);
   const penaltyAtLoad = (presence > 0 || repeat !== 1) && parallelSlots >= 8;
 
-  // Prompt cache belongs to TASK: the presets drive cache_ram, so the control
-  // lives on the same row instead of the cockpit header.
-  const cacheDef = defs.find((def) => def.key === "cache_ram");
-  const cacheValues =
-    cacheDef && !cacheDef.hidden && !cacheDef.userHidden
-      ? visibleParamValuesOf(cacheDef)
-      : [];
-  const cacheCurrent =
-    String(config.cache_ram ?? "").trim() !== ""
-      ? String(config.cache_ram)
-      : String(cacheValues[0] ?? "");
-  const cacheOptions = cacheValues.map(String);
-  if (cacheCurrent && !cacheOptions.includes(cacheCurrent)) {
-    cacheOptions.push(cacheCurrent);
-  }
-  const showCache = cacheOptions.length > 0;
-
   /** Any task pick re-flashes the resolved values — including re-picking the
    *  already-selected task, which is the "show me what this writes" gesture. */
   const flashPreview = () => {
@@ -178,25 +161,6 @@ export function SamplerTask({
         {penaltyAtLoad ? (
           <span className="cockpit-instrument__warn" title={PENALTY_WARNING}>
             PENALTY CPU
-          </span>
-        ) : null}
-        {showCache ? (
-          <span className="cockpit-instrument__cache">
-            <span className="cockpit-instrument__label">PROMPT CACHE</span>
-            <CockpitNavSegment
-              ariaLabel="Prompt cache"
-              options={cacheOptions.map((value) => ({
-                id: value,
-                label: formatCacheRam(value),
-              }))}
-              selectedId={cacheCurrent}
-              onSelect={(id) => {
-                const picked = cacheValues.find((value) => String(value) === id);
-                onChange("cache_ram", picked ?? id);
-              }}
-              size="sub"
-              className="cockpit-cache-segment"
-            />
           </span>
         ) : null}
       </div>
@@ -284,9 +248,61 @@ interface CockpitInstrumentsProps {
 }
 
 /**
+ * PROMPT CACHE — its own compartment in the instrument row. The TASK presets write
+ * `cache_ram`, but the control belongs next to them, not inside the TASK chip line.
+ */
+function PromptCache({
+  defs,
+  config,
+  onChange,
+}: {
+  defs: UserEditedTemplateParam[];
+  config: Record<string, unknown>;
+  onChange: (key: string, value: string | number) => void;
+}) {
+  const cacheDef = defs.find((def) => def.key === "cache_ram");
+  const cacheValues =
+    cacheDef && !cacheDef.hidden && !cacheDef.userHidden
+      ? visibleParamValuesOf(cacheDef)
+      : [];
+  if (cacheValues.length === 0) return null;
+
+  const cacheCurrent =
+    String(config.cache_ram ?? "").trim() !== ""
+      ? String(config.cache_ram)
+      : String(cacheValues[0] ?? "");
+  const cacheOptions = cacheValues.map(String);
+  if (cacheCurrent && !cacheOptions.includes(cacheCurrent)) {
+    cacheOptions.push(cacheCurrent);
+  }
+
+  return (
+    <div className="cockpit-instrument cockpit-instrument--cache">
+      <span className="cockpit-instrument__label">PROMPT CACHE</span>
+      <CockpitNavSegment
+        ariaLabel="Prompt cache"
+        options={cacheOptions.map((value) => ({
+          id: value,
+          label: formatCacheRam(value),
+        }))}
+        selectedId={cacheCurrent}
+        onSelect={(id) => {
+          const picked = cacheValues.find((value) => String(value) === id);
+          onChange("cache_ram", picked ?? id);
+        }}
+        size="sub"
+        className="cockpit-cache-segment"
+      />
+    </div>
+  );
+}
+
+/**
  * Instrument row for the ASSISTED cockpit (and the standalone fallback).
- * BATCH//UBATCH and TASK share one row height; TWEAKS is a collapsed
- * disclosure under TASK.
+ *
+ * Cockpit (no BATCH — it lives in the grid): one continuous full-width block split into
+ * three compartments — TASK | PROMPT CACHE | TWEAKS. Standalone keeps BATCH and stacks
+ * TASK / PROMPT CACHE / TWEAKS beside it.
  */
 export function CockpitInstruments({
   defs,
@@ -302,17 +318,22 @@ export function CockpitInstruments({
     <div
       className={`cockpit-instruments${
         standalone ? " cockpit-instruments--standalone" : ""
-      }`}
+      }${showBatch ? "" : " cockpit-instruments--row"}`}
     >
       {showBatch ? <BatchRangeSlider defs={defs} config={config} onChange={onChange} /> : null}
-      <SamplerTask
-        defs={defs}
-        config={config}
-        onChange={onChange}
-        onTask={onTask}
-        modelSampler={modelSampler}
-        onModelDefaults={onModelDefaults}
-      />
+      {/* TASK and PROMPT CACHE share one compartment and one line — the presets write
+          cache_ram, so the two controls belong side by side, not in separate boxes. */}
+      <div className="cockpit-instrument-group">
+        <SamplerTask
+          defs={defs}
+          config={config}
+          onChange={onChange}
+          onTask={onTask}
+          modelSampler={modelSampler}
+          onModelDefaults={onModelDefaults}
+        />
+        <PromptCache defs={defs} config={config} onChange={onChange} />
+      </div>
       <TweaksPanel defs={defs} config={config} onChange={onChange} />
     </div>
   );
