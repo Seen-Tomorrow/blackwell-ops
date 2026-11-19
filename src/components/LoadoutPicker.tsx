@@ -378,7 +378,7 @@ export default function LoadoutPicker({
               {hfRow.busy ? "…" : "RESOLVE"}
             </button>
             {hfRow.error ? (
-              <span className="gp-empty font-mono">{hfRow.error}</span>
+              <span className="gp-hf__error font-mono">{hfRow.error}</span>
             ) : null}
           </div>
         ) : null}

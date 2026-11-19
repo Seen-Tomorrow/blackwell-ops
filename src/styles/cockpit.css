@@ -2563,15 +2563,18 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* One row for a direct HF id, under both columns. */
 .gp-panel__hf {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   padding: 0.25rem 0.6rem;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   min-width: 0;
 }
 
+/* Narrow on purpose: RESOLVE and the message matter more than a long id preview. */
 .gp-hf__input {
-  flex: 1;
+  flex: 1 1 8rem;
+  max-width: 13rem;
   min-width: 0;
   padding: 1px 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
@@ -2581,15 +2584,35 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   font-size: var(--type-hairline);
 }
 
+/* The one action in the row: accent, not another muted chip. */
 .gp-hf__go {
-  padding: 0 0.35rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  flex: 0 0 auto;
+  padding: 1px 0.55rem;
+  border: 1px solid var(--theme-accent-bright);
   border-radius: 2px;
-  background: transparent;
-  color: var(--theme-text-muted);
+  background: color-mix(in srgb, var(--theme-accent-bright) 16%, transparent);
+  color: var(--theme-accent-bright);
   font-size: var(--type-hairline);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   cursor: pointer;
+}
+
+.gp-hf__go:hover:not(:disabled) {
+  background: var(--theme-accent-bright);
+  color: var(--theme-chip-solid-text);
+}
+
+.gp-hf__go:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Own line, so a warning never fights the input for width. */
+.gp-hf__error {
+  flex: 1 1 100%;
+  color: var(--theme-warn);
+  font-size: var(--type-hairline);
+  line-height: 1.35;
 }
 
 
