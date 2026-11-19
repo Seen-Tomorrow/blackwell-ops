@@ -115,7 +115,7 @@ export default function LoadoutPicker({
     <div className="gp-scrim" onClick={onClose}>
       <div
         className="gp-panel"
-        style={{ left: `calc(${Math.round(anchor * 100)}% - 14.5rem)` }}
+        style={{ left: `clamp(0px, calc(${Math.round(anchor * 100)}% - 9.5rem), calc(100% - 19rem))` }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={`${title} picker`}

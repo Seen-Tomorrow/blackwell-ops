@@ -2656,20 +2656,32 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 3.5rem minmax(0, 1fr);
-  grid-template-areas:
-    "spec bridge swaps"
-    "status status status";
-  align-items: start;
-  gap: 0.45rem 0.6rem;
-  /* Same height as the CTX hero bar — the rail reads as its peer, not a footnote. */
-  min-height: 4.5rem;
-  padding: 0.15rem 0.1rem 0.1rem;
+  align-items: center;
+  gap: 0.6rem;
+  /* 50% taller than the CTX hero bar: the rail is the primary control surface. */
+  min-height: 6.75rem;
+  padding: 0.2rem 0.1rem 0.15rem;
+  min-width: 0;
+}
+.loadout-rail__group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  /* Both halves share one height so their bands land on the same line. */
+  min-height: 6.4rem;
+  min-width: 0;
+  /* Gutter for the EXTERNAL badge that floats above each stop. */
+  padding-top: 0.9rem;
+}
+
+.loadout-rail__group--spec,
+.loadout-rail__group--swaps {
   min-width: 0;
 }
 
-.loadout-rail__group--spec { grid-area: spec; }
-.loadout-rail__group--swaps { grid-area: swaps; }
-.loadout-rail__bridge { grid-area: bridge; }
+.loadout-rail__spec { min-height: 0; min-width: 0; }
+
 
 /* SPEC header: zone label, the mode it is on, and the file affordance beside it —
    the mode itself is only ever changed by the slider. */
@@ -2688,14 +2700,22 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   white-space: nowrap;
 }
 
+/* Sits on the badge line, directly over the selected SPEC stop. */
 .loadout-rail__external {
-  padding: 0 0.3rem;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0 0.28rem;
   border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
   border-radius: 2px;
-  background: transparent;
+  background: color-mix(in srgb, var(--theme-panel-accent) 70%, transparent);
   color: var(--theme-text-muted);
   font-size: var(--type-hairline);
   letter-spacing: 0.1em;
+  text-transform: uppercase;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -2705,88 +2725,18 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border));
 }
 
-/* Always-on status line: what every stop is currently set to. */
-.loadout-status {
-  grid-area: status;
-  display: flex;
-  align-items: baseline;
-  gap: 1.1rem;
-  min-width: 0;
-  padding-top: 0.3rem;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
-  color: var(--theme-text);
+.loadout-rail__external-icon {
+  color: var(--theme-accent-bright);
   font-size: var(--type-hairline);
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-  overflow: hidden;
 }
 
-.loadout-status__item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  min-width: 0;
-}
-
-.loadout-status__role {
-  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-}
-
-.loadout-status__state {
-  color: var(--theme-text-muted);
-}
-
-.loadout-rail__group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.loadout-rail__group--spec,
-.loadout-rail__group--swaps {
-  min-width: 0;
-}
-
-.loadout-rail__spec { min-height: 0; min-width: 0; }
-
-@media (max-width: 1180px) {
-  .loadout-rail {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "spec"
-      "swaps";
-    gap: 0.35rem;
-  }
-  .loadout-rail__group--spec { grid-area: spec; }
-  .loadout-rail__group--swaps { grid-area: swaps; }
-  .loadout-rail__bridge { display: none; }
-}
-
-.loadout-rail__zone {
-  font-size: 0.6rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
-}
-
-/* The zone label doubles as the picker trigger for SPEC — the only way into the
-   picker from the left half (the slider's stops set a value, they do not open it). */
-.loadout-rail__zone--btn {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-
-.loadout-rail__zone--btn:hover { color: var(--theme-accent-bright); }
+/* SWAPS: the same grammar as a slider — one line, one thumb per role, role above,
+   attached precision below, state under that. Thumb positions are fixed stops; this is
+   not a single-choice control. Compacted so the stops sit on the SPEC slider's line. */
 /* Dotted connector on the track line — reads as one rail, not two widgets. */
 .loadout-rail__bridge {
   align-self: start;
-  margin-top: 2.5rem;
+  margin-top: 3.95rem;
   height: 8px;
   background-image: repeating-linear-gradient(
     90deg,
@@ -2796,12 +2746,10 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.4;
 }
 
-/* SWAPS: the same grammar as a slider — one line, one thumb per role, role above,
-   attached precision below, state under that. Thumb positions are fixed stops; this is
-   not a single-choice control. Compacted so the stops sit on the SPEC slider's line. */
 .loadout-swaps {
   position: relative;
-  height: 3.1rem;
+  /* Same band as the SPEC slider: badge line, role, thumb on the track, value below. */
+  height: 3.7rem;
   min-width: 0;
 }
 
@@ -2819,7 +2767,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   top: 0;
   transform: translateX(-50%);
   width: 8.2rem;
-  height: 3.1rem;
+  height: 3.7rem;
   background: transparent;
   border: 0;
   padding: 0;
@@ -2829,18 +2777,35 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop:disabled { opacity: 0.45; cursor: default; }
 
-/* Typography and thumb are copied from CockpitSlider's mark grammar on purpose:
-   role above in the same size as a mark's above-label, value below in the mark-label
-   size, state in a smaller tier. The thumb IS the slider thumb — same body, same glow. */
-.loadout-stop__role {
+/* Badge line: the same "external" affordance the SPEC half carries. */
+.loadout-stop__external {
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.42rem;
-  letter-spacing: 0.03em;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   white-space: nowrap;
-  opacity: 0.55;
+}
+
+.loadout-stop:hover .loadout-stop__external { color: var(--theme-accent-bright); }
+
+/* Role word: same voice and same line as the slider's above-mark label. */
+.loadout-stop__role {
+  position: absolute;
+  top: 0.62rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: color-mix(in srgb, var(--theme-industrial-muted) 60%, transparent);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .loadout-stop__thumb {
@@ -2859,27 +2824,49 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-shadow: none;
 }
 
+/* Value under the thumb — the same filled "T" plate the selected SPEC mark wears. */
 .loadout-stop__value {
   position: absolute;
-  top: 1.95rem;
+  top: 2.05rem;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.55rem;
-  letter-spacing: 0.02em;
+  color: var(--theme-text-muted);
+  font-size: var(--type-tiny);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.loadout-stop--role-engram .loadout-stop__value { color: var(--fixed-amber-400); }
-.loadout-stop--role-mmproj .loadout-stop__value { color: var(--fixed-cyan-400); }
+.loadout-stop__value--on {
+  padding: 0 0.25rem;
+  border: 1px solid var(--theme-accent-bright);
+  border-radius: 0.125rem;
+  background: var(--theme-accent-bright);
+  color: var(--theme-chip-solid-text);
+  font-weight: 700;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
+}
+
+.loadout-stop--role-engram .loadout-stop__value--on {
+  border-color: var(--fixed-amber-400);
+  background: var(--fixed-amber-400);
+}
+
+.loadout-stop--role-mmproj .loadout-stop__value--on {
+  border-color: var(--fixed-cyan-400);
+  background: var(--fixed-cyan-400);
+}
 
 .loadout-stop__state {
   position: absolute;
-  top: 2.6rem;
+  top: 2.85rem;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.42rem;
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
   letter-spacing: 0.08em;
-  opacity: 0.55;
+  text-transform: uppercase;
+  opacity: 0.6;
   white-space: nowrap;
 }
 
@@ -3013,10 +3000,11 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: absolute;
   inset: 0;
   z-index: 30;
+  /* Only the panel's own strip stays readable; the rest of the grid goes dark. */
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--theme-panel-accent) 58%, transparent),
-    color-mix(in srgb, var(--theme-panel-accent) 74%, transparent)
+    color-mix(in srgb, var(--theme-panel-accent) 82%, transparent),
+    color-mix(in srgb, var(--theme-panel-accent) 90%, transparent)
   );
 }
 
@@ -3024,7 +3012,9 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: absolute;
   top: 3px;
   bottom: 3px;
-  width: 29rem;
+  /* 60-65% of the old width: enough for quant + size + name, narrow enough to sit
+     over any stop without running off the right edge. */
+  width: 19rem;
   display: flex;
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
@@ -3099,7 +3089,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .gp-row {
   display: grid;
-  grid-template-columns: 0.8rem 4rem 4.2rem minmax(0, 1fr) auto;
+  grid-template-columns: 0.7rem 3.4rem 3.6rem minmax(0, 1fr) auto;
   gap: 0.4rem;
   align-items: center;
   width: 100%;

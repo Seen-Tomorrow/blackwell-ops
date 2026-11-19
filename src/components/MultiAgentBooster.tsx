@@ -874,6 +874,12 @@ export default function MultiAgentBooster({
         <LoadoutRail
           specSlot={boostCell}
           specLabel={boostRows.find(({ m }) => m.id === boostSliderValue)?.m.label}
+          specMarkPct={
+            boostRows.length > 1
+              ? Math.max(0, boostRows.findIndex(({ m }) => m.id === boostSliderValue)) /
+                (boostRows.length - 1)
+              : 0.5
+          }
           canPickExternal={canPickSpecFile}
           onPickExternal={() =>
             displayBoost === "mtp" ? onChangeMtpDraft?.() : onChangeDflashDraft?.()

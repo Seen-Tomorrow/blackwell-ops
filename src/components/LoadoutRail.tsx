@@ -24,6 +24,8 @@ interface LoadoutRailProps {
   /** True when the current mode reads an external draft file. */
   canPickExternal?: boolean;
   onPickExternal?: (anchor: number) => void;
+  /** 0..1 x of the selected SPEC mark, so its EXTERNAL badge sits over that stop. */
+  specMarkPct?: number;
   report: CompanionReport | null;
   busy?: boolean;
   /** Open the file picker for a stop; anchor is 0..1 across the rail. */
@@ -75,6 +77,7 @@ export default function LoadoutRail({
   specLabel,
   canPickExternal = false,
   onPickExternal,
+  specMarkPct = 0,
   report,
   busy = false,
   onOpenSlot,
@@ -101,18 +104,23 @@ export default function LoadoutRail({
           {specLabel ? (
             <span className="loadout-rail__mode font-mono">{specLabel}</span>
           ) : null}
-          {canPickExternal ? (
-            <button
-              type="button"
-              className="loadout-rail__external font-mono"
-              onClick={(e) => onPickExternal?.(anchorOf(e.currentTarget))}
-              title="Pick the external draft file this mode needs"
-            >
-              SELECT EXTERNAL
-            </button>
-          ) : null}
         </div>
         <div className="loadout-rail__spec">{specSlot}</div>
+        {/* Sits above the SELECTED spec stop, on the same line as the swap badges. */}
+        {canPickExternal ? (
+          <button
+            type="button"
+            className="loadout-rail__external font-mono"
+            style={{ left: `${specMarkPct * 100}%` }}
+            onClick={(e) => onPickExternal?.(anchorOf(e.currentTarget))}
+            title="Pick the external file this mode reads"
+          >
+            <span className="loadout-rail__external-icon" aria-hidden>
+              ⊕
+            </span>
+            external
+          </button>
+        ) : null}
       </div>
 
       <span className="loadout-rail__bridge" aria-hidden="true" />
@@ -134,23 +142,6 @@ export default function LoadoutRail({
         </div>
       </div>
 
-      {/* Always on: what every stop is currently set to, files or not. */}
-      <div className="loadout-status" aria-label="LOADOUT status">
-        <span className="loadout-status__item font-mono">
-          <span className="loadout-status__role">SPEC</span>
-          {specLabel ?? "—"}
-        </span>
-        {slots.map((slot) => {
-          const state = stopState(slot);
-          return (
-            <span className="loadout-status__item font-mono" key={slot.role}>
-              <span className="loadout-status__role">{ROLE_LABEL[slot.role]}</span>
-              {state.value}
-              <span className="loadout-status__state">{state.state}</span>
-            </span>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -194,9 +185,17 @@ function CompanionStop({ slot, leftPct, disabled, onOpen, onCycle }: CompanionSt
       title={slot.reason || `${state.state} — click to pick a file, wheel to cycle`}
       aria-label={`${ROLE_LABEL[slot.role]}: ${state.state}, ${state.value}`}
     >
+      <span className="loadout-stop__external font-mono" aria-hidden>
+        <span className="loadout-rail__external-icon">⊕</span>
+        external
+      </span>
       <span className="loadout-stop__role font-mono">{ROLE_LABEL[slot.role]}</span>
       <span className="cockpit-slider-thumb loadout-stop__thumb" aria-hidden="true" />
-      <span className="loadout-stop__value font-mono">{state.value}</span>
+      <span
+        className={`loadout-stop__value font-mono${active ? " loadout-stop__value--on" : ""}`}
+      >
+        {state.value}
+      </span>
       <span className="loadout-stop__state font-mono">
         {state.state}
         {slot.candidates.length > 1 ? ` · ${slot.candidates.length}` : ""}
