@@ -1,5 +1,7 @@
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { SpecCapability } from "../lib/specDraft";
+import type { CompanionCandidate, CompanionReport, CompanionRole } from "../lib/types";
 import { ConfigChipSegment } from "./EngineParamGroups";
 import {
   BRAINS_OPTIONS,
@@ -21,6 +23,7 @@ import {
 } from "../lib/multiAgentBooster";
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import LoadoutRail from "./LoadoutRail";
+import LoadoutPicker, { type PickSlotId } from "./LoadoutPicker";
 import CockpitSlider from "./CockpitSlider";
 import CockpitNavSegment from "./CockpitNavSegment";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
@@ -230,6 +233,57 @@ export default function MultiAgentBooster({
   onTakeControl,
 }: MultiAgentBoosterProps) {
   const hero = layout === "hero";
+
+  // Companion report + picker live here, not in the rail: the picker covers the 2x2
+  // grid, which is this component's territory.
+  const [companionReport, setCompanionReport] = useState<CompanionReport | null>(null);
+  const [companionBusy, setCompanionBusy] = useState(false);
+  const [pickSlot, setPickSlot] = useState<PickSlotId | null>(null);
+
+  const reloadCompanions = useCallback(async () => {
+    if (!modelPath) {
+      setCompanionReport(null);
+      return;
+    }
+    try {
+      setCompanionReport(await invoke<CompanionReport>("resolve_companions", { modelPath }));
+    } catch {
+      setCompanionReport(null);
+    }
+  }, [modelPath]);
+
+  useEffect(() => {
+    void reloadCompanions();
+  }, [reloadCompanions]);
+
+  const setCompanion = useCallback(
+    async (role: CompanionRole, path: string | null) => {
+      if (!modelPath) return;
+      setCompanionBusy(true);
+      try {
+        await invoke("set_companion_pin", { modelPath, role, path });
+        await reloadCompanions();
+      } finally {
+        setCompanionBusy(false);
+      }
+    },
+    [modelPath, reloadCompanions],
+  );
+
+  const clearCompanion = useCallback(
+    async (role: CompanionRole) => {
+      if (!modelPath) return;
+      setCompanionBusy(true);
+      try {
+        await invoke("clear_companion_pin", { modelPath, role });
+        await reloadCompanions();
+      } finally {
+        setCompanionBusy(false);
+      }
+    },
+    [modelPath, reloadCompanions],
+  );
+
   const showCtxRail =
     embedCtx && onCtxChange != null && (ctxValues?.length ?? 0) > 0;
   const markCustomValues = !hero;
@@ -724,6 +778,7 @@ export default function MultiAgentBooster({
           <div className="full-auto-cockpit__body space-y-3">
         {ctxStrip}
 
+        <div className="full-auto-cockpit__grid-stack">
         <div className="full-auto-cockpit__grid">
           {showMemory && memoryOptions.length > 0 && (
           <div className="full-auto-cockpit__grid-cell">
@@ -791,24 +846,39 @@ export default function MultiAgentBooster({
           </div>
           )}
         </div>
+        {/* The picker takes the grid's own footprint — while SPEC/SWAPS are being tuned
+            the sliders are not needed, and a block that size can never run off screen. */}
+        {pickSlot && companionReport ? (
+          <LoadoutPicker
+            specValue={boostSliderValue}
+            specRows={boostRows.map(({ m, needCap }) => ({
+              id: m.id,
+              label: m.label,
+              aboveLabel: m.aboveLabel,
+              blurb: m.blurb,
+              disabled: needCap,
+            }))}
+            onSpecPick={pickSpec}
+            mmproj={companionReport.mmproj}
+            engram={companionReport.engram}
+            modelPath={modelPath ?? ""}
+            onAttach={(role, path) => void setCompanion(role, path)}
+            onDetach={(role) => void setCompanion(role, null)}
+            onClear={(role) => void clearCompanion(role)}
+            onDownloaded={() => void reloadCompanions()}
+            onClose={() => setPickSlot(null)}
+          />
+        ) : null}
+        </div>
 
         {/* LOADOUT — SWAPS sockets. Spec selection still lives in the grid above; this
             row owns the independently attachable companions. */}
         <LoadoutRail
-          modelPath={modelPath}
           specSlot={boostCell}
-          specValue={boostSliderValue}
-          specRows={boostRows.map(({ m, needCap }) => ({
-            id: m.id,
-            label: m.label,
-            aboveLabel: m.aboveLabel,
-            blurb: m.blurb,
-            disabled: needCap,
-          }))}
-          onSpecPick={pickSpec}
-          onChangeSpecDraft={
-            displayBoost === "mtp" ? onChangeMtpDraft : onChangeDflashDraft
-          }
+          report={companionReport}
+          busy={companionBusy}
+          onOpenSlot={(slot) => setPickSlot((cur) => (cur === slot ? null : slot))}
+          onCycle={(role, candidate) => void setCompanion(role, candidate.path)}
         />
 
         {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}

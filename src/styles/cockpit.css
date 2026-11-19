@@ -2927,168 +2927,184 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-picker__btn:hover { border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border)); }
 
-/* ── Unified picker (variant B): slot column + table pane ─────────────────────
-   One surface for SPEC / MMPROJ / ENGRAM. The pane is a table whose first two columns
-   are QUANT and SIZE — the choice being made — with the file name as the secondary
-   column, so a long name never pushes the useful numbers off the row. */
-.loadout-picker--unified {
+/* ── LOADOUT picker block — takes the 2x2 grid's footprint ────────────────────
+   While SPEC/SWAPS are being tuned the sliders are not needed, so the picker is a
+   block over the grid rather than a modal floating above the cockpit: nothing can
+   leave the screen, and the lists get real height. Three wheel-scrollable columns,
+   candidates stacked above each other, QUANT and SIZE leading every row.
+
+   Surface is --theme-panel-accent, the neutral cockpit metal — NOT --theme-panel,
+   which carries a blue cast. */
+.full-auto-cockpit__grid-stack {
+  position: relative;
+}
+
+.gp-block {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
   display: grid;
-  grid-template-columns: 10rem minmax(0, 1fr);
-  width: min(38rem, 92vw);
-  max-height: 20rem;
-  padding: 0;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  padding: 4px 6px 6px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-panel-accent) 96%, var(--theme-panel));
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--fixed-black-a55) 75%, transparent);
   overflow: hidden;
 }
 
-.loadout-picker__slots {
+.gp-col {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-right: 1px solid var(--theme-border);
+  min-height: 0;
+  padding: 0 8px;
 }
 
-.loadout-slot {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "role value"
-    "state state";
-  gap: 1px 0.35rem;
-  padding: 0.4rem 0.5rem;
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
+.gp-col + .gp-col {
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
 
-.loadout-slot:hover { background: color-mix(in srgb, var(--theme-accent) 8%, transparent); }
-
-.loadout-slot--on {
-  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
-  box-shadow: inset 2px 0 0 var(--theme-accent-bright);
+.gp-col__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding-bottom: 3px;
+  min-width: 0;
 }
 
-.loadout-slot__role {
-  grid-area: role;
-  color: var(--theme-accent);
-  letter-spacing: 0.14em;
+.gp-col__role {
+  color: color-mix(in srgb, var(--theme-accent) 85%, transparent);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.loadout-slot__value {
-  grid-area: value;
+.gp-col__now {
   color: var(--theme-text);
-  text-align: right;
-  white-space: nowrap;
-}
-
-.loadout-slot__state {
-  grid-area: state;
-  color: var(--theme-text-muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.loadout-picker__pane {
+.gp-col__auto {
+  margin-left: auto;
+  padding: 0 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.gp-col__auto:hover {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border));
+}
+
+/* Wheel scrolls the column — that is the "roll through candidates" gesture. */
+.gp-col__list {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: 1px;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.loadout-table {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.gp-col__empty {
+  padding: 2px 0;
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
+  opacity: 0.7;
 }
 
-.loadout-table__row {
+.gp-row {
   display: grid;
-  grid-template-columns: 4.5rem 5rem minmax(0, 1fr) 5.5rem;
-  gap: 0.5rem;
+  grid-template-columns: 0.9rem 4.2rem 4.4rem minmax(0, 1fr) auto;
+  gap: 0.4rem;
   align-items: center;
   width: 100%;
-  padding: 0.32rem 0.6rem;
+  padding: 2px 3px;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-radius: 2px;
   background: transparent;
   color: inherit;
-  font-size: var(--type-tiny);
   text-align: left;
   cursor: pointer;
 }
 
-.loadout-table__row:hover { background: color-mix(in srgb, var(--theme-accent) 10%, transparent); }
-.loadout-table__row:disabled { opacity: 0.45; cursor: default; }
-.loadout-table__row--on { background: color-mix(in srgb, var(--theme-accent) 16%, transparent); }
+.gp-row:hover { background: color-mix(in srgb, var(--theme-accent) 10%, transparent); }
+.gp-row:disabled { opacity: 0.4; cursor: default; }
 
-/* SPEC rows are modes, not files — no QUANT/SIZE to show, so those columns go away. */
-.loadout-table--spec .loadout-table__row {
-  grid-template-columns: minmax(0, 1fr) 5.5rem;
+.gp-row--on { background: color-mix(in srgb, var(--theme-accent) 16%, transparent); }
+
+.gp-row__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
 }
 
-.loadout-table--spec .loadout-table__quant,
-.loadout-table--spec .loadout-table__size { display: none; }
+.gp-row--on .gp-row__dot {
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 5px var(--theme-accent-glow);
+}
 
-.loadout-table__quant {
+.gp-row__quant {
   color: var(--theme-accent-bright);
+  font-size: var(--type-hairline);
   letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.loadout-table__size {
+.gp-row__size {
   color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.loadout-table__name {
+.gp-row__name {
   min-width: 0;
   color: var(--theme-text);
+  font-size: var(--type-hairline);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.loadout-table__src {
-  display: inline-block;
-  margin-right: 0.4rem;
-  color: color-mix(in srgb, var(--theme-text-muted) 90%, transparent);
-  font-size: var(--type-hairline);
-  letter-spacing: 0.1em;
-}
-
-.loadout-table__src--repo { color: var(--theme-warn); }
-
-.loadout-table__act {
+.gp-row__tag {
   color: var(--theme-text-muted);
-  text-align: right;
-  letter-spacing: 0.06em;
+  font-size: var(--type-hairline);
+  letter-spacing: 0.08em;
   white-space: nowrap;
 }
 
-.loadout-picker--unified .loadout-picker__foot {
-  margin-top: auto;
-  padding: 0.45rem 0.6rem;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  display: flex;
-  gap: 0.4rem;
+.gp-row--repo .gp-row__quant { color: var(--theme-text-muted); }
+.gp-row--repo .gp-row__tag { color: var(--theme-warn); }
+
+.gp-block__close {
+  position: absolute;
+  bottom: 3px;
+  right: 6px;
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: var(--type-micro);
+  cursor: pointer;
 }
 
-.loadout-picker__slots .loadout-picker__x {
-  margin: auto 0.5rem 0.5rem;
-  align-self: flex-start;
-}
-
+.gp-block__close:hover { color: var(--theme-accent-bright); }
 /* LOADOUT composition: SPEC half (the old BOOST slider) + SWAPS sockets on one rail.
    The grid keeps four cells: Memory, Agents, Think, and BATCH//UBATCH.
    The rail owns the widths; `.loadout-rail__spec` must stay a plain block or the
