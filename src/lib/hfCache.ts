@@ -70,11 +70,3 @@ export async function cachedInvoke<T>(
   return pending;
 }
 
-/** Drop one listing (or everything) — call after something is known to have changed. */
-export function forgetHfListing(cmd?: string, args?: Record<string, unknown>): void {
-  if (!cmd) {
-    store.clear();
-    return;
-  }
-  store.delete(keyOf(cmd, args));
-}

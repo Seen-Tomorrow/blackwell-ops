@@ -926,7 +926,6 @@ export default function MultiAgentBooster({
               (role, candidate) => void setCompanion(role, candidate.path),
             ),
           ]}
-          report={companionReport}
           busy={companionBusy}
         />
         {/* File picker overlay. It covers the whole body — grid, rail and strips — so

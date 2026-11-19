@@ -41,7 +41,6 @@ interface LoadoutRailProps {
   specSlot?: ReactNode;
   /** File slots, in display order. */
   slots?: LoadoutFileSlot[];
-  report: CompanionReport | null;
   busy?: boolean;
 }
 
@@ -117,7 +116,6 @@ export function companionSlots(
 export default function LoadoutRail({
   specSlot,
   slots = [],
-  report: _report,
   busy = false,
 }: LoadoutRailProps) {
   const railRef = useRef<HTMLDivElement | null>(null);

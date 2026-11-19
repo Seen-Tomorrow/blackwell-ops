@@ -2699,11 +2699,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   min-width: 0;
 }
 
-.loadout-rail__external-icon {
-  color: var(--theme-accent-bright);
-  font-size: var(--type-hairline);
-}
-
 /* SWAPS: the same grammar as a slider — one line, one thumb per role, role above,
    attached precision below, state under that. Thumb positions are fixed stops; this is
    not a single-choice control. Compacted so the stops sit on the SPEC slider's line. */
@@ -2753,24 +2748,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .loadout-stop:disabled { opacity: 0.45; cursor: default; }
 
 /* Badge line: the same "external" affordance the SPEC half carries. */
-.loadout-stop__external {
-  position: absolute;
-  top: -0.42rem;
-  left: 50%;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-  font-size: var(--type-hairline);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.loadout-stop:hover .loadout-stop__external { color: var(--theme-accent-bright); }
-
-/* Role word: same voice and same line as the slider's above-mark label. */
+.loadout-stop:hover /* Role word: same voice and same line as the slider's above-mark label. */
 .loadout-stop__role {
   position: absolute;
   top: 0.62rem;
@@ -2792,12 +2770,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   width: 16px;
   height: 16px;
   border-radius: 2px;
-}
-
-.loadout-stop--empty .loadout-stop__thumb {
-  background: transparent;
-  border: 1px dashed color-mix(in srgb, var(--theme-accent-bright) 45%, transparent);
-  box-shadow: none;
 }
 
 /* Value under the thumb — the same filled "T" plate the selected SPEC mark wears. */
@@ -2852,124 +2824,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   white-space: nowrap;
 }
 
-.loadout-stop--pick .loadout-stop__state,
-.loadout-stop--empty .loadout-stop__state { opacity: 0.45; }
-/* Picker overlay — anchored to the rail, above the cockpit grid. */
-.loadout-picker {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 0.35rem);
-  z-index: 40;
-  width: min(46rem, 92vw);
-  max-height: 19rem;
-  overflow: auto;
-  background: var(--theme-panel);
-  border: 1px solid var(--theme-border);
-  border-radius: 3px;
-  box-shadow: 0 14px 34px color-mix(in srgb, var(--fixed-black-a55) 80%, transparent);
-  padding: 0.55rem 0.7rem 0.6rem;
-}
-
-.loadout-picker__head {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  margin-bottom: 0.45rem;
-}
-
-.loadout-picker__reason {
-  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.loadout-picker__x {
-  margin-left: auto;
-  border: 1px solid var(--theme-border);
-  border-radius: 2px;
-  padding: 0 0.35rem;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.loadout-picker__label {
-  display: block;
-  letter-spacing: 0.14em;
-  margin-bottom: 0.3rem;
-  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
-}
-
 /* The zone label doubles as the picker trigger for SPEC — the only way into the
    picker from the left half (the slider's stops set a value, they do not open it). */
-.loadout-rail__zone--btn {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-
-.loadout-rail__zone--btn:hover { color: var(--theme-accent-bright); }
-.loadout-picker__empty {
-  margin: 0;
-  opacity: 0.7;
-  padding: 0.25rem 0 0.35rem;
-}
-
-.loadout-picker__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.loadout-card {
-  width: 100%;
-  text-align: left;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "name score" "meta score";
-  gap: 0.1rem 0.6rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--theme-border);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--theme-panel-accent) 78%, transparent);
-  color: inherit;
-  cursor: pointer;
-}
-
-.loadout-card--active {
-  border-color: color-mix(in srgb, var(--theme-accent-bright) 55%, var(--theme-border));
-}
-
-.loadout-card__name { grid-area: name; font-size: 0.72rem; }
-.loadout-card__meta { grid-area: meta; opacity: 0.65; }
-.loadout-card__score { grid-area: score; align-self: center; opacity: 0.55; }
-
-.loadout-picker__foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.4rem;
-  margin-top: 0.5rem;
-}
-
-.loadout-picker__btn {
-  border: 1px solid var(--theme-border);
-  border-radius: 2px;
-  padding: 0.2rem 0.5rem;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  letter-spacing: 0.08em;
-}
-
-.loadout-picker__btn:hover { border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border)); }
-
 /* ── LOADOUT file picker — full-grid overlay, content in the SWAPS half ───────
    While a file is being picked the sliders are not needed, so the overlay covers the
    whole 2x2 grid and the content takes the SWAPS half — the largest area the cockpit
@@ -3163,20 +3019,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   letter-spacing: 0.04em;
 }
 
-.gp-more {
-  align-self: flex-start;
-  padding: 1px 0.3rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--theme-text-muted);
-  font-size: var(--type-hairline);
-  letter-spacing: 0.08em;
-  cursor: pointer;
-}
-
-.gp-more:hover { color: var(--theme-accent-bright); }
-
 .gp-empty {
   color: var(--theme-text-muted);
   font-size: var(--type-hairline);
@@ -3280,23 +3122,3 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 /* Second source inside the picker: repo companions. Same card grammar, divider keeps
    the "on disk" and "downloadable" lists from reading as one long list. */
-.loadout-picker__section + .loadout-picker__section {
-  margin-top: 0.5rem;
-  padding-top: 0.45rem;
-  border-top: 1px dashed color-mix(in srgb, var(--theme-border) 80%, transparent);
-}
-
-.loadout-picker__section .loadout-card__score {
-  max-width: 12rem;
-  text-align: right;
-  white-space: normal;
-  line-height: 1.2;
-  font-size: 0.52rem;
-  letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--theme-accent-bright) 80%, transparent);
-}
-
-.loadout-picker__section .loadout-card:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
