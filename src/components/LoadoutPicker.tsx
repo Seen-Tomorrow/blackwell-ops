@@ -152,7 +152,15 @@ export default function LoadoutPicker({
         void submitHfRepo(modelHubId);
         return;
       }
-      onSearchRemote?.();
+      if (onSearchRemote) {
+        onSearchRemote();
+        return;
+      }
+      // No Hub id means there is nothing to list — say so instead of doing nothing.
+      setRemoteRequested(true);
+      setHfRepoError(
+        "This model has no Hub id. Paste its repo under HF ID, or run VERIFY HUB PAIRINGS in CONFIG → MODEL PATHS.",
+      );
       return;
     }
     setRemoteLoading(true);
