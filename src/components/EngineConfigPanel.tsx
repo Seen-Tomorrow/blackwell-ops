@@ -3435,7 +3435,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         ) : null}
       </div>
 
-      {launchDockPosition === "bottom" && (
+      {launchDockPosition === "bottom" && !modelIsNonLaunchable && (
         <EngineLaunchDock
           position="bottom"
           showRightColumn={showRightColumn}
@@ -3543,7 +3543,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 aria-hidden
               />
             ) : null}
-            {showLaunchRail && (
+            {showLaunchRail && !modelIsNonLaunchable && (
               <EngineLaunchDock
                 position="right"
                 fullAutoFixed={fullAutoFixed}

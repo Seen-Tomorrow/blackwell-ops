@@ -125,7 +125,11 @@ export default function ModelCard({
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const draftRole = draftRoleFromModel(model);
-  const draftBadge = draftRoleBadge(draftRole, model) ?? (hasBakedMtp(model) ? BAKED_MTP_BADGE : null);
+  // An attachment is not a draft head, even when it sits next to a draft-GGUF folder: the
+  // role chip (MMPROJ / ENGRAM / LORA) already names it.
+  const draftBadge = isAttachmentModel(model)
+    ? null
+    : draftRoleBadge(draftRole, model) ?? (hasBakedMtp(model) ? BAKED_MTP_BADGE : null);
   const isDraftOnly = isExternalDraftOnly(model);
   // Attachment rows (Engram table, projector, adapter) come from the EXTRAS view.
   // They are read-only: no launch, no SCAN, and the card says what the file is.
