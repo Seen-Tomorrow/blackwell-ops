@@ -3300,7 +3300,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onPickSpecRemote={(offer) => void handleConfirmDflashPick(offer)}
           onSearchSpecRemote={() => void loadDflashHfCandidates()}
           onClearSpecError={clearSpecFileError}
-          modelHubId={model?.hfModelId ?? undefined}
+          modelHubId={
+            model?.hfModelId
+              ? model.hfModelId.split("/").filter(Boolean).slice(0, 2).join("/")
+              : undefined
+          }
           onPickRepoDraft={handlePickRepoDraft}
           kvQuantValues={cockpitKvValuesBound}
           parallelValues={cockpitParallelValues}

@@ -70,6 +70,8 @@ pub async fn verify_hf_pairing(
     file_name: String,
     size_bytes: u64,
 ) -> Result<bool, String> {
+    let repo_id = crate::companions::normalize_repo_id(&repo_id)
+        .ok_or_else(|| format!("'{repo_id}' is not an org/repo id"))?;
     crate::config::validate_hf_model_id(&repo_id)?;
     let hf_token = crate::secrets::get_secret("hf_token")?;
     let files = crate::hf_api::list_repo_gguf_files(&repo_id, hf_token.as_deref()).await?;

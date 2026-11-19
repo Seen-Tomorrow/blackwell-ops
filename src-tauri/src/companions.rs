@@ -874,7 +874,7 @@ fn repo_id_from_roots(model_path: &str, roots: &[String]) -> Option<String> {
 /// HF ids are `<author>/<repo>`. The catalog can carry a directory-derived id with the
 /// quant folder appended (`author/repo/QUANT`) for folders imported rather than
 /// downloaded, so always keep the first two segments.
-fn normalize_repo_id(id: &str) -> Option<String> {
+pub(crate) fn normalize_repo_id(id: &str) -> Option<String> {
     let parts: Vec<&str> = id.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() >= 2 {
         Some(format!("{}/{}", parts[0], parts[1]))
@@ -985,9 +985,11 @@ pub async fn repo_companions(
 /// repos and guessed by size; this asks the repo the user actually named.
 #[tauri::command]
 pub async fn repo_draft_files(model_id: String) -> Result<Vec<RepoCompanion>, String> {
-    crate::config::validate_hf_model_id(&model_id)?;
-    let repo_id = normalize_repo_id(&model_id)
-        .ok_or_else(|| format!("'{model_id}' is not an org/repo id"))?;
+    // Catalog ids can carry the quant folder (`author/repo/QUANT`): keep the two
+    // segments HF wants BEFORE validating, or the command rejects its own input.
+    let repo_id =
+        normalize_repo_id(&model_id).ok_or_else(|| format!("'{model_id}' is not an org/repo id"))?;
+    crate::config::validate_hf_model_id(&repo_id)?;
     let hf_token = crate::secrets::get_secret("hf_token")?;
     let files = crate::hf_api::list_repo_gguf_files(&repo_id, hf_token.as_deref()).await?;
     let mut out = Vec::new();
@@ -1025,10 +1027,10 @@ pub async fn repo_companions_for(
     model_id: String,
     role: String,
 ) -> Result<Vec<RepoCompanion>, String> {
-    crate::config::validate_hf_model_id(&model_id)?;
+    let repo_id =
+        normalize_repo_id(&model_id).ok_or_else(|| format!("'{model_id}' is not an org/repo id"))?;
+    crate::config::validate_hf_model_id(&repo_id)?;
     let role = parse_role(&role)?;
-    let repo_id = normalize_repo_id(&model_id)
-        .ok_or_else(|| format!("'{model_id}' is not an org/repo id"))?;
     list_repo_companions(&repo_id, role).await
 }
 
