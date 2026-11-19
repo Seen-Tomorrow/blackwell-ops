@@ -1663,6 +1663,41 @@ button.app-status-state:hover .app-status-state__dot {
   font-family: ui-monospace, monospace;
 }
 
+/*
+ * Anchored variant — the dialog hangs under the CANCEL button that opened it
+ * (dialog is portalled, so `top`/`right` from the button rect are viewport
+ * coordinates). The dim scrim stays: it is the click-away target.
+ */
+.download-confirm-overlay--anchored {
+  display: block;
+}
+
+.download-confirm--anchored {
+  position: absolute;
+  margin: 0;
+}
+
+.download-confirm--anchored::before {
+  content: "";
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+}
+
+.download-confirm--anchored[data-placement="below"]::before {
+  top: -6px;
+  right: 30px;
+  border-bottom: 6px solid var(--theme-tel-hot);
+}
+
+.download-confirm--anchored[data-placement="above"]::before {
+  bottom: -6px;
+  right: 30px;
+  border-top: 6px solid var(--theme-tel-hot);
+}
+
 .download-confirm__title {
   margin: 0 0 0.5rem;
   font-size: 13px;

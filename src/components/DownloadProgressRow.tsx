@@ -1,6 +1,17 @@
-import { useCallback, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { DownloadStatus, DownloadTask } from "@/lib/types";
+
+type ConfirmPlacement = "above" | "below";
+interface ConfirmAnchor {
+  top: number;
+  right: number;
+  placement: ConfirmPlacement;
+}
+
+/** Rough rendered height of the confirm card — only used to decide flip side. */
+const CONFIRM_CARD_HEIGHT = 190;
 
 function statusColor(status: DownloadStatus): string {
   switch (status) {
@@ -135,6 +146,8 @@ export default function DownloadProgressRow({
   }, [task.id, onActionError, reportActionError]);
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmAnchor, setConfirmAnchor] = useState<ConfirmAnchor | null>(null);
+  const cancelBtnRef = useRef<HTMLButtonElement | null>(null);
   const title = task.hfModelId || task.fileName;
   const showProgress =
     task.status === "downloading" ||
@@ -142,11 +155,52 @@ export default function DownloadProgressRow({
     task.status === "failed" ||
     task.status === "scanning";
 
+  /**
+   * Anchor the confirm dialog under the CANCEL button that opened it. The dialog
+   * is portalled to body, so these are viewport coordinates; `right` keeps the
+   * card's right edge on the button's, and it flips above when the button sits
+   * near the bottom (Model Hub cards scroll).
+   */
+  const placeConfirm = useCallback(() => {
+    const el = cancelBtnRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    const gap = 6;
+    const below = rect.bottom + gap;
+    const above = rect.top - CONFIRM_CARD_HEIGHT - gap;
+    const placement: ConfirmPlacement =
+      below + CONFIRM_CARD_HEIGHT > window.innerHeight - margin && above >= margin
+        ? "above"
+        : "below";
+    setConfirmAnchor({
+      top:
+        placement === "below"
+          ? Math.min(below, window.innerHeight - margin - CONFIRM_CARD_HEIGHT)
+          : above,
+      right: Math.max(margin, window.innerWidth - rect.right),
+      placement,
+    });
+  }, []);
+
   const handleCancelClick = useCallback((e?: ReactMouseEvent) => {
     e?.stopPropagation();
     // Ask first — PAUSE and CANCEL sit side by side, and cancel deletes the partial file.
+    placeConfirm();
     setConfirmCancel(true);
-  }, []);
+  }, [placeConfirm]);
+
+  // The anchor lives in the header (or in a scrolling card): keep the dialog on it.
+  useEffect(() => {
+    if (!confirmCancel) return;
+    const reposition = () => placeConfirm();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [confirmCancel, placeConfirm]);
 
   const priority = task.priority ?? 100;
   const canReprioritize = task.status === "queued" || task.status === "paused";
@@ -215,6 +269,7 @@ export default function DownloadProgressRow({
         task.status === "paused" ||
         task.status === "queued") && (
         <button
+          ref={cancelBtnRef}
           type="button"
           onClick={(e) => { handleCancelClick(e); }}
           className="dl-row-btn dl-row-btn--danger rounded-sm border px-1.5 py-0.5 font-mono transition-all whitespace-nowrap"
@@ -225,9 +280,22 @@ export default function DownloadProgressRow({
     </>
   );
 
-  const confirmModal = confirmCancel ? (
-    <div className="download-confirm-overlay" onClick={(e) => { e.stopPropagation(); setConfirmCancel(false); }}>
-      <div className="download-confirm" onClick={(e) => e.stopPropagation()}>
+  // Portal to body: the header strip (and any other host) may sit inside a
+  // hover-opacity ancestor, and `opacity < 1` makes that ancestor the containing
+  // block for `position: fixed`. The overlay would then cover only the strip —
+  // and hovering it would toggle the ancestor's `:hover` every frame, flickering
+  // the whole dialog. Portalling keeps the scrim viewport-anchored and inert.
+  const confirmModal = confirmCancel ? createPortal(
+    <div
+      className={`download-confirm-overlay${confirmAnchor ? " download-confirm-overlay--anchored" : ""}`}
+      onClick={(e) => { e.stopPropagation(); setConfirmCancel(false); }}
+    >
+      <div
+        className={`download-confirm${confirmAnchor ? " download-confirm--anchored" : ""}`}
+        data-placement={confirmAnchor?.placement}
+        style={confirmAnchor ? { top: confirmAnchor.top, right: confirmAnchor.right } : undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
         <p className="download-confirm__title">Cancel this download?</p>
         <p className="download-confirm__body">
           This will remove the unfinished download from disk. Pause keeps your progress instead.
@@ -253,7 +321,8 @@ export default function DownloadProgressRow({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   ) : null;
 
   if (inline) {
