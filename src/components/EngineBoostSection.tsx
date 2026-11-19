@@ -1,3 +1,4 @@
+import type { DflashDraftOffer } from "../lib/dflashGetDraft";
 import type { ReactNode } from "react";
 import type {
   BrainsId,
@@ -52,6 +53,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
   specFileBusy = false,
   specFileError = null,
   onResolveSpecHf,
+  specRemoteOffers = [],
+  onPickSpecRemote,
+  onSearchSpecRemote,
     kvQuantValues,
     parallelValues,
     showAgents,
@@ -131,6 +135,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         specFileBusy={specFileBusy}
         specFileError={specFileError}
         onResolveSpecHf={onResolveSpecHf}
+        specRemoteOffers={specRemoteOffers}
+        onPickSpecRemote={onPickSpecRemote}
+        onSearchSpecRemote={onSearchSpecRemote}
         kvQuantValues={kvQuantValues}
         parallelValues={parallelValues}
         showAgents={showAgents}
@@ -218,6 +225,10 @@ export interface EngineBoostSectionProps {
   specFileBusy?: boolean;
   specFileError?: string | null;
   onResolveSpecHf?: (id: string) => void;
+  /** HF draft packs found for the active lane. */
+  specRemoteOffers?: DflashDraftOffer[];
+  onPickSpecRemote?: (offer: DflashDraftOffer) => void;
+  onSearchSpecRemote?: () => void;
   kvQuantValues: (string | number)[];
   parallelValues: (string | number)[];
   showAgents: boolean;

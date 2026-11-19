@@ -2722,8 +2722,9 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-files {
   position: relative;
-  /* Same band as the SPEC slider: badge line, role, thumb on the track, value below. */
-  height: 3.7rem;
+  /* Same band as the SPEC slider plus one line: the state sits under the value plate
+     with real air between them. */
+  height: 4rem;
   min-width: 0;
 }
 
@@ -2741,7 +2742,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   top: 0;
   transform: translateX(-50%);
   width: 8.2rem;
-  height: 3.7rem;
+  height: 4rem;
   background: transparent;
   border: 0;
   padding: 0;
@@ -2840,7 +2841,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop__state {
   position: absolute;
-  top: 2.85rem;
+  top: 3.2rem;
   left: 50%;
   transform: translateX(-50%);
   color: var(--theme-text-muted);
@@ -2990,8 +2991,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   /* Fades out over the rail: the grid dims, the rail underneath stays readable. */
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--theme-panel-accent) 78%, transparent) 0 48%,
-    transparent 92%
+    var(--theme-panel-accent) 0 66%,
+    transparent 96%
   );
 }
 
@@ -3010,8 +3011,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
      user has to see the rail change they just made. */
   background: linear-gradient(
     180deg,
-    var(--theme-panel-accent) 0 52%,
-    transparent 88%
+    var(--theme-panel-accent) 0 66%,
+    transparent 96%
   );
   overflow: hidden;
 }
@@ -3154,6 +3155,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .gp-row--repo .gp-row__tag { color: var(--theme-warn); }
+
+/* Same voice as the cockpit's mark labels — app font, caps, tight tracking — not the
+   monospace used for values elsewhere. */
+.gp-panel .gp-row__quant,
+.gp-panel .gp-row__size,
+.gp-panel .gp-row__name,
+.gp-panel .gp-row__tag {
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 .gp-more {
   align-self: flex-start;

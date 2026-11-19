@@ -3300,6 +3300,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           specFileBusy={dflashResolving}
           specFileError={dflashResolveError}
           onResolveSpecHf={handleConfirmDflashManual}
+          specRemoteOffers={dflashCandidates}
+          onPickSpecRemote={(offer) => void handleConfirmDflashPick(offer)}
+          onSearchSpecRemote={() => void loadDflashHfCandidates()}
           kvQuantValues={cockpitKvValuesBound}
           parallelValues={cockpitParallelValues}
           showAgents={cockpitShowAgents}

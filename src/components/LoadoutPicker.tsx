@@ -30,6 +30,9 @@ interface LoadoutPickerProps {
   role: CompanionRole | null;
   slot: CompanionSlot | null;
   localRows?: LocalFileRow[];
+  /** Remote rows supplied by the caller (drafts); otherwise fetched for the role. */
+  remoteRows?: LocalFileRow[];
+  onSearchRemote?: () => void;
   modelPath: string;
   onAttach: (role: CompanionRole, path: string) => void;
   onDetach: (role: CompanionRole) => void;
@@ -51,6 +54,8 @@ export default function LoadoutPicker({
   role,
   slot,
   localRows,
+  remoteRows,
+  onSearchRemote,
   modelPath,
   onAttach,
   onDetach,
@@ -131,7 +136,15 @@ export default function LoadoutPicker({
       : [];
 
   // No cap: the column scrolls, so a big library is never truncated into a "show more".
-  const remoteList = repoItems ?? [];
+  const remoteList: LocalFileRow[] = remoteRows
+    ? remoteRows
+    : (repoItems ?? []).map((item) => ({
+        key: item.path_in_repo,
+        quant: item.precision || "file",
+        size: item.size_str,
+        name: item.file_name,
+        onPick: () => void download(item),
+      }));
 
   return (
     <div className="gp-scrim" onClick={onClose}>
@@ -194,37 +207,45 @@ export default function LoadoutPicker({
             </div>
           </div>
 
-          {role ? (
-            <div className="gp-col">
-              <span className="gp-col__label font-mono">REMOTE {remoteList.length || ""}</span>
-              <div className="gp-col__rows">
-                {repoItems === null ? (
-                  <span className="gp-empty font-mono">reading the Hub tree…</span>
-                ) : remoteList.length === 0 ? (
-                  <span className="gp-empty font-mono">repo publishes no file of its own</span>
-                ) : (
-                  remoteList.map((item) => (
-                    <button
-                      key={item.path_in_repo}
-                      type="button"
-                      className="gp-row gp-row--repo"
-                      onClick={() => void download(item)}
-                      disabled={busy === item.path_in_repo}
-                      title={item.path_in_repo}
-                    >
-                      <span className="gp-row__dot" aria-hidden />
-                      <span className="gp-row__quant font-mono">{item.precision || "file"}</span>
-                      <span className="gp-row__size font-mono">{item.size_str}</span>
-                      <span className="gp-row__name font-mono">{item.file_name}</span>
-                      <span className="gp-row__tag font-mono">
-                        {busy === item.path_in_repo ? "QUEUED" : "GET"}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
+          <div className="gp-col">
+            <span className="gp-col__label font-mono">REMOTE {remoteList.length || ""}</span>
+            <div className="gp-col__rows">
+              {remoteRows ? null : repoItems === null ? (
+                <span className="gp-empty font-mono">reading the Hub tree…</span>
+              ) : null}
+              {remoteList.length === 0 ? (
+                <span className="gp-empty font-mono">
+                  {onSearchRemote ? "no packs found yet" : "repo publishes no file of its own"}
+                </span>
+              ) : (
+                remoteList.map((row) => (
+                  <button
+                    key={row.key}
+                    type="button"
+                    className="gp-row gp-row--repo"
+                    onClick={row.onPick}
+                    disabled={row.disabled}
+                    title={row.name}
+                  >
+                    <span className="gp-row__dot" aria-hidden />
+                    <span className="gp-row__quant font-mono">{row.quant}</span>
+                    <span className="gp-row__size font-mono">{row.size}</span>
+                    <span className="gp-row__name font-mono">{row.name}</span>
+                    <span className="gp-row__tag font-mono">GET</span>
+                  </button>
+                ))
+              )}
+              {onSearchRemote ? (
+                <button
+                  type="button"
+                  className="gp-more font-mono"
+                  onClick={onSearchRemote}
+                >
+                  SEARCH HF
+                </button>
+              ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
 
         {hfInput ? (
