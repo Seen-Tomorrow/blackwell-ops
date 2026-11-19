@@ -54,12 +54,13 @@ const sortLabels: Record<string, string> = {
 };
 
 
-const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["main", "extras", "all"];
+const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["main", "extras", "all", "incomplete"];
 
 const draftFilterLabels: Record<CatalogDraftFilter, string> = {
   main: "MAIN",
   extras: "EXTRAS",
   all: "ALL",
+  incomplete: "INCOMPLETE",
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {

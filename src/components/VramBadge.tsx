@@ -295,7 +295,7 @@ export default function VramBadge({
   if (fixedFace) {
     return (
       <div
-        className={`vram-badge-forecast vram-fc ${draftOnly ? "vram-badge-forecast--draft" : "vram-badge-forecast--draft vram-badge-forecast--attachment"} relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        className={`vram-badge-forecast vram-fc vram-badge-forecast--draft${incomplete ? " vram-badge-forecast--incomplete" : draftOnly ? "" : " vram-badge-forecast--attachment"} relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
         data-forecast-draft={draftOnly ? "1" : undefined}
         data-attachment-role={attachmentKind ?? undefined}
         aria-label={fixedFace.aria}

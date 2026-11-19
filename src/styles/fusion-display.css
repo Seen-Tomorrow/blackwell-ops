@@ -736,6 +736,14 @@
   --vram-draft-wash: var(--theme-dflash-strip-bg, color-mix(in srgb, #2e1065 70%, transparent));
 }
 
+/* An incomplete set is not a material of its own: it borrows the draft layout but paints
+   in the same ink as a model card, because the condition is the message. */
+.vram-badge-forecast--incomplete {
+  --vram-draft-ink: var(--theme-text);
+  --vram-draft-edge: var(--theme-border);
+  --vram-draft-wash: color-mix(in srgb, var(--theme-panel-accent) 75%, transparent);
+}
+
 /* Companion faces reuse the draft layout with their own tint, and a finer cross-weave
    instead of the draft's diagonal so the two never read as the same material. */
 .vram-badge-forecast--attachment[data-attachment-role="ple"] {

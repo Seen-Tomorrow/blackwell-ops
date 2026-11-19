@@ -19,7 +19,7 @@ import {
 } from "./specProfiles";
 
 export type DraftRole = "none" | "external_dflash" | "external_eagle3" | "external_mtp";
-export type CatalogDraftFilter = "main" | "extras" | "all";
+export type CatalogDraftFilter = "main" | "extras" | "all" | "incomplete";
 export type SpecCapability = "mtp" | "dflash" | "eagle3";
 
 /** @deprecated Old single group — profiles use SPECULATIVE-MTP / SPECULATIVE-DFLASH. */
@@ -370,13 +370,18 @@ export function isUnclassifiedModel(
   return model.fileRole === "unknown";
 }
 export function matchesCatalogDraftFilter(
-  model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "fileRole">,
+  model: Pick<
+    ModelEntry,
+    "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "fileRole" | "completeness"
+  >,
   filter: CatalogDraftFilter,
 ): boolean {
   const external = isExternalDraftOnly(model);
   // Extras are rendered from `CatalogScanReport.extras`, not from the model list.
   if (filter === "extras") return false;
   if (filter === "main") return !external && !isAttachmentModel(model);
+  // Incomplete sets cut across kinds: a draft head and a main can both be unfinished.
+  if (filter === "incomplete") return model.completeness === "incomplete";
   return true;
 }
 

@@ -671,7 +671,9 @@ export function useModelCatalog({
     // EXTRAS holds everything that is NOT a main model.
     const draftRows = models.filter((m) => isExternalDraftOnly(m));
     const mainRows = models.filter((m) => !isExternalDraftOnly(m) && !isAttachmentModel(m));
-    return { mainRows, draftRows, extrasRows: extras.map(extraAsModel) };
+    // Interrupted downloads, whatever kind they would have been.
+    const incompleteRows = models.filter((m) => m.completeness === "incomplete");
+    return { mainRows, draftRows, incompleteRows, extrasRows: extras.map(extraAsModel) };
   }, [models, extras]);
 
   const kindCounts = useMemo(
@@ -679,6 +681,7 @@ export function useModelCatalog({
       main: kindRows.mainRows.length,
       extras: kindRows.extrasRows.length + kindRows.draftRows.length,
       all: models.length + extras.length,
+      incomplete: kindRows.incompleteRows.length,
     }),
     [kindRows, models.length, extras.length],
   );
@@ -687,11 +690,13 @@ export function useModelCatalog({
   const catalogModels = useMemo(() => {
     // EXTRAS is its own list, not a filter over models: those rows are attachments
     // (PLE/Engram tables, projectors). ALL shows models and attachments together.
-    const { extrasRows, draftRows, mainRows } = kindRows;
+    const { extrasRows, draftRows, mainRows, incompleteRows } = kindRows;
     const pool =
-      draftFilter === "extras"
-        ? [...extrasRows, ...draftRows]
-        : draftFilter === "all"
+      draftFilter === "incomplete"
+        ? incompleteRows
+        : draftFilter === "extras"
+          ? [...extrasRows, ...draftRows]
+          : draftFilter === "all"
           ? // ALL is models + companion files. Unknown rows are already in `models`, and
             // `extrasRows` carries them for the EXTRAS filter — do not add them twice.
             [...models, ...extras.map(extraAsModel)]
