@@ -501,6 +501,15 @@ pub async fn list_models(
             }
             models.push(entry);
         }
+        // resolve_catalog can surface a file as an "extra" while it is ALSO a catalog
+        // model (a draft head in the extras store does exactly that). One file must be
+        // one card: the model row wins, the extra row is dropped.
+        let model_keys: std::collections::HashSet<String> = models
+            .iter()
+            .map(|m| crate::shard_sets::normalize_key(&m.path))
+            .collect();
+        extras.retain(|e| !model_keys.contains(&crate::shard_sets::normalize_key(&e.path)));
+
         if with_external > 0 || incomplete > 0 {
             log::info!(
                 "[list_models] shard sets: {} complete via an external table, {} incomplete",

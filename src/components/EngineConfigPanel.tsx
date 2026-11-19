@@ -3253,7 +3253,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             </span>
           </div>
         ) : null}
-        {model && !modelIsDraftOnly && !modelIsAttachment && !showCockpitSurface && isCustomProvider && (
+        {model && !modelIsDraftOnly && !modelIsAttachment && !modelIncomplete && !showCockpitSurface && isCustomProvider && (
           <div className="mb-3 pb-3 border-b section-divider px-1">
             <p className="type-label font-mono config-muted leading-relaxed">
               Cockpit controls bind to Master param keys (ctx, parallel, kv_quant, reasoning…).
@@ -3262,7 +3262,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </div>
         )}
         <EngineBoostSection
-          show={Boolean(model && !modelIsDraftOnly && showCockpitSurface)}
+          show={Boolean(model && !modelIsDraftOnly && !modelIsAttachment && !modelIncomplete && showCockpitSurface)}
           wrapperClass={
             fullAutoFixed
               ? "mb-3"
@@ -3341,7 +3341,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onAutoFix={fullAutoFixed ? () => { void handleAutoFit(); } : undefined}
           onTakeControl={fullAutoFixed ? handleTakeControl : undefined}
         />
-        {!(model && !modelIsDraftOnly && !modelIsAttachment && showCockpitSurface) && (
+        {!(model && !modelIsDraftOnly && !modelIsAttachment && !modelIncomplete && showCockpitSurface) && (
           <CockpitInstruments
             defs={allParamsResolved}
             config={config}

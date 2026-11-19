@@ -320,10 +320,11 @@ export function isExternalDraftOnly(
     "path" | "name" | "hfModelId" | "sourcePathLabel" | "draftRoleHint" | "fileRole"
   >,
 ): boolean {
-  // A file the catalog classified as a draft head is a draft wherever it lives — the
-  // path/name hints miss heads that sit in the extras store with no model dir around
-  // them, which put them in MAIN.
+  // The catalog's verdict wins over name hints in both directions: a head in the extras
+  // store IS a draft, and a main that carries baked-in MTP (-MTP in the name) is NOT —
+  // it launches on its own and only drafts with itself.
   if (model.fileRole === "draft") return true;
+  if (model.fileRole === "model") return false;
   const role = draftRoleFromModel(model);
   return role === "external_dflash" || role === "external_eagle3" || role === "external_mtp";
 }

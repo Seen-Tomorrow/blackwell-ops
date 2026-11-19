@@ -8,7 +8,7 @@
 import type { ModelEntry } from "./types";
 import { modelSizeBytes } from "./modelSize";
 
-export type SortField = (keyof ModelEntry) | "date";
+export type SortField = (keyof ModelEntry) | "date" | "type";
 export type SortDirection = "asc" | "desc";
 
 /**
@@ -35,7 +35,12 @@ export function compareCatalogModels(
 ): number {
   let comparison = 0;
 
-  if (field === "date") {
+  if (field === "type") {
+    // Companion kinds in one order, so a long extras list groups by role instead of
+    // interleaving drafts and projectors.
+    comparison = roleRank(a) - roleRank(b);
+    if (comparison === 0) comparison = (a.name ?? "").localeCompare(b.name ?? "");
+  } else if (field === "date") {
     const aDate = a.metadata?.file_created ?? 0;
     const bDate = b.metadata?.file_created ?? 0;
     if ((aDate === 0) !== (bDate === 0)) return aDate === 0 ? 1 : -1;
@@ -59,4 +64,21 @@ export function compareCatalogModels(
   }
 
   return direction === "asc" ? comparison : -comparison;
+}
+/** Grouping order for the TYPE sort: heads, tables, projectors, adapters, then rest. */
+function roleRank(model: ModelEntry): number {
+  switch (model.fileRole) {
+    case "draft":
+      return 0;
+    case "ple":
+      return 1;
+    case "mmproj":
+      return 2;
+    case "adapter":
+      return 3;
+    case "model":
+      return 4;
+    default:
+      return 5;
+  }
 }

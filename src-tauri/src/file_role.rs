@@ -153,8 +153,13 @@ pub fn classify(shape: Option<&GgufShape>, draft_hint: &str, path: &str) -> Role
     if !draft_hint.is_empty() && crate::spec_draft::is_external_draft_role_hint(draft_hint) {
         return v(FileRole::Draft, RoleEvidence::DraftHint);
     }
+    // A baked-in-MTP main ALSO carries nextn tensors — it is a model that can draft with
+    // itself, not a draft head. The distinguishing fact is the trunk stack: a head has no
+    // blocks of its own (real head: 34 tensors, 0 trunk blocks), a baked-in main has the
+    // full stack (real: 866 tensors, 65 blocks).
     if let Some(shape) = shape {
-        if shape.nextn_layers > 0 || shape.has_markov_w1 {
+        let draft_tensors = shape.nextn_layers > 0 || shape.has_markov_w1;
+        if draft_tensors && shape.block_count <= 1 {
             return v(FileRole::Draft, RoleEvidence::TensorSignature);
         }
     }
@@ -311,6 +316,41 @@ mod tests {
         assert_eq!(classify(Some(&s), "", "x.gguf").role, FileRole::Draft);
     }
 
+    /// A main that carries its own MTP layers is a MODEL, not a draft head.
+    #[test]
+    fn baked_in_mtp_main_is_a_model() {
+        let s = GgufShape {
+            architecture: "qwen4exp".into(),
+            block_count: 65,
+            nextn_layers: 65,
+            has_trunk: true,
+            has_vocab: true,
+            tensor_count: 866,
+            ..shape()
+        };
+        assert_eq!(
+            classify(Some(&s), "", "Qwen3.6-27B-MTP-pi-tune-Q4_K_M.gguf").role,
+            FileRole::Model
+        );
+    }
+
+    /// A real MTP head: nextn tensors and no trunk blocks of its own.
+    #[test]
+    fn mtp_head_without_blocks_is_a_draft() {
+        let s = GgufShape {
+            architecture: "qwen4exp".into(),
+            block_count: 0,
+            nextn_layers: 49,
+            has_trunk: true,
+            has_vocab: true,
+            tensor_count: 34,
+            ..shape()
+        };
+        assert_eq!(
+            classify(Some(&s), "", r"C:\m\mtp\Mtp-Qwen3.8-Flash-Next-Q8_0.gguf").role,
+            FileRole::Draft
+        );
+    }
     /// No shape at all: filename tier only, and it is flagged as weak.
     #[test]
     fn filename_is_flagged_as_weak_evidence() {

@@ -47,10 +47,16 @@ interface ModelCatalogProps {
 
 /** Sort chips — no NAME (search covers free-text); keep one row when rail is narrow. */
 const CATALOG_SORT_FIELDS = ["author", "size_str", "date"] as const satisfies readonly SortField[];
+/** TYPE groups companions by role, so it only makes sense on the EXTRAS list. */
+const CATALOG_SORT_FIELDS_EXTRAS = [
+  "type",
+  ...CATALOG_SORT_FIELDS,
+] as const satisfies readonly SortField[];
 const sortLabels: Record<string, string> = {
   author: "AUTHOR",
   size_str: "SIZE",
   date: "DATE",
+  type: "TYPE",
 };
 
 
@@ -577,6 +583,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
    * Kind filter as a four-stop bar above the search field: it is the most used control in
    * the catalog, so every stop is visible with its count instead of hidden behind a cycle.
    */
+  // TYPE is offered on the EXTRAS list only; leaving that list must not leave the select
+  // pointing at an option it no longer renders.
+  useEffect(() => {
+    if (draftFilter !== "extras" && sortField === "type") handleSort("author");
+  }, [draftFilter, sortField, handleSort]);
   const renderKindBar = () => (
     <div className="catalog-kind-bar" role="tablist" aria-label="Model kind">
       {DRAFT_FILTER_CYCLE.map((kind) => (
@@ -652,11 +663,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             onChange={(e) => handleSort(e.target.value as SortField)}
             aria-label="Sort models"
           >
-            {CATALOG_SORT_FIELDS.map((field) => (
-              <option key={field} value={field}>
-                {sortLabels[field] ?? field}
-              </option>
-            ))}
+            {(draftFilter === "extras" ? CATALOG_SORT_FIELDS_EXTRAS : CATALOG_SORT_FIELDS).map(
+              (field) => (
+                <option key={field} value={field}>
+                  {sortLabels[field] ?? field}
+                </option>
+              ),
+            )}
           </select>
           <button
             type="button"
