@@ -2802,6 +2802,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   transform: translateX(-50%);
   color: color-mix(in srgb, var(--theme-industrial-muted) 60%, transparent);
   font-size: var(--type-hairline);
+  line-height: 1;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
