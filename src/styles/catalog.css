@@ -126,24 +126,15 @@
 
 /*
  * Catalog head — quick access (seats + favorites) above one contextual list
- * toolbar. The head's min-height is measured against the VRAM glass: the
- * toolbar's bottom border lands on the glass bezel, and the quick strip is the
- * flexible child that absorbs the difference so the two columns share a seam.
+ * toolbar. Sized by its content: the right column's glass height changes with the
+ * CTX dock, and mirroring it here only made the list jump.
  */
 .catalog-list-panel__head {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  min-height: var(--catalog-head-min, 0px);
   min-width: 0;
   position: relative;
-}
-
-/* Anchored: the head is exactly the glass height, and quick access scrolls
-   inside it rather than pushing the search/sort bar past the bezel. */
-.catalog-list-panel[data-head-anchor="1"] .catalog-list-panel__head {
-  height: var(--catalog-head-min);
-  min-height: 0;
 }
 
 .catalog-list-panel__head > .catalog-quick-strip {
@@ -161,22 +152,6 @@
 .catalog-list-panel__head > .catalog-quick-strip::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--theme-text-muted) 30%, transparent);
   border-radius: 2px;
-}
-
-/* Fewer pins / no favorites: centre the quick-access group instead of leaving
-   one dead band above the toolbar. Auto margins collapse when content is full. */
-.catalog-list-panel__head > .catalog-quick-strip > .catalog-quick-section:first-child {
-  margin-top: auto;
-}
-
-.catalog-list-panel__head > .catalog-quick-strip > .catalog-quick-section:last-child {
-  margin-bottom: auto;
-}
-
-.catalog-list-panel__head
-  > .catalog-quick-strip
-  > .catalog-quick-section:only-child {
-  margin-block: auto;
 }
 
 .catalog-list-panel__head > .catalog-list-panel__chrome-tools {
@@ -852,60 +827,6 @@
   gap: 10px;
   padding: 8px 8px 10px;
   background: color-mix(in srgb, var(--theme-panel-accent, var(--theme-panel)) 55%, transparent);
-}
-
-/*
- * CTX docked inside the cockpit lifts the VRAM glass. The head gives back a
- * little air instead of hanging the sort bar below the bezel: seats tighten one
- * notch and FAVORITE becomes a horizontal quick strip (scrolls past two chips).
- */
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-strip {
-  gap: 6px;
-  padding: 6px 6px 8px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__head {
-  min-height: 1.15rem;
-  padding-bottom: 3px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__head--seats {
-  padding-bottom: 4px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat {
-  min-height: 58px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat__main {
-  gap: 2px;
-  padding: 4px 4px 4px 8px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-seat__actions {
-  bottom: 3px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-section__actions-row {
-  padding-top: 0;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-section__grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-chip {
-  min-height: 28px;
-  padding: 2px 16px 2px 6px;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-chip__meta {
-  display: none;
-}
-
-.catalog-list-panel[data-head-compact="1"] .catalog-quick-section--pins .catalog-quick-section__head {
-  padding-bottom: 2px;
 }
 
 /* Twin seats + optional Σ footer in one frame */
