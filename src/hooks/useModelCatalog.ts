@@ -669,10 +669,14 @@ export function useModelCatalog({
     // A file the classifier could not place is not a companion: it is a main model whose
     // header was unreadable (an interrupted download, typically), so it stays in MAIN.
     // EXTRAS holds everything that is NOT a main model.
-    const draftRows = models.filter((m) => isExternalDraftOnly(m));
-    const mainRows = models.filter((m) => !isExternalDraftOnly(m) && !isAttachmentModel(m));
-    // Interrupted downloads, whatever kind they would have been.
-    const incompleteRows = models.filter((m) => m.completeness === "incomplete");
+    // Interrupted downloads live in their own kind and nowhere else: a set that cannot
+    // launch is not a main model to pick, and not a companion either.
+    const isIncomplete = (m: (typeof models)[number]) => m.completeness === "incomplete";
+    const incompleteRows = models.filter(isIncomplete);
+    const draftRows = models.filter((m) => isExternalDraftOnly(m) && !isIncomplete(m));
+    const mainRows = models.filter(
+      (m) => !isExternalDraftOnly(m) && !isAttachmentModel(m) && !isIncomplete(m),
+    );
     return { mainRows, draftRows, incompleteRows, extrasRows: extras.map(extraAsModel) };
   }, [models, extras]);
 
