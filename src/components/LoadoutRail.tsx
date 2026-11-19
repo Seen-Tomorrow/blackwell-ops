@@ -1,28 +1,34 @@
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { CompanionCandidate, CompanionRole, CompanionReport, CompanionSlot } from "../lib/types";
-import type { PickSlotId } from "./LoadoutPicker";
 
 /**
- * LOADOUT — one rail, two groups.
+ * LOADOUT — one rail, two groups, plus the always-on status line under it.
  *
- * SPEC is the Boost slider (passed in whole). SWAPS is the same slider grammar used
- * twice: a continuous track, one thumb per role stopping at MMPROJ / ENGRAM, the role
- * word above it, the attached precision below it and the state under that. Both halves
- * are functionally independent — the rail only makes them look like one control.
+ * SPEC is the Boost slider (passed in whole) and it is the MODE control: clicking a
+ * stop changes the mode and nothing else. Picking the external file a mode needs is a
+ * separate affordance ("SELECT EXTERNAL" beside the current mode), because that is a
+ * different decision from choosing the mode.
  *
- * The companion report is owned by the cockpit (it also renders the picker block over
- * the grid), so this rail is presentational: it draws the stops and reports clicks.
+ * SWAPS is the same slider grammar used twice; clicking either stop opens the file
+ * picker for that role, and the wheel cycles.
+ *
+ * Under the rail, the status line always says what each stop is currently on — SPEC
+ * shows its single selected mode, the swaps show precision + state.
  */
 interface LoadoutRailProps {
-  modelPath?: string | null;
   /** SPEC group — the Boost slider rendered inside the rail. */
   specSlot?: ReactNode;
+  /** Current SPEC mode name, printed in the header and in the status line. */
+  specLabel?: string;
+  /** True when the current mode reads an external draft file. */
+  canPickExternal?: boolean;
+  onPickExternal?: (anchor: number) => void;
   report: CompanionReport | null;
   busy?: boolean;
-  /** Ask the cockpit to open its picker block on a stop (SPEC zone label or a SWAP). */
-  onOpenSlot?: (slot: PickSlotId) => void;
-  /** Cycle to a candidate — the only gesture a stop performs by itself. */
+  /** Open the file picker for a stop; anchor is 0..1 across the rail. */
+  onOpenSlot?: (slot: CompanionRole, anchor: number) => void;
+  /** Cycle to a candidate — the wheel gesture. */
   onCycle?: (role: CompanionRole, candidate: CompanionCandidate) => void;
 }
 
@@ -57,7 +63,6 @@ function stopState(slot: CompanionSlot): StopState {
   return { value: "—", state: "EMPTY", tone: "empty" };
 }
 
-/** Next candidate after the current one — shared by click and wheel. */
 function nextCandidate(slot: CompanionSlot): CompanionCandidate | null {
   if (slot.candidates.length === 0) return null;
   const current = slot.pinned ?? slot.auto?.path;
@@ -67,24 +72,46 @@ function nextCandidate(slot: CompanionSlot): CompanionCandidate | null {
 
 export default function LoadoutRail({
   specSlot,
+  specLabel,
+  canPickExternal = false,
+  onPickExternal,
   report,
   busy = false,
   onOpenSlot,
   onCycle,
 }: LoadoutRailProps) {
+  const railRef = useRef<HTMLDivElement | null>(null);
   const slots = report ? [report.mmproj, report.engram] : [];
 
+  /** Where the clicked control sits across the rail, so the panel opens above it. */
+  const anchorOf = (el: HTMLElement | null): number => {
+    const rail = railRef.current;
+    if (!el || !rail) return 0.5;
+    const r = el.getBoundingClientRect();
+    const rr = rail.getBoundingClientRect();
+    if (rr.width <= 0) return 0.5;
+    return Math.min(1, Math.max(0, (r.left + r.width / 2 - rr.left) / rr.width));
+  };
+
   return (
-    <div className="loadout-rail" data-busy={busy ? "1" : undefined}>
+    <div className="loadout-rail" data-busy={busy ? "1" : undefined} ref={railRef}>
       <div className="loadout-rail__group loadout-rail__group--spec">
-        <button
-          type="button"
-          className="loadout-rail__zone loadout-rail__zone--btn font-mono"
-          onClick={() => onOpenSlot?.("spec")}
-          title="Open the SPEC picker"
-        >
-          SPEC
-        </button>
+        <div className="loadout-rail__zone-row">
+          <span className="loadout-rail__zone font-mono">SPEC</span>
+          {specLabel ? (
+            <span className="loadout-rail__mode font-mono">{specLabel}</span>
+          ) : null}
+          {canPickExternal ? (
+            <button
+              type="button"
+              className="loadout-rail__external font-mono"
+              onClick={(e) => onPickExternal?.(anchorOf(e.currentTarget))}
+              title="Pick the external draft file this mode needs"
+            >
+              SELECT EXTERNAL
+            </button>
+          ) : null}
+        </div>
         <div className="loadout-rail__spec">{specSlot}</div>
       </div>
 
@@ -100,11 +127,29 @@ export default function LoadoutRail({
               slot={slot}
               leftPct={slots.length > 1 ? 26 + i * 48 : 50}
               disabled={busy}
-              onOpen={() => onOpenSlot?.(slot.role)}
+              onOpen={(el) => onOpenSlot?.(slot.role, anchorOf(el))}
               onCycle={(candidate) => onCycle?.(slot.role, candidate)}
             />
           ))}
         </div>
+      </div>
+
+      {/* Always on: what every stop is currently set to, files or not. */}
+      <div className="loadout-status" aria-label="LOADOUT status">
+        <span className="loadout-status__item font-mono">
+          <span className="loadout-status__role">SPEC</span>
+          {specLabel ?? "—"}
+        </span>
+        {slots.map((slot) => {
+          const state = stopState(slot);
+          return (
+            <span className="loadout-status__item font-mono" key={slot.role}>
+              <span className="loadout-status__role">{ROLE_LABEL[slot.role]}</span>
+              {state.value}
+              <span className="loadout-status__state">{state.state}</span>
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -114,7 +159,7 @@ interface CompanionStopProps {
   slot: CompanionSlot;
   leftPct: number;
   disabled: boolean;
-  onOpen: () => void;
+  onOpen: (el: HTMLElement | null) => void;
   onCycle: (candidate: CompanionCandidate) => void;
 }
 
@@ -144,9 +189,9 @@ function CompanionStop({ slot, leftPct, disabled, onOpen, onCycle }: CompanionSt
       type="button"
       className={`loadout-stop loadout-stop--${state.tone}${active ? " loadout-stop--active" : ""} loadout-stop--role-${slot.role}`}
       style={{ left: `${leftPct}%` }}
-      onClick={onOpen}
+      onClick={() => onOpen(ref.current)}
       disabled={disabled}
-      title={slot.reason || `${state.state} — click to open the picker, wheel to cycle`}
+      title={slot.reason || `${state.state} — click to pick a file, wheel to cycle`}
       aria-label={`${ROLE_LABEL[slot.role]}: ${state.state}, ${state.value}`}
     >
       <span className="loadout-stop__role font-mono">{ROLE_LABEL[slot.role]}</span>

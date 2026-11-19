@@ -23,7 +23,7 @@ import {
 } from "../lib/multiAgentBooster";
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import LoadoutRail from "./LoadoutRail";
-import LoadoutPicker, { type PickSlotId } from "./LoadoutPicker";
+import LoadoutPicker from "./LoadoutPicker";
 import CockpitSlider from "./CockpitSlider";
 import CockpitNavSegment from "./CockpitNavSegment";
 import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
@@ -238,7 +238,7 @@ export default function MultiAgentBooster({
   // grid, which is this component's territory.
   const [companionReport, setCompanionReport] = useState<CompanionReport | null>(null);
   const [companionBusy, setCompanionBusy] = useState(false);
-  const [pickSlot, setPickSlot] = useState<PickSlotId | null>(null);
+  const [pickSlot, setPickSlot] = useState<{ role: CompanionRole; anchor: number } | null>(null);
 
   const reloadCompanions = useCallback(async () => {
     if (!modelPath) {
@@ -351,6 +351,11 @@ export default function MultiAgentBooster({
     : speedBoost === "off"
       ? "smart"
       : speedBoost;
+
+  // MTP included: an external MTP head is exactly what "SELECT EXTERNAL" is for.
+  const canPickSpecFile =
+    (displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark") &&
+    Boolean(onChangeMtpDraft || onChangeDflashDraft);
 
   const externalDraftBoost =
     displayBoost === "dflash" || displayBoost === "dspark";
@@ -846,21 +851,14 @@ export default function MultiAgentBooster({
           </div>
           )}
         </div>
-        {/* The picker takes the grid's own footprint — while SPEC/SWAPS are being tuned
-            the sliders are not needed, and a block that size can never run off screen. */}
+        {/* File picker for one stop at a time, centred above that stop. It only ever
+            picks a companion file — the SPEC mode itself stays on the rail. */}
         {pickSlot && companionReport ? (
           <LoadoutPicker
-            specValue={boostSliderValue}
-            specRows={boostRows.map(({ m, needCap }) => ({
-              id: m.id,
-              label: m.label,
-              aboveLabel: m.aboveLabel,
-              blurb: m.blurb,
-              disabled: needCap,
-            }))}
-            onSpecPick={pickSpec}
-            mmproj={companionReport.mmproj}
-            engram={companionReport.engram}
+            title={pickSlot.role === "mmproj" ? "MMPROJ" : "ENGRAM"}
+            anchor={pickSlot.anchor}
+            role={pickSlot.role}
+            slot={pickSlot.role === "mmproj" ? companionReport.mmproj : companionReport.engram}
             modelPath={modelPath ?? ""}
             onAttach={(role, path) => void setCompanion(role, path)}
             onDetach={(role) => void setCompanion(role, null)}
@@ -875,9 +873,14 @@ export default function MultiAgentBooster({
             row owns the independently attachable companions. */}
         <LoadoutRail
           specSlot={boostCell}
+          specLabel={boostRows.find(({ m }) => m.id === boostSliderValue)?.m.label}
+          canPickExternal={canPickSpecFile}
+          onPickExternal={() =>
+            displayBoost === "mtp" ? onChangeMtpDraft?.() : onChangeDflashDraft?.()
+          }
           report={companionReport}
           busy={companionBusy}
-          onOpenSlot={(slot) => setPickSlot((cur) => (cur === slot ? null : slot))}
+          onOpenSlot={(role, anchor) => setPickSlot({ role, anchor })}
           onCycle={(role, candidate) => void setCompanion(role, candidate.path)}
         />
 
