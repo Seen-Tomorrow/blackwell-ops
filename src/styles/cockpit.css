@@ -2692,18 +2692,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   min-width: 0;
 }
 
-.loadout-rail__mode {
-  color: var(--theme-text);
-  font-size: var(--type-hairline);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  white-space: nowrap;
+/* One band per half: it owns the badge line and the content, so SPEC and SWAPS
+   position their badge, role and value from the same numbers. */
+.loadout-rail__band {
+  position: relative;
+  min-width: 0;
 }
 
 /* Sits on the badge line, directly over the selected SPEC stop. */
 .loadout-rail__external {
   position: absolute;
-  top: 0;
+  top: -0.42rem;
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
@@ -2780,7 +2779,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* Badge line: the same "external" affordance the SPEC half carries. */
 .loadout-stop__external {
   position: absolute;
-  top: 0;
+  top: -0.42rem;
   left: 50%;
   transform: translateX(-50%);
   display: inline-flex;

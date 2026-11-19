@@ -101,33 +101,34 @@ export default function LoadoutRail({
       <div className="loadout-rail__group loadout-rail__group--spec">
         <div className="loadout-rail__zone-row">
           <span className="loadout-rail__zone font-mono">SPEC</span>
-          {specLabel ? (
-            <span className="loadout-rail__mode font-mono">{specLabel}</span>
-          ) : null}
         </div>
-        <div className="loadout-rail__spec">{specSlot}</div>
-        {/* Sits above the SELECTED spec stop, on the same line as the swap badges. */}
-        {canPickExternal ? (
-          <button
-            type="button"
-            className="loadout-rail__external font-mono"
-            style={{ left: `${specMarkPct * 100}%` }}
-            onClick={(e) => onPickExternal?.(anchorOf(e.currentTarget))}
-            title="Pick the external file this mode reads"
-          >
-            <span className="loadout-rail__external-icon" aria-hidden>
-              ⊕
-            </span>
-            external
-          </button>
-        ) : null}
+        {/* Same anatomy as the SWAPS half: one band that owns its badge line and its
+            content, so both sides position the badge, role and value from one set of
+            numbers instead of two. */}
+        <div className="loadout-rail__band">
+          {canPickExternal ? (
+            <button
+              type="button"
+              className="loadout-rail__external font-mono"
+              style={{ left: `${specMarkPct * 100}%` }}
+              onClick={(e) => onPickExternal?.(anchorOf(e.currentTarget))}
+              title="Pick the external file this mode reads"
+            >
+              <span className="loadout-rail__external-icon" aria-hidden>
+                ⊕
+              </span>
+              external
+            </button>
+          ) : null}
+          <div className="loadout-rail__spec">{specSlot}</div>
+        </div>
       </div>
 
       <span className="loadout-rail__bridge" aria-hidden="true" />
 
       <div className="loadout-rail__group loadout-rail__group--swaps">
         <span className="loadout-rail__zone font-mono">SWAPS</span>
-        <div className="loadout-swaps">
+        <div className="loadout-rail__band loadout-swaps">
           <div className="cockpit-slider-track loadout-swaps__line" aria-hidden="true" />
           {slots.map((slot, i) => (
             <CompanionStop
