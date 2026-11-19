@@ -2698,6 +2698,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
 }
 
+/* The zone label doubles as the picker trigger for SPEC — the only way into the
+   picker from the left half (the slider's stops set a value, they do not open it). */
+.loadout-rail__zone--btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.loadout-rail__zone--btn:hover { color: var(--theme-accent-bright); }
 /* Dotted connector on the track line — reads as one rail, not two widgets. */
 .loadout-rail__bridge {
   align-self: start;
@@ -2848,6 +2859,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright)) 55%, transparent);
 }
 
+/* The zone label doubles as the picker trigger for SPEC — the only way into the
+   picker from the left half (the slider's stops set a value, they do not open it). */
+.loadout-rail__zone--btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.loadout-rail__zone--btn:hover { color: var(--theme-accent-bright); }
 .loadout-picker__empty {
   margin: 0;
   opacity: 0.7;
@@ -2904,6 +2926,168 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 }
 
 .loadout-picker__btn:hover { border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border)); }
+
+/* ── Unified picker (variant B): slot column + table pane ─────────────────────
+   One surface for SPEC / MMPROJ / ENGRAM. The pane is a table whose first two columns
+   are QUANT and SIZE — the choice being made — with the file name as the secondary
+   column, so a long name never pushes the useful numbers off the row. */
+.loadout-picker--unified {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  width: min(38rem, 92vw);
+  max-height: 20rem;
+  padding: 0;
+  overflow: hidden;
+}
+
+.loadout-picker__slots {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--theme-border);
+}
+
+.loadout-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "role value"
+    "state state";
+  gap: 1px 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.loadout-slot:hover { background: color-mix(in srgb, var(--theme-accent) 8%, transparent); }
+
+.loadout-slot--on {
+  background: color-mix(in srgb, var(--theme-accent) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--theme-accent-bright);
+}
+
+.loadout-slot__role {
+  grid-area: role;
+  color: var(--theme-accent);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.loadout-slot__value {
+  grid-area: value;
+  color: var(--theme-text);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.loadout-slot__state {
+  grid-area: state;
+  color: var(--theme-text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loadout-picker__pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.loadout-table {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.loadout-table__row {
+  display: grid;
+  grid-template-columns: 4.5rem 5rem minmax(0, 1fr) 5.5rem;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.32rem 0.6rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: transparent;
+  color: inherit;
+  font-size: var(--type-tiny);
+  text-align: left;
+  cursor: pointer;
+}
+
+.loadout-table__row:hover { background: color-mix(in srgb, var(--theme-accent) 10%, transparent); }
+.loadout-table__row:disabled { opacity: 0.45; cursor: default; }
+.loadout-table__row--on { background: color-mix(in srgb, var(--theme-accent) 16%, transparent); }
+
+/* SPEC rows are modes, not files — no QUANT/SIZE to show, so those columns go away. */
+.loadout-table--spec .loadout-table__row {
+  grid-template-columns: minmax(0, 1fr) 5.5rem;
+}
+
+.loadout-table--spec .loadout-table__quant,
+.loadout-table--spec .loadout-table__size { display: none; }
+
+.loadout-table__quant {
+  color: var(--theme-accent-bright);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loadout-table__size {
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loadout-table__name {
+  min-width: 0;
+  color: var(--theme-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loadout-table__src {
+  display: inline-block;
+  margin-right: 0.4rem;
+  color: color-mix(in srgb, var(--theme-text-muted) 90%, transparent);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.1em;
+}
+
+.loadout-table__src--repo { color: var(--theme-warn); }
+
+.loadout-table__act {
+  color: var(--theme-text-muted);
+  text-align: right;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.loadout-picker--unified .loadout-picker__foot {
+  margin-top: auto;
+  padding: 0.45rem 0.6rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  display: flex;
+  gap: 0.4rem;
+}
+
+.loadout-picker__slots .loadout-picker__x {
+  margin: auto 0.5rem 0.5rem;
+  align-self: flex-start;
+}
 
 /* LOADOUT composition: SPEC half (the old BOOST slider) + SWAPS sockets on one rail.
    The grid keeps four cells: Memory, Agents, Think, and BATCH//UBATCH.

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot, RepoCompanion } from "../lib/types";
+import type { CompanionCandidate, CompanionReport, CompanionRole, CompanionSlot } from "../lib/types";
+import LoadoutPicker, { type PickSlotId, type SpecPickRow } from "./LoadoutPicker";
 
 /**
  * LOADOUT — one rail, two groups.
@@ -15,6 +16,13 @@ interface LoadoutRailProps {
   modelPath?: string | null;
   /** SPEC group — the Boost slider rendered inside the rail. */
   specSlot?: ReactNode;
+  /** Current SPEC stop id, so the picker can show and change it. */
+  specValue?: string;
+  /** SPEC marks, mirrored into the picker's table. */
+  specRows?: SpecPickRow[];
+  onSpecPick?: (id: string) => void;
+  /** Opens the retained draft picker for the active spec lane. */
+  onChangeSpecDraft?: () => void;
 }
 
 const ROLE_LABEL: Record<CompanionRole, string> = {
@@ -48,9 +56,16 @@ function stopState(slot: CompanionSlot): StopState {
   return { value: "—", state: "EMPTY", tone: "empty" };
 }
 
-export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
+export default function LoadoutRail({
+  modelPath,
+  specSlot,
+  specValue,
+  specRows,
+  onSpecPick,
+  onChangeSpecDraft,
+}: LoadoutRailProps) {
   const [report, setReport] = useState<CompanionReport | null>(null);
-  const [openRole, setOpenRole] = useState<CompanionRole | null>(null);
+  const [openSlot, setOpenSlot] = useState<PickSlotId | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -78,7 +93,7 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
         await load();
       } finally {
         setBusy(false);
-        setOpenRole(null);
+        setOpenSlot(null);
       }
     },
     [modelPath, load],
@@ -93,7 +108,7 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
         await load();
       } finally {
         setBusy(false);
-        setOpenRole(null);
+        setOpenSlot(null);
       }
     },
     [modelPath, load],
@@ -104,12 +119,34 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
     [report],
   );
 
+  /** What the picker shows in its slot list — one line per configurable thing. */
+  const summaries = useMemo(() => {
+    const specRow = specRows?.find((row) => row.id === specValue);
+    const mm = report ? stopState(report.mmproj) : { value: "—", state: "—" };
+    const en = report ? stopState(report.engram) : { value: "—", state: "—" };
+    return {
+      spec: {
+        value: specRow?.aboveLabel ?? specRow?.label ?? "—",
+        state: specRow?.label ?? "—",
+      },
+      mmproj: { value: mm.value, state: mm.state },
+      engram: { value: en.value, state: en.state },
+    };
+  }, [report, specRows, specValue]);
+
   if (!modelPath) return null;
 
   return (
     <div className="loadout-rail" data-busy={busy ? "1" : undefined}>
       <div className="loadout-rail__group loadout-rail__group--spec">
-        <span className="loadout-rail__zone font-mono">SPEC</span>
+        <button
+          type="button"
+          className="loadout-rail__zone loadout-rail__zone--btn font-mono"
+          onClick={() => setOpenSlot("spec")}
+          title="Open the SPEC picker"
+        >
+          SPEC
+        </button>
         <div className="loadout-rail__spec">{specSlot}</div>
       </div>
 
@@ -125,25 +162,42 @@ export default function LoadoutRail({ modelPath, specSlot }: LoadoutRailProps) {
               slot={slot}
               leftPct={slots.length > 1 ? 26 + i * 48 : 50}
               disabled={busy}
-              onOpen={() => setOpenRole(slot.role)}
+              onOpen={() => setOpenSlot(slot.role)}
               onCycle={(candidate) => void attach(slot.role, candidate.path)}
             />
           ))}
         </div>
       </div>
 
-      {openRole && report ? (
-        <CompanionPickPanel
-          slot={openRole === "mmproj" ? report.mmproj : report.engram}
+      {openSlot && report ? (
+        <LoadoutPicker
+          initialSlot={openSlot}
+          summaries={summaries}
+          specValue={specValue ?? ""}
+          specRows={specRows ?? []}
+          onSpecPick={(id) => {
+            onSpecPick?.(id);
+            setOpenSlot(null);
+          }}
+          onChangeSpecDraft={
+            onChangeSpecDraft
+              ? () => {
+                  onChangeSpecDraft();
+                  setOpenSlot(null);
+                }
+              : undefined
+          }
+          mmproj={report.mmproj}
+          engram={report.engram}
           modelPath={modelPath}
+          onAttach={(role, path) => void attach(role, path)}
+          onDetach={(role) => void attach(role, null)}
+          onClear={(role) => void clear(role)}
           onDownloaded={() => {
             void load();
-            setOpenRole(null);
+            setOpenSlot(null);
           }}
-          onClose={() => setOpenRole(null)}
-          onAttach={(path) => void attach(openRole, path)}
-          onDetach={() => void attach(openRole, null)}
-          onClear={() => void clear(openRole)}
+          onClose={() => setOpenSlot(null)}
         />
       ) : null}
     </div>
@@ -201,146 +255,5 @@ function CompanionStop({ slot, leftPct, disabled, onOpen, onCycle }: CompanionSt
         {slot.candidates.length > 1 ? ` · ${slot.candidates.length}` : ""}
       </span>
     </button>
-  );
-}
-
-interface CompanionPickPanelProps {
-  slot: CompanionSlot;
-  modelPath: string;
-  onDownloaded: () => void;
-  onClose: () => void;
-  onAttach: (path: string) => void;
-  onDetach: () => void;
-  onClear: () => void;
-}
-
-function CompanionPickPanel({ slot, modelPath, onDownloaded, onClose, onAttach, onDetach, onClear }: CompanionPickPanelProps) {
-  const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
-  const [repoError, setRepoError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setRepoItems(null);
-    setRepoError(null);
-    invoke<RepoCompanion[]>("repo_companions", { modelPath, role: slot.role })
-      .then((items) => {
-        if (alive) setRepoItems(items);
-      })
-      .catch((err) => {
-        if (alive) setRepoError(typeof err === "string" ? err : "repo lookup failed");
-      });
-    return () => {
-      alive = false;
-    };
-  }, [modelPath, slot.role]);
-
-  const download = async (item: RepoCompanion) => {
-    setDownloading(item.path_in_repo);
-    try {
-      await invoke("download_companion", {
-        modelPath,
-        role: slot.role,
-        repoId: item.repo_id,
-        pathInRepo: item.path_in_repo,
-        sizeBytes: item.size_bytes,
-        url: item.url,
-        lfsOid: item.lfs_oid,
-      });
-      onDownloaded();
-    } catch (err) {
-      setRepoError(typeof err === "string" ? err : "download failed");
-    } finally {
-      setDownloading(null);
-    }
-  };
-
-  return (
-    <div className="loadout-picker" role="dialog" aria-label={`Pick ${ROLE_LABEL[slot.role]}`}>
-      <div className="loadout-picker__head">
-        <span className="type-micro font-mono tracking-[0.16em]">PICK {ROLE_LABEL[slot.role]}</span>
-        <span className="loadout-picker__reason type-tiny font-mono">{slot.reason}</span>
-        <button type="button" className="loadout-picker__x type-micro font-mono" onClick={onClose}>
-          ✕
-        </button>
-      </div>
-
-      <div className="loadout-picker__section">
-        <span className="type-tiny font-mono loadout-picker__label">ON THIS MACHINE</span>
-        {slot.candidates.length === 0 ? (
-          <p className="loadout-picker__empty type-tiny font-mono">
-            Nothing on disk. Drop a {ROLE_LABEL[slot.role]} file into an extras folder — the rail picks it up on
-            the next catalog scan.
-          </p>
-        ) : (
-          <ul className="loadout-picker__list">
-            {slot.candidates.map((c) => {
-              const active = slot.pinned ? c.path === slot.pinned : slot.auto?.path === c.path;
-              return (
-                <li key={c.path}>
-                  <button
-                    type="button"
-                    className={`loadout-card${active ? " loadout-card--active" : ""}`}
-                    onClick={() => onAttach(c.path)}
-                  >
-                    <span className="loadout-card__name font-mono">{c.label}</span>
-                    <span className="loadout-card__meta type-tiny font-mono">
-                      {c.precision} · {c.size_str} · {c.source} · {c.reason || "no match detail"}
-                    </span>
-                    <span className="loadout-card__score type-tiny font-mono">{c.score}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-
-      <div className="loadout-picker__section">
-        <span className="type-tiny font-mono loadout-picker__label">FROM THIS REPO</span>
-        {repoError ? (
-          <p className="loadout-picker__empty type-tiny font-mono">{repoError}</p>
-        ) : repoItems === null ? (
-          <p className="loadout-picker__empty type-tiny font-mono">reading the Hub tree…</p>
-        ) : repoItems.length === 0 ? (
-          <p className="loadout-picker__empty type-tiny font-mono">
-            This repo publishes no {ROLE_LABEL[slot.role].toLowerCase()} of its own.
-          </p>
-        ) : (
-          <ul className="loadout-picker__list">
-            {repoItems.map((item) => (
-              <li key={item.path_in_repo}>
-                <button
-                  type="button"
-                  className="loadout-card"
-                  onClick={() => void download(item)}
-                  disabled={downloading === item.path_in_repo}
-                >
-                  <span className="loadout-card__name font-mono">{item.file_name}</span>
-                  <span className="loadout-card__meta type-tiny font-mono">
-                    {item.precision || "file"} · {item.size_str} · {item.path_in_repo}
-                  </span>
-                  <span className="loadout-card__score type-tiny font-mono">
-                    {downloading === item.path_in_repo ? "QUEUED" : "DOWNLOAD & ATTACH"}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="loadout-picker__foot">
-        <button type="button" className="loadout-picker__btn type-micro font-mono" onClick={onDetach}>
-          DETACH
-        </button>
-        <button type="button" className="loadout-picker__btn type-micro font-mono" onClick={onClear}>
-          RESET TO AUTO
-        </button>
-        <button type="button" className="loadout-picker__btn type-micro font-mono" onClick={onClose}>
-          CLOSE
-        </button>
-      </div>
-    </div>
   );
 }

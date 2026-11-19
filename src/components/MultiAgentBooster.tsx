@@ -480,44 +480,51 @@ export default function MultiAgentBooster({
     ) : null;
 
   // SPEC half of LOADOUT: the Boost slider, rendered inside the rail.
+  // Availability is computed once and used by both the slider marks and the picker
+  // table, so the two can never disagree about what is selectable.
+  const boostRows = boostMarks.map((m) => {
+    // DFlash keeps its library gate; MTP is a manual lane (see mtpSelectable).
+    const needCap = m.id === "dflash" && !dflashAvailable;
+    const available =
+      m.id === "smart" ||
+      m.id === "off" ||
+      m.id === "dspark" ||
+      m.id === "mtp" ||
+      (m.id === "dflash" && dflashAvailable) ||
+      m.id.startsWith("raw:");
+    return { m, needCap, available };
+  });
+
+  const pickSpec = (id: string) => {
+    // One parent apply only — do NOT call onRawSpecType(null) before MTP/DFlash/Off.
+    // That used to fire apply(off) then apply(mtp) and the off path often won the race
+    // (MTP only worked after Off→MTP; raw types blocked Off).
+    if (id === "off") {
+      onSpeedBoost("off");
+      return;
+    }
+    if (id === "smart") {
+      onSpeedBoost("smart");
+      return;
+    }
+    if (id === "mtp" || id === "dflash" || id === "dspark") {
+      onSpeedBoost(id);
+      return;
+    }
+    if (id.startsWith("raw:")) {
+      onRawSpecType?.(id.slice(4));
+      return;
+    }
+    onSpeedBoost(id as SpeedBoostId);
+  };
+
   const boostCell = showBoost ? (
     <div className="loadout-spec-cell">
             <CockpitSlider
               label=""
               value={boostSliderValue}
-              onChange={(id) => {
-                // One parent apply only — do NOT call onRawSpecType(null) before MTP/DFlash/Off.
-                // That used to fire apply(off) then apply(mtp) and the off path often won the race
-                // (MTP only worked after Off→MTP; raw types blocked Off).
-                if (id === "off") {
-                  onSpeedBoost("off");
-                  return;
-                }
-                if (id === "smart") {
-                  onSpeedBoost("smart");
-                  return;
-                }
-                if (id === "mtp" || id === "dflash" || id === "dspark") {
-                  onSpeedBoost(id);
-                  return;
-                }
-                if (id.startsWith("raw:")) {
-                  onRawSpecType?.(id.slice(4));
-                  return;
-                }
-                onSpeedBoost(id as SpeedBoostId);
-              }}
-              options={boostMarks.map((m) => {
-                // DFlash keeps its library gate; MTP is a manual lane (see mtpSelectable).
-                const needCap = m.id === "dflash" && !dflashAvailable;
-                const available =
-                  m.id === "smart" ||
-                  m.id === "off" ||
-                  m.id === "dspark" ||
-                  m.id === "mtp" ||
-                  (m.id === "dflash" && dflashAvailable) ||
-                  m.id.startsWith("raw:");
-                return {
+              onChange={pickSpec}
+              options={boostRows.map(({ m, needCap, available }) => ({
                   id: m.id,
                   label: m.label,
                   aboveLabel: m.aboveLabel,
@@ -526,8 +533,7 @@ export default function MultiAgentBooster({
                   badgeColor: m.badgeColor,
                   // Color track mark + under-label only (not above family word)
                   emphasize: Boolean(m.badgeColor) && available && !needCap,
-                };
-              })}
+                }))}
               subControl={
                 speedBoost === "dflash" && onDflashSampling
                   ? {
@@ -948,7 +954,22 @@ export default function MultiAgentBooster({
 
         {/* LOADOUT — SWAPS sockets. Spec selection still lives in the grid above; this
             row owns the independently attachable companions. */}
-        <LoadoutRail modelPath={modelPath} specSlot={boostCell} />
+        <LoadoutRail
+          modelPath={modelPath}
+          specSlot={boostCell}
+          specValue={boostSliderValue}
+          specRows={boostRows.map(({ m, needCap }) => ({
+            id: m.id,
+            label: m.label,
+            aboveLabel: m.aboveLabel,
+            blurb: m.blurb,
+            disabled: needCap,
+          }))}
+          onSpecPick={pickSpec}
+          onChangeSpecDraft={
+            displayBoost === "mtp" ? onChangeMtpDraft : onChangeDflashDraft
+          }
+        />
 
         {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
         {violetStrip ? (
