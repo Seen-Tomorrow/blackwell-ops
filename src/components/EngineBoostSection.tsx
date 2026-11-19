@@ -38,17 +38,11 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     dflashLibraryReady,
     dflashGettable,
     dflashDraftLabel,
-    dflashGetState,
-    dflashGetError,
-    dflashGetOfferLabel,
-    onGetDflashDraft,
-    onChangeDflashDraft,
-    dflashSampling,
+              dflashSampling,
     onDflashSampling,
     mtpDraftLabel,
     mtpBakedIn,
-    onChangeMtpDraft,
-  specFileRows = [],
+    specFileRows = [],
   onPickSpecFile,
   specFileBusy = false,
   specFileError = null,
@@ -122,16 +116,10 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         dflashLibraryReady={dflashLibraryReady}
         dflashGettable={dflashGettable}
         dflashDraftLabel={dflashDraftLabel}
-        dflashGetState={dflashGetState}
-        dflashGetError={dflashGetError}
-        dflashGetOfferLabel={dflashGetOfferLabel}
-        onGetDflashDraft={onGetDflashDraft}
-        onChangeDflashDraft={onChangeDflashDraft}
         dflashSampling={dflashSampling}
         onDflashSampling={onDflashSampling}
         mtpDraftLabel={mtpDraftLabel}
         mtpBakedIn={mtpBakedIn}
-        onChangeMtpDraft={onChangeMtpDraft}
         specFileRows={specFileRows}
         onPickSpecFile={onPickSpecFile}
         specFileBusy={specFileBusy}
@@ -211,16 +199,10 @@ export interface EngineBoostSectionProps {
   dflashLibraryReady: boolean;
   dflashGettable: boolean;
   dflashDraftLabel: string | null;
-  dflashGetState: DflashGetUiState;
-  dflashGetError: string | null;
-  dflashGetOfferLabel: string | null;
-  onGetDflashDraft: () => void;
-  onChangeDflashDraft: () => void;
   dflashSampling: "greedy" | "probabilistic";
   onDflashSampling: (sampling: "greedy" | "probabilistic") => void;
   mtpDraftLabel: string | null;
   mtpBakedIn: boolean;
-  onChangeMtpDraft: () => void;
   /** Local draft heads for the active SPEC lane, available without opening the modal. */
   specFileRows?: { id: string; title: string; meta?: string; score?: number }[];
   /** Applies a picked draft head path. */

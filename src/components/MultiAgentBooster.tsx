@@ -69,12 +69,7 @@ export interface MultiAgentBoosterProps {
   dflashGettable?: boolean;
   /** Short name of paired draft when library ready. */
   dflashDraftLabel?: string | null;
-  dflashGetState?: DflashGetUiState;
-  dflashGetError?: string | null;
-  dflashGetOfferLabel?: string | null;
-  onGetDflashDraft?: () => void;
   /** Open local-library draft re-picker (when pairing is wrong). */
-  onChangeDflashDraft?: () => void;
   /** DFlash2 draft sampling mode shown under the Boost slider. */
   dflashSampling?: "greedy" | "probabilistic";
   onDflashSampling?: (sampling: "greedy" | "probabilistic") => void;
@@ -83,7 +78,6 @@ export interface MultiAgentBoosterProps {
   /** Target carries baked-in nextn — MTP runs without any head file. */
   mtpBakedIn?: boolean;
   /** Open local-library MTP head picker. */
-  onChangeMtpDraft?: () => void;
   /** Local draft heads for the active SPEC lane (built without opening the legacy modal). */
   specFileRows?: { id: string; title: string; meta?: string; score?: number }[];
   /** Applies a picked draft head path. */
@@ -193,16 +187,10 @@ export default function MultiAgentBooster({
   dflashLibraryReady,
   dflashGettable = false,
   dflashDraftLabel = null,
-  dflashGetState = "idle",
-  dflashGetError = null,
-  dflashGetOfferLabel = null,
-  onGetDflashDraft,
-  onChangeDflashDraft,
   dflashSampling = "greedy",
   onDflashSampling,
   mtpDraftLabel = null,
   mtpBakedIn = false,
-  onChangeMtpDraft,
   specFileRows = [],
   onPickSpecFile,
   specFileBusy = false,
@@ -376,10 +364,10 @@ export default function MultiAgentBooster({
       ? "smart"
       : speedBoost;
 
-  // MTP included: an external MTP head is exactly what "SELECT EXTERNAL" is for.
+  // Every lane that reads a draft file can be pointed at one: the DRAFT slot on the rail
+  // opens the same picker as the companions, so no legacy modal handler is involved.
   const canPickSpecFile =
-    (displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark") &&
-    Boolean(onChangeMtpDraft || onChangeDflashDraft);
+    displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark";
   // The DRAFT slot: the file affordance for the current mode. It shows what that mode
   // will load and opens the same picker the companion slots use — the mode itself is
   // only ever changed by the SPEC slider.

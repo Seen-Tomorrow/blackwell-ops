@@ -8,9 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry } from "../lib/types";
 import type { DflashGetUiState } from "../components/MultiAgentBooster";
-import type { DraftPickListItem, DraftPickMode } from "../components/DraftPickModal";
+import type { DraftPickListItem } from "../lib/specDraft";
 import {
-  describeMainForDflashPick,
   findDflashDraftCandidates,
   resolveDflashOfferFromHfId,
   startDflashDraftDownload,
@@ -74,9 +73,7 @@ export function useSpecDraft({
   const [dflashGetError, setDflashGetError] = useState<string | null>(null);
   const [dflashGetOfferLabel, setDflashGetOfferLabel] = useState<string | null>(null);
   const [dflashCandidates, setDflashCandidates] = useState<DflashDraftOffer[]>([]);
-  const [dflashPickOpen, setDflashPickOpen] = useState(false);
-  const [dflashPickMode, setDflashPickMode] = useState<DraftPickMode>("hf-download");
-  const [libraryPickItems, setLibraryPickItems] = useState<DraftPickListItem[]>([]);
+
   const [dflashResolving, setDflashResolving] = useState(false);
   const [dflashResolveError, setDflashResolveError] = useState<string | null>(null);
   const dflashDownloadIdsRef = useRef<Set<string>>(new Set());
@@ -160,59 +157,7 @@ export function useSpecDraft({
     }
   }, [model]);
 
-  const handleGetDflashDraft = useCallback(async () => {
-    if (!model) return;
-    setDflashGetError(null);
-    setDflashGetOfferLabel(null);
-    setDflashCandidates([]);
-    setLibraryPickItems(buildLocalDflashPickItems());
-    setDflashPickMode("hf-download");
-    setDflashResolving(false);
-    setDflashResolveError(null);
-    dflashDownloadIdsRef.current = new Set();
-    setDflashPickOpen(true);
-    setDflashGetState("searching");
-    await loadDflashHfCandidates();
-  }, [model, buildLocalDflashPickItems, loadDflashHfCandidates]);
-
-  const handleChangeDflashDraft = useCallback(() => {
-    if (!model) return;
-    const items = buildLocalDflashPickItems();
-    setDflashPickMode("library");
-    setLibraryPickItems(items);
-    setDflashCandidates([]);
-    setDflashResolveError(null);
-    setDflashPickOpen(true);
-    setDflashGetState("idle");
-  }, [model, buildLocalDflashPickItems]);
-
-  /**
-   * MTP head picker — library only. There is no HF MTP pack search, and the point
-   * is choosing among the heads already on disk.
-   */
-  const handleChangeMtpDraft = useCallback(() => {
-    if (!model) return;
-    const items = buildLocalPickItems("external_mtp", MTP_DRAFT_MODEL);
-    setDflashPickMode("library");
-    setLibraryPickItems(items);
-    setDflashCandidates([]);
-    setDflashResolveError(null);
-    setDflashPickOpen(true);
-    setDflashGetState("idle");
-  }, [model, buildLocalPickItems]);
-
-  const handleCancelDflashPick = useCallback(() => {
-    if (dflashResolving) return;
-    setDflashPickOpen(false);
-    setDflashCandidates([]);
-    setLibraryPickItems([]);
-    setDflashResolveError(null);
-    setDflashResolving(false);
-    setDflashGetState("idle");
-  }, [dflashResolving]);
-
   const handleConfirmDflashPick = useCallback(async (offer: DflashDraftOffer) => {
-    setDflashPickOpen(false);
     setDflashResolveError(null);
     setDflashResolving(false);
     setDflashGetError(null);
@@ -268,8 +213,6 @@ export function useSpecDraft({
       if (!adapter || !draftKey) return;
       updateParam(draftKey, path);
       stageDraftPairing(model.path, cliTypeForMethod(method) ?? adapter.cliType, path);
-      setDflashPickOpen(false);
-      setLibraryPickItems([]);
       setDflashResolveError(null);
       setDflashGetState("idle");
       setDflashGetError(null);
@@ -291,38 +234,18 @@ export function useSpecDraft({
     ],
   );
 
-  const dflashLocalPickItems = useMemo(() => libraryPickItems, [libraryPickItems]);
-
-  /**
-   * The active lane's local heads, built unconditionally so a caller can offer them
-   * WITHOUT opening the legacy modal — libraryPickItems only fills inside the open
-   * handlers, which is why the LOADOUT panel used to come up empty.
-   */
+  /** The active lane's local heads, built unconditionally for the LOADOUT picker. */
   const specLocalFileRows = useMemo(
     () => buildLocalDflashPickItems(),
     [buildLocalDflashPickItems],
   );
 
-  /** The active lane's own draft key — the modal pre-selects what that lane holds. */
-  const activeDraftKey =
-    speedBoost === "mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
-
-  const dflashPickInitialSelectedId = useMemo(() => {
-    return config[activeDraftKey] != null ? String(config[activeDraftKey]) : null;
-  }, [config, activeDraftKey]);
-
-  const dflashMainDescribe = useMemo(
-    () => (model ? describeMainForDflashPick(model) : null),
-    [model],
-  );
 
   useEffect(() => {
     setDflashGetState("idle");
     setDflashGetError(null);
     setDflashGetOfferLabel(null);
     setDflashCandidates([]);
-    setLibraryPickItems([]);
-    setDflashPickOpen(false);
     setDflashResolving(false);
     setDflashResolveError(null);
     dflashDownloadIdsRef.current = new Set();
@@ -396,18 +319,9 @@ export function useSpecDraft({
     dflashGetError,
     dflashGetOfferLabel,
     dflashCandidates,
-    dflashPickOpen,
-    dflashPickMode,
     dflashResolving,
     dflashResolveError,
-    dflashLocalPickItems,
     specLocalFileRows,
-    dflashPickInitialSelectedId,
-    dflashMainDescribe,
-    handleGetDflashDraft,
-    handleChangeDflashDraft,
-    handleChangeMtpDraft,
-    handleCancelDflashPick,
     handleConfirmDflashPick,
     handleConfirmDflashManual,
     handleConfirmLibraryDraft,

@@ -332,6 +332,19 @@ export function isLaunchableMain(
  * They are listed in the catalog's EXTRAS view but can never be a launch `-m`: the
  * engine needs the model they attach to.
  */
+/**
+ * One row in the draft picker's LOCAL list: a file already on disk. Row shape only —
+ * it used to live in the legacy modal component.
+ */
+export interface DraftPickListItem {
+  id: string;
+  /** Model / file name shown as the row title. */
+  title: string;
+  /** Secondary line: author · quant · tag · size (never a full path). */
+  meta?: string;
+  /** Optional 0-100 confidence used for sorting. */
+  score?: number;
+}
 export function isAttachmentModel(
   model: Pick<ModelEntry, "fileRole">,
 ): boolean {

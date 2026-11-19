@@ -50,7 +50,6 @@ import {
   FULL_AUTO_COLLAPSE_GROUPS,
 } from "../lib/multiAgentBooster";
 import type { DflashDraftOffer } from "../lib/dflashGetDraft";
-import DraftPickModal from "./DraftPickModal";
 import {
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
@@ -949,22 +948,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     applyFullAutoCockpit,
   });
   const {
-    dflashGetState,
-    dflashGetError,
-    dflashGetOfferLabel,
     dflashCandidates,
-    dflashPickOpen,
-    dflashPickMode,
     dflashResolving,
     dflashResolveError,
-    dflashLocalPickItems,
     specLocalFileRows,
-    dflashPickInitialSelectedId,
-    dflashMainDescribe,
-    handleGetDflashDraft,
-    handleChangeDflashDraft,
-    handleChangeMtpDraft,
-    handleCancelDflashPick,
     handleConfirmDflashPick,
     handleConfirmDflashManual,
     handleConfirmLibraryDraft,
@@ -3286,17 +3273,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dflashGettable={dflashGettable}
           dflashDraftLabel={dflashDraftLabel}
           dflashDraftPath={currentDraftPath}
-          dflashGetState={dflashGetState}
-          dflashGetError={dflashGetError}
-          dflashGetOfferLabel={dflashGetOfferLabel}
-          onGetDflashDraft={() => { void handleGetDflashDraft(); }}
-          onChangeDflashDraft={handleChangeDflashDraft}
+
           dflashSampling={config.dflash_sampling === "probabilistic" ? "probabilistic" : "greedy"}
           onDflashSampling={(sampling) => updateParam("dflash_sampling", sampling)}
           mtpDraftLabel={mtpDraftLabel}
           mtpDraftPath={mtpDraftPath}
           mtpBakedIn={mtpBakedIn}
-          onChangeMtpDraft={handleChangeMtpDraft}
           specFileRows={specLocalFileRows}
           onPickSpecFile={handleConfirmLibraryDraft}
           specFileBusy={dflashResolving}
@@ -3362,24 +3344,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             standalone
           />
         )}
-        {model && (
-          <DraftPickModal
-            open={dflashPickOpen}
-            mode={dflashPickMode}
-            mainLabel={dflashMainDescribe ?? undefined}
-            localItems={dflashLocalPickItems}
-            initialSelectedId={dflashPickInitialSelectedId}
-            hfOffers={dflashCandidates}
-            remoteLoading={dflashGetState === "searching"}
-            resolving={dflashResolving}
-            resolveError={dflashResolveError}
-            onCancel={handleCancelDflashPick}
-            onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
-            onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
-            onConfirmLibrary={handleConfirmLibraryDraft}
-            onRequestRemote={() => { void loadDflashHfCandidates(); }}
-          />
-        )}
+
 
         {/* PRE-FLIGHT — resolved machine state, not a form. */}
         {!fullAutoFixed && (
