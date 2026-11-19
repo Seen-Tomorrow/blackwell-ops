@@ -91,6 +91,8 @@ export interface MultiAgentBoosterProps {
   specRemoteOffers?: DflashDraftOffer[];
   onPickSpecRemote?: (offer: DflashDraftOffer) => void;
   onSearchSpecRemote?: () => void;
+  /** Clears a stale Hub error when a picker opens. */
+  onClearSpecError?: () => void;
   kvQuantValues: (string | number)[];
   /** Factory + user-added parallel values for Agents marks. */
   parallelValues?: (string | number)[];
@@ -201,6 +203,7 @@ export default function MultiAgentBooster({
   specRemoteOffers = [],
   onPickSpecRemote,
   onSearchSpecRemote,
+  onClearSpecError,
   kvQuantValues,
   parallelValues,
   layout = "normal",
@@ -402,7 +405,10 @@ export default function MultiAgentBooster({
         tone: "draft",
         active: true,
         count: 1,
-        onOpen: (anchor) => setPickSlot({ role: null, anchor }),
+        onOpen: (anchor) => {
+          onClearSpecError?.();
+          setPickSlot({ role: null, anchor });
+        },
       }
     : null;
 
@@ -910,7 +916,10 @@ export default function MultiAgentBooster({
             ...(draftFileSlot ? [draftFileSlot] : []),
             ...companionSlots(
               companionReport,
-              (role, anchor) => setPickSlot({ role, anchor }),
+              (role, anchor) => {
+                onClearSpecError?.();
+                setPickSlot({ role, anchor });
+              },
               (role, candidate) => void setCompanion(role, candidate.path),
             ),
           ]}

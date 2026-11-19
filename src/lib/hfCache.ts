@@ -69,4 +69,31 @@ export async function cachedInvoke<T>(
   inflight.set(key, pending);
   return pending;
 }
+/**
+ * Hub quota guard.
+ *
+ * A 429 means every further request for the next while is refused (and deepens the
+ * penalty), so the app must stop asking on its own. Remembers the quota hit and makes
+ * callers wait it out instead of retrying — the picker shows the remaining time and
+ * never spends a request meanwhile.
+ */
+const RATE_LIMIT_COOLDOWN_MS = 10 * 60 * 1000;
+let rateLimitedUntil = 0;
 
+/** Note any Hub error; 429 / rate-limit wording arms the cooldown. */
+export function noteHfError(error: unknown): void {
+  const text =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? error.message
+        : String(error ?? "");
+  if (/429|rate limit|quota/i.test(text)) {
+    rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+  }
+}
+
+/** Milliseconds left before the Hub should be asked again (0 = go ahead). */
+export function hfCooldownMs(): number {
+  return Math.max(0, rateLimitedUntil - Date.now());
+}

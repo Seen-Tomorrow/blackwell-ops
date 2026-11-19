@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { cachedInvoke } from "../lib/hfCache";
+import { cachedInvoke, hfCooldownMs, noteHfError } from "../lib/hfCache";
 import type { CompanionRole, CompanionSlot, RepoCompanion } from "../lib/types";
 
 export interface LocalFileRow {
@@ -68,6 +68,16 @@ export default function LoadoutPicker({
   const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [remoteRequested, setRemoteRequested] = useState(false);
+  // Hub quota countdown: while it runs, no button can spend a request and the reason is
+  // visible, never a blinking error.
+  const [cooldownMs, setCooldownMs] = useState(() => hfCooldownMs());
+
+  useEffect(() => {
+    const tick = () => setCooldownMs(hfCooldownMs());
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, []);
   const [busy, setBusy] = useState<string | null>(null);
   const [hfValue, setHfValue] = useState("");
 
@@ -77,6 +87,7 @@ export default function LoadoutPicker({
    * through slots while the local library already has the file must not spend quota.
    */
   const loadRemote = useCallback(() => {
+    if (hfCooldownMs() > 0) return;
     if (!role) {
       onSearchRemote?.();
       return;
@@ -84,18 +95,13 @@ export default function LoadoutPicker({
     setRemoteLoading(true);
     cachedInvoke<RepoCompanion[]>("repo_companions", { modelPath, role })
       .then((items) => setRepoItems(items))
-      .catch(() => setRepoItems([]))
+      .catch((err) => {
+        noteHfError(err);
+        setRepoItems([]);
+      })
       .finally(() => setRemoteLoading(false));
   }, [modelPath, onSearchRemote, role]);
 
-  // Same behaviour as the companion lanes: ask for remote rows as soon as it opens,
-  // so there is no "manual button" only drafts have.
-  useEffect(() => {
-    if (!onSearchRemote || (remoteRows?.length ?? 0) > 0) return;
-    onSearchRemote();
-    // Only on mount / lane change — remoteRows becoming non-empty must not re-fire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onSearchRemote]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -227,7 +233,11 @@ export default function LoadoutPicker({
               ) : null}
               {!remoteLoading && remoteList.length === 0 ? (
                 <span className="gp-empty font-mono">
-                  {remoteRequested ? "nothing found on the Hub" : "not searched yet"}
+                  {cooldownMs > 0
+                    ? `Hub quota reached — retry in ${Math.ceil(cooldownMs / 60000)} min`
+                    : remoteRequested
+                      ? "nothing found on the Hub"
+                      : "not searched yet"}
                 </span>
               ) : (
                 remoteList.map((row) => (

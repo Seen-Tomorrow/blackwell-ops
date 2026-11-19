@@ -52,6 +52,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
   specRemoteOffers = [],
   onPickSpecRemote,
   onSearchSpecRemote,
+  onClearSpecError,
     kvQuantValues,
     parallelValues,
     showAgents,
@@ -130,6 +131,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         specRemoteOffers={specRemoteOffers}
         onPickSpecRemote={onPickSpecRemote}
         onSearchSpecRemote={onSearchSpecRemote}
+        onClearSpecError={onClearSpecError}
         kvQuantValues={kvQuantValues}
         parallelValues={parallelValues}
         showAgents={showAgents}
@@ -218,6 +220,8 @@ export interface EngineBoostSectionProps {
   specRemoteOffers?: DflashDraftOffer[];
   onPickSpecRemote?: (offer: DflashDraftOffer) => void;
   onSearchSpecRemote?: () => void;
+  /** Clears a stale Hub error when a picker opens. */
+  onClearSpecError?: () => void;
   kvQuantValues: (string | number)[];
   parallelValues: (string | number)[];
   showAgents: boolean;

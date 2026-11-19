@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry } from "../lib/types";
 import type { DflashGetUiState } from "../components/MultiAgentBooster";
 import type { DraftPickListItem } from "../lib/specDraft";
+import { hfCooldownMs, noteHfError } from "../lib/hfCache";
 import {
   findDflashDraftCandidates,
   resolveDflashOfferFromHfId,
@@ -137,6 +138,15 @@ export function useSpecDraft({
 
   const loadDflashHfCandidates = useCallback(async () => {
     if (!model) return;
+    // A quota hit must not be followed by more requests: wait it out.
+    const cool = hfCooldownMs();
+    if (cool > 0) {
+      setDflashGetState("idle");
+      setDflashResolveError(
+        `Hub quota reached — retry in ${Math.ceil(cool / 60000)} min`,
+      );
+      return;
+    }
     setDflashGetState("searching");
     setDflashResolveError(null);
     try {
@@ -145,6 +155,7 @@ export function useSpecDraft({
       setDflashGetState("idle");
     } catch (err) {
       console.error("[dflashGetDraft] search failed:", err);
+      noteHfError(err);
       setDflashCandidates([]);
       setDflashGetState("idle");
       setDflashResolveError(
@@ -156,6 +167,11 @@ export function useSpecDraft({
       );
     }
   }, [model]);
+
+  /** A stale 429 from an earlier attempt must not greet the next open. */
+  const clearSpecFileError = useCallback(() => {
+    setDflashResolveError(null);
+  }, []);
 
   const handleConfirmDflashPick = useCallback(async (offer: DflashDraftOffer) => {
     setDflashResolveError(null);
@@ -187,6 +203,7 @@ export function useSpecDraft({
         await handleConfirmDflashPick(offer);
       } catch (err) {
         console.error("[dflashGetDraft] manual resolve failed:", err);
+        noteHfError(err);
         setDflashResolveError(
           typeof err === "string"
             ? err
@@ -322,6 +339,7 @@ export function useSpecDraft({
     dflashResolving,
     dflashResolveError,
     specLocalFileRows,
+    clearSpecFileError,
     handleConfirmDflashPick,
     handleConfirmDflashManual,
     handleConfirmLibraryDraft,
