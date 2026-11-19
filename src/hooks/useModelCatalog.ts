@@ -666,15 +666,12 @@ export function useModelCatalog({
   // MAIN = launchable model rows; EXTRAS = every companion (attachments + draft heads);
   // ALL = the whole library, models and companions together (debug view).
   const kindRows = useMemo(() => {
-    // Unclassified files carry no recognisable header: they cannot be launched, so they
-    // belong with the extras rather than in MAIN — and they must stay visible as cards
-    // instead of vanishing behind a counter.
-    const unknownRows = models.filter((m) => isUnclassifiedModel(m));
+    // A file the classifier could not place is not a companion: it is a main model whose
+    // header was unreadable (an interrupted download, typically), so it stays in MAIN.
+    // EXTRAS holds everything that is NOT a main model.
     const draftRows = models.filter((m) => isExternalDraftOnly(m));
-    const mainRows = models.filter(
-      (m) => !isExternalDraftOnly(m) && !isAttachmentModel(m) && !isUnclassifiedModel(m),
-    );
-    return { mainRows, draftRows, unknownRows, extrasRows: [...extras.map(extraAsModel), ...unknownRows] };
+    const mainRows = models.filter((m) => !isExternalDraftOnly(m) && !isAttachmentModel(m));
+    return { mainRows, draftRows, extrasRows: extras.map(extraAsModel) };
   }, [models, extras]);
 
   const kindCounts = useMemo(

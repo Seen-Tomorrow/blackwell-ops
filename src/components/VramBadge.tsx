@@ -62,6 +62,8 @@ interface VramBadgeProps {
   ubatch?: number;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
+  /** Interrupted download: { missing, declared } shard counts. */
+  incomplete?: { missing: number; declared: number } | null;
   /** Attachment role — renders the same fixed face as a draft, tinted per role. */
   attachmentKind?: AttachmentKind | null;
   className?: string;
@@ -95,6 +97,18 @@ const DRAFT_FACE_COPY = {
   aria: "Draft model — no VRAM forecast",
 } as const;
 
+/** An interrupted download: the set is not launchable, so it gets its own face. */
+function incompleteFaceCopy(missing: number, declared: number) {
+  const set = declared > 0 ? `${declared - missing} of ${declared}` : "some";
+  return {
+    title: "INCOMPLETE SET",
+    kicker: "MISSING SHARDS",
+    body: `This set has ${set} shard(s) on disk — ${missing || "the last"} missing. Nothing launches until every shard of the set is present.`,
+    hint: "Re-download this quant to finish the set.",
+    readout: "SHARDS",
+    aria: "Incomplete download — missing shards, no VRAM forecast",
+  };
+}
 /** Companion files: same fixed face as a draft, different role words and tint. */
 const ATTACHMENT_FACE_COPY = {
   ple: {
@@ -131,7 +145,7 @@ export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
-  hideFitProbe = false, draftOnly = false, attachmentKind = null, className,
+  hideFitProbe = false, draftOnly = false, attachmentKind = null, incomplete = null, className,
   placementActive = false, onSplitEq,
   snapLogOpen = false,
   onCloseSnapLog,
@@ -270,11 +284,13 @@ export default function VramBadge({
   }
 
   const attachmentCopy = attachmentKind ? ATTACHMENT_FACE_COPY[attachmentKind] : null;
-  const fixedFace = draftOnly
-    ? DRAFT_FACE_COPY
-    : attachmentCopy
-      ? { ...attachmentCopy, kicker: "NOT A MAIN MODEL" }
-      : null;
+  const fixedFace = incomplete
+    ? incompleteFaceCopy(incomplete.missing, incomplete.declared)
+    : draftOnly
+      ? DRAFT_FACE_COPY
+      : attachmentCopy
+        ? { ...attachmentCopy, kicker: "NOT A MAIN MODEL" }
+        : null;
 
   if (fixedFace) {
     return (
@@ -293,7 +309,7 @@ export default function VramBadge({
               <i /><i /><i /><i /><i /><i />
             </span>
             <span className="vram-forecast-draft__flank-readout">
-              {draftOnly ? "DRAFT" : attachmentCopy?.readout}
+              {incomplete ? "SHARDS" : draftOnly ? "DRAFT" : attachmentCopy?.readout}
             </span>
           </div>
 

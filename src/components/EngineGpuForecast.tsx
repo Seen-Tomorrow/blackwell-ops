@@ -111,6 +111,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onMoeSuggestionClick,
     hideMoeBadge,
     draftOnly = false,
+    incomplete = null,
     attachmentKind = null,
     modelMeta,
     modelName,
@@ -497,6 +498,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               onMoeSuggestionClick={onMoeSuggestionClick}
               hideMoeBadge={hideMoeBadge}
               draftOnly={draftOnly}
+              incomplete={incomplete}
               attachmentKind={attachmentKind}
               modelMeta={modelMeta}
               modelName={modelName}
@@ -630,6 +632,8 @@ export interface EngineGpuForecastProps {
   hideMoeBadge: boolean;
   /** External draft pack — full-face draft explanation, no FIT. */
   draftOnly?: boolean;
+  /** Set when the selected model is an interrupted download (missing shards). */
+  incomplete?: { missing: number; declared: number } | null;
   /** Companion file (Engram table / projector / adapter) — same fixed face, role tint. */
   attachmentKind?: "ple" | "mmproj" | "adapter" | null;
   modelMeta?: ModelMetadata;

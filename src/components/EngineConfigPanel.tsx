@@ -1463,6 +1463,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     ? (model.fileRole as "ple" | "mmproj" | "adapter")
     : null;
   const modelIsAttachment = modelAttachmentKind != null;
+  // An interrupted download: the set cannot launch, and that is worth its own face
+  // instead of a VRAM forecast for a model that will never start.
+  const modelIncomplete =
+    model && model.completeness === "incomplete"
+      ? {
+          missing: model.missingShards?.length ?? 0,
+          declared: model.declaredShards ?? 0,
+        }
+      : null;
 
   const activeSpecType = cliSpecTypeForMethod(specBoostMethod) ?? undefined;
   const specNeedsExternalDraft =
@@ -3111,6 +3120,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         hideMoeBadge
         draftOnly={modelIsDraftOnly}
         attachmentKind={modelAttachmentKind}
+        incomplete={modelIncomplete}
         modelMeta={model?.metadata}
         modelName={model?.name}
         modelQuant={model?.quant}
