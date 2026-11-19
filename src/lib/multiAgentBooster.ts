@@ -144,7 +144,7 @@ const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
 
 export const BRAINS_OPTIONS: BrainsOption[] = [
   { id: "light", label: "Light", kvQuant: "q4_0", blurb: "Smaller KV — more room for agents / context" },
-  { id: "balanced", label: "balanced", kvQuant: "f8_e4m3", blurb: "FP8 KV — near-Solid quality for less memory, needs an engine that supports it" },
+  { id: "balanced", label: "Balanced", kvQuant: "f8_e4m3", blurb: "FP8 KV — near-Solid quality for less memory, needs an engine that supports it" },
   { id: "solid", label: "Solid", kvQuant: "q8_0", blurb: "Balanced quality vs memory" },
   { id: "sharp", label: "Sharp", kvQuant: "f16", blurb: "Highest KV quality — hungriest VRAM" },
   { id: "bf16", label: "BF16", kvQuant: "bf16", blurb: "BF16 KV — max quality when the binary supports it" },
