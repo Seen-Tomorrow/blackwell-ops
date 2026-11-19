@@ -444,15 +444,77 @@ function mainNameTokens(main: ModelEntry): string[] {
  *    5  trusted / same author
  *  (+ downloads as sub-point tie-break only, never dominates)
  */
+/** Hub-declared relations: "base_model:org/repo" (and the ":quantized:" variant). */
+function declaredBaseModels(tags?: string[]): string[] {
+  return (tags ?? [])
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.startsWith("base_model:"))
+    .map((t) => t.replace(/^base_model:(?:quantized:)?/, ""))
+    .filter(Boolean);
+}
+
+/**
+ * Compare repo ids by their NAME only. Authors legitimately differ between a base model
+ * and the repo that quantised it (deepseek-ai/... vs unsloth/...), and the naming jungle
+ * means we must not depend on any family token — the Hub relation is the authority.
+ */
+function repoNameOf(repoId: string): string {
+  return (repoId.split("/").pop() ?? repoId)
+    .toLowerCase()
+    .replace(/-gguf$/, "")
+    .replace(/[-_.\s]+/g, "");
+}
+
+/** Every repo id the main model can be identified by, including its own base relations. */
+function mainRepoIdentities(main: ModelEntry): string[] {
+  const ids = new Set<string>();
+  const push = (value?: string | null) => {
+    if (!value) return;
+    const name = repoNameOf(value);
+    if (name) ids.add(name);
+  };
+  push(main.hfMeta?.hfModelId);
+  push(main.hfModelId);
+  for (const tag of main.hfMeta?.tags ?? []) {
+    const match = /^base_model:(?:quantized:)?(.+)$/i.exec(tag.trim());
+    if (match) push(match[1]);
+  }
+  return [...ids];
+}
 function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   if (!repoLooksLikeDflash(m)) return null;
   const idLower = m.id.toLowerCase();
   // MTP head repos are valid — don't reject them here (explicit head name OR tiny head file).
   if (idLower.includes("mtp") && !signalContainsDflash(m.id) && !signalContainsMtpHead(m.id) && !isTinyMtpHeadRepo(m)) return null;
 
-  // Hard gate: full-size weights are not draft packs (e.g. 15GB Q4_K_M of 27B).
+  // ── Relation gate (naming-independent) ─────────────────────────────────
+  // Model names have no standard, so a family-token match cannot be trusted. The Hub
+  // carries the publisher's own relation instead: `base_model:<repo>` tags. A declared
+  // relation decides on its own — matching keeps the candidate even when its NAME
+  // suggests another family, mismatching drops it even when the name looks right.
+  const declaredBase = declaredBaseModels(m.tags);
+  const shipsDraft = (m.gguf_files ?? []).some((f) => f.role === "draft");
+  const mainIds = mainRepoIdentities(main);
+  const baseMatch = declaredBase.find((base) => mainIds.includes(repoNameOf(base)));
+
+  if (declaredBase.length > 0) {
+    // Declares what it is built on: that is the answer, no guessing.
+    if (!baseMatch) return null;
+  } else if (!shipsDraft) {
+    // No relation and no structural proof (a file the catalog classifies as a draft
+    // head). Keep it out of auto-suggestions; the manual HF-id path still resolves it.
+    return null;
+  }
+
+  // Hard gate: full-size weights are not draft packs (e.g. 15GB Q4_K_M of 27B). A repo
+  // that ships a classified draft head is exempt — a huge main's DFlash head is itself
+  // several GiB, so the flat cap cannot apply to heads.
   const smallestKnown = smallestGgufBytes(m);
-  if (smallestKnown != null && smallestKnown > DFLASH_DRAFT_MAX_FILE_BYTES) {
+  if (
+    !shipsDraft &&
+    smallestKnown != null &&
+    smallestKnown > DFLASH_DRAFT_MAX_FILE_BYTES
+  ) {
     return null;
   }
 
@@ -462,8 +524,9 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   const candSize = extractParamBillions(m.id);
   const notes: string[] = [];
 
-  // Hard gates: wrong specific family or wrong param count.
-  if (mainFamily && candFamily && mainFamily !== candFamily) {
+  // Hard gates: wrong specific family or wrong param count. A declared base_model match
+  // already settled identity, so those heuristics must not override it.
+  if (!baseMatch && mainFamily && candFamily && mainFamily !== candFamily) {
     // qwen3 (generic) may still match qwen35/36 packs — only soft-penalize later
     const mainSpecific =
       mainFamily !== "qwen3" &&
@@ -479,7 +542,7 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
       return null;
     }
   }
-  if (mainSize != null && candSize != null && !sizesClose(mainSize, candSize)) {
+  if (!baseMatch && mainSize != null && candSize != null && !sizesClose(mainSize, candSize)) {
     return null;
   }
 
@@ -498,6 +561,15 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   } else {
     score += 10;
     notes.push("DFlash in files only");
+  }
+
+  // ── 1b. Hub relation (0–20) ────────────────────────────────────────────
+  if (baseMatch) {
+    score += 20;
+    notes.push(`declared base ${baseMatch}`);
+  } else if (shipsDraft) {
+    score += 10;
+    notes.push("ships classified draft");
   }
 
   // ── 2. Family (0–30) ───────────────────────────────────────────────────
