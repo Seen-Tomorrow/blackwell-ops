@@ -594,10 +594,11 @@ export default function MultiAgentBooster({
               label=""
               value={boostSliderValue}
               onChange={pickSpec}
+              // No above-mark family label: the DRAFT slot in the file row says it once.
+              cornerLabel
               options={boostRows.map(({ m, needCap, available }) => ({
                   id: m.id,
                   label: m.label,
-                  aboveLabel: m.aboveLabel,
                   blurb: m.blurb,
                   disabled: needCap,
                   badgeColor: m.badgeColor,
@@ -890,6 +891,37 @@ export default function MultiAgentBooster({
         </div>
         {/* File picker for one stop at a time, centred above that stop. It only ever
             picks a companion file — the SPEC mode itself stays on the rail. */}
+        </div>
+
+        {/* LOADOUT — SWAPS sockets. Spec selection still lives in the grid above; this
+            row owns the independently attachable companions. */}
+        <LoadoutRail
+          specSlot={boostCell}
+          slots={[
+            ...(draftFileSlot ? [draftFileSlot] : []),
+            ...companionSlots(
+              companionReport,
+              (role, anchor) => setPickSlot({ role, anchor }),
+              (role, candidate) => void setCompanion(role, candidate.path),
+            ),
+          ]}
+          report={companionReport}
+          busy={companionBusy}
+        />
+
+        {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
+        {violetStrip ? (
+          <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
+            {violetStrip}
+          </div>
+        ) : null}
+
+        {instrumentSlot ? (
+          <div className="full-auto-cockpit__instruments">{instrumentSlot}</div>
+        ) : null}
+
+        {/* File picker overlay. It covers the whole body — grid, rail and strips — so
+            the lists get the cockpit's full height instead of the grid's 150px. */}
         {pickSlot && (companionReport || pickSlot.role === null) ? (
           <LoadoutPicker
             title={
@@ -899,7 +931,6 @@ export default function MultiAgentBooster({
                   ? "MMPROJ"
                   : "ENGRAM"
             }
-            anchor={pickSlot.anchor}
             role={pickSlot.role}
             slot={
               pickSlot.role === null || !companionReport
@@ -949,34 +980,6 @@ export default function MultiAgentBooster({
             onDownloaded={() => void reloadCompanions()}
             onClose={() => setPickSlot(null)}
           />
-        ) : null}
-        </div>
-
-        {/* LOADOUT — SWAPS sockets. Spec selection still lives in the grid above; this
-            row owns the independently attachable companions. */}
-        <LoadoutRail
-          specSlot={boostCell}
-          slots={[
-            ...(draftFileSlot ? [draftFileSlot] : []),
-            ...companionSlots(
-              companionReport,
-              (role, anchor) => setPickSlot({ role, anchor }),
-              (role, candidate) => void setCompanion(role, candidate.path),
-            ),
-          ]}
-          report={companionReport}
-          busy={companionBusy}
-        />
-
-        {/* SPEC-EXTRA / draft strip sits above the BATCH/UBATCH instrument row. */}
-        {violetStrip ? (
-          <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
-            {violetStrip}
-          </div>
-        ) : null}
-
-        {instrumentSlot ? (
-          <div className="full-auto-cockpit__instruments">{instrumentSlot}</div>
         ) : null}
 
       </div>

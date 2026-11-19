@@ -202,10 +202,7 @@ function FileStop({
       }`}
       aria-label={`${slot.role}: ${slot.state}, ${slot.value}`}
     >
-      <span className="loadout-stop__external font-mono" aria-hidden>
-        <span className="loadout-rail__external-icon">⊕</span>
-        external
-      </span>
+
       <span className="loadout-stop__role font-mono">{slot.role}</span>
       <span className="cockpit-slider-thumb loadout-stop__thumb" aria-hidden="true" />
       <span

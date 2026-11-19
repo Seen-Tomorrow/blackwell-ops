@@ -1,14 +1,14 @@
 /**
- * LOADOUT picker — contextual file picker, one stop at a time.
+ * LOADOUT picker — full-grid overlay, two columns and one HF row.
  *
- * This overlay never changes the SPEC mode (that is the rail's job). It only picks the
- * extra files a mode needs: a draft head, an MMPROJ, or an ENGRAM table. It opens over
- * the grid, centred above the stop that asked for it, at about a third of the width —
- * the rest of the grid is dimmed so the eye goes to the panel, and the panel is opaque
- * so nothing behind it competes.
+ * While a file is being picked the sliders are not needed, so the overlay covers the
+ * whole 2x2 grid and the content sits in the SWAPS half, where the slots that opened it
+ * live. That is the largest area the cockpit can give up without moving anything, and
+ * it means the lists never have to be squeezed.
  *
- * Local files and repo downloads are separated (LOCAL / REMOTE) because they are
- * different decisions: one is instant, the other is a download.
+ * Layout: LOCAL | REMOTE side by side (two different decisions — instant vs download),
+ * three rows each by default with a "show all" expander, and one row for a direct HF id.
+ * The surface is the cockpit's neutral `--theme-panel-accent`, never `--theme-panel`.
  */
 
 import { useEffect, useState } from "react";
@@ -27,8 +27,6 @@ export interface LocalFileRow {
 
 interface LoadoutPickerProps {
   title: string;
-  /** 0..1 position of the stop that opened this panel, across the cockpit width. */
-  anchor: number;
   role: CompanionRole | null;
   slot: CompanionSlot | null;
   localRows?: LocalFileRow[];
@@ -37,7 +35,6 @@ interface LoadoutPickerProps {
   onDetach: (role: CompanionRole) => void;
   onClear: (role: CompanionRole) => void;
   onDownloaded: () => void;
-  /** Renders the HF-id input for lanes that can resolve one (draft heads). */
   hfInput?: {
     placeholder: string;
     busy: boolean;
@@ -47,9 +44,10 @@ interface LoadoutPickerProps {
   onClose: () => void;
 }
 
+
+
 export default function LoadoutPicker({
   title,
-  anchor,
   role,
   slot,
   localRows,
@@ -64,6 +62,7 @@ export default function LoadoutPicker({
   const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [hfValue, setHfValue] = useState("");
+
 
   useEffect(() => {
     if (!role) return;
@@ -111,17 +110,55 @@ export default function LoadoutPicker({
   const activePath =
     slot?.pinned ?? (slot && slot.confidence === "strong" ? slot.auto?.path : undefined);
 
+  /** Local rows: the caller's explicit rows (drafts) or the companion candidates. */
+  const localList: LocalFileRow[] = localRows
+    ? localRows
+    : slot
+      ? slot.candidates.map((candidate) => ({
+          key: candidate.path,
+          quant: candidate.precision,
+          size: candidate.size_str,
+          name: candidate.label,
+          active: activePath === candidate.path,
+          onPick: () => {
+            if (role) {
+              activePath === candidate.path
+                ? onDetach(role)
+                : onAttach(role, candidate.path);
+            }
+          },
+        }))
+      : [];
+
+  // No cap: the column scrolls, so a big library is never truncated into a "show more".
+  const remoteList = repoItems ?? [];
+
   return (
     <div className="gp-scrim" onClick={onClose}>
-      <div
-        className="gp-panel"
-        style={{ left: `clamp(0px, calc(${Math.round(anchor * 100)}% - 9.5rem), calc(100% - 19rem))` }}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label={`${title} picker`}
-      >
+      <div className="gp-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`${title} picker`}>
         <div className="gp-panel__head">
           <span className="gp-panel__title font-mono">{title}</span>
+          <span className="gp-panel__count font-mono">
+            {localList.length} local · {role ? remoteList.length : 0} remote
+          </span>
+          {role && slot?.pinned ? (
+            <button
+              type="button"
+              className="gp-panel__btn font-mono"
+              onClick={() => onDetach(role)}
+            >
+              DETACH
+            </button>
+          ) : null}
+          {role ? (
+            <button
+              type="button"
+              className="gp-panel__btn font-mono"
+              onClick={() => onClear(role)}
+            >
+              AUTO
+            </button>
+          ) : null}
           <button
             type="button"
             className="gp-panel__x font-mono"
@@ -132,11 +169,11 @@ export default function LoadoutPicker({
           </button>
         </div>
 
-        <div className="gp-panel__body">
-          <div className="gp-section">
-            <span className="gp-section__label font-mono">LOCAL</span>
-            <div className="gp-rows">
-              {(localRows ?? []).map((row) => (
+        <div className={`gp-panel__cols${role ? "" : " gp-panel__cols--single"}`}>
+          <div className="gp-col">
+            <span className="gp-col__label font-mono">LOCAL {localList.length || ""}</span>
+            <div className="gp-col__rows">
+              {localList.map((row) => (
                 <button
                   key={row.key}
                   type="button"
@@ -151,45 +188,22 @@ export default function LoadoutPicker({
                   <span className="gp-row__name font-mono">{row.name}</span>
                 </button>
               ))}
-              {role && slot
-                ? slot.candidates.map((candidate) => (
-                    <button
-                      key={candidate.path}
-                      type="button"
-                      className={`gp-row${activePath === candidate.path ? " gp-row--on" : ""}`}
-                      onClick={() =>
-                        activePath === candidate.path
-                          ? onDetach(role)
-                          : onAttach(role, candidate.path)
-                      }
-                      title={candidate.reason || candidate.path}
-                    >
-                      <span className="gp-row__dot" aria-hidden />
-                      <span className="gp-row__quant font-mono">{candidate.precision}</span>
-                      <span className="gp-row__size font-mono">{candidate.size_str}</span>
-                      <span className="gp-row__name font-mono">{candidate.label}</span>
-                    </button>
-                  ))
-                : null}
-              {!role && (localRows?.length ?? 0) === 0 ? (
-                <span className="gp-empty font-mono">nothing on disk</span>
-              ) : null}
-              {role && slot && slot.candidates.length === 0 ? (
+              {localList.length === 0 ? (
                 <span className="gp-empty font-mono">nothing on disk</span>
               ) : null}
             </div>
           </div>
 
           {role ? (
-            <div className="gp-section">
-              <span className="gp-section__label font-mono">REMOTE</span>
-              <div className="gp-rows">
+            <div className="gp-col">
+              <span className="gp-col__label font-mono">REMOTE {remoteList.length || ""}</span>
+              <div className="gp-col__rows">
                 {repoItems === null ? (
                   <span className="gp-empty font-mono">reading the Hub tree…</span>
-                ) : repoItems.length === 0 ? (
+                ) : remoteList.length === 0 ? (
                   <span className="gp-empty font-mono">repo publishes no file of its own</span>
                 ) : (
-                  repoItems.map((item) => (
+                  remoteList.map((item) => (
                     <button
                       key={item.path_in_repo}
                       type="button"
@@ -211,58 +225,35 @@ export default function LoadoutPicker({
               </div>
             </div>
           ) : null}
-
-          {hfInput ? (
-            <div className="gp-section">
-              <span className="gp-section__label font-mono">HF ID</span>
-              <div className="gp-hf">
-                <input
-                  className="gp-hf__input font-mono"
-                  value={hfValue}
-                  placeholder={hfInput.placeholder}
-                  onChange={(e) => setHfValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && hfValue.trim()) {
-                      hfInput.onSubmit(hfValue.trim());
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  className="gp-hf__go font-mono"
-                  disabled={hfInput.busy || !hfValue.trim()}
-                  onClick={() => hfInput.onSubmit(hfValue.trim())}
-                >
-                  {hfInput.busy ? "…" : "RESOLVE"}
-                </button>
-              </div>
-              {hfInput.error ? (
-                <span className="gp-empty font-mono">{hfInput.error}</span>
-              ) : null}
-            </div>
-          ) : null}
         </div>
 
-        <div className="gp-panel__foot">
-          {role && slot?.pinned ? (
+        {hfInput ? (
+          <div className="gp-panel__hf">
+            <span className="gp-col__label font-mono">HF ID</span>
+            <input
+              className="gp-hf__input font-mono"
+              value={hfValue}
+              placeholder={hfInput.placeholder}
+              onChange={(e) => setHfValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && hfValue.trim()) hfInput.onSubmit(hfValue.trim());
+              }}
+            />
             <button
               type="button"
-              className="gp-panel__btn font-mono"
-              onClick={() => onDetach(role)}
+              className="gp-hf__go font-mono"
+              disabled={hfInput.busy || !hfValue.trim()}
+              onClick={() => hfInput.onSubmit(hfValue.trim())}
             >
-              DETACH
+              {hfInput.busy ? "…" : "RESOLVE"}
             </button>
-          ) : null}
-          {role ? (
-            <button
-              type="button"
-              className="gp-panel__btn font-mono"
-              onClick={() => onClear(role)}
-            >
-              RESET TO AUTO
-            </button>
-          ) : null}
-        </div>
+            {hfInput.error ? (
+              <span className="gp-empty font-mono">{hfInput.error}</span>
+            ) : null}
+          </div>
+        ) : null}
+
+
       </div>
     </div>
   );

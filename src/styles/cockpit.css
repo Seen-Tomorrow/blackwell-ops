@@ -2969,10 +2969,16 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-picker__btn:hover { border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border)); }
 
-/* ── LOADOUT file picker — contextual panel over the grid ─────────────────────
-   One stop at a time, centred above the control that asked for it at roughly a third
-   of the width. The grid behind is dimmed, the panel is opaque. Surface is
-   --theme-panel-accent (neutral cockpit metal), never --theme-panel (blue cast). */
+/* ── LOADOUT file picker — full-grid overlay, content in the SWAPS half ───────
+   While a file is being picked the sliders are not needed, so the overlay covers the
+   whole 2x2 grid and the content takes the SWAPS half — the largest area the cockpit
+   can hand over without moving anything, and enough that lists never get squeezed.
+   Surface is --theme-panel-accent (neutral cockpit metal), never --theme-panel. */
+/* The overlay's positioning context: full body height, not just the grid. */
+.full-auto-cockpit__body {
+  position: relative;
+}
+
 .full-auto-cockpit__grid-stack {
   position: relative;
 }
@@ -2981,11 +2987,10 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: absolute;
   inset: 0;
   z-index: 30;
-  /* Only the panel's own strip stays readable; the rest of the grid goes dark. */
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--theme-panel-accent) 82%, transparent),
-    color-mix(in srgb, var(--theme-panel-accent) 90%, transparent)
+    color-mix(in srgb, var(--theme-panel-accent) 84%, transparent),
+    color-mix(in srgb, var(--theme-panel-accent) 92%, transparent)
   );
 }
 
@@ -2993,9 +2998,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: absolute;
   top: 3px;
   bottom: 3px;
-  /* 60-65% of the old width: enough for quant + size + name, narrow enough to sit
-     over any stop without running off the right edge. */
-  width: 19rem;
+  left: 50%;
+  right: 3px;
   display: flex;
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
@@ -3009,7 +3013,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.25rem 0.55rem 0.2rem;
+  padding: 0.25rem 0.6rem 0.2rem;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
 
@@ -3020,8 +3024,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-transform: uppercase;
 }
 
+.gp-panel__count {
+  margin-right: auto;
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.08em;
+}
+
 .gp-panel__x {
-  margin-left: auto;
   padding: 0 0.2rem;
   border: 0;
   background: transparent;
@@ -3032,40 +3042,46 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .gp-panel__x:hover { color: var(--theme-accent-bright); }
 
-.gp-panel__body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+/* LOCAL | REMOTE side by side — two different decisions, not one long list. */
+.gp-panel__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.3rem 0.55rem;
 }
 
-.gp-section {
+/* Draft lane has no remote source, so its local list gets the whole width. */
+.gp-panel__cols--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gp-col {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  min-height: 0;
+  padding: 0.25rem 0.6rem;
 }
 
-.gp-section + .gp-section {
-  margin-top: 0.15rem;
-  padding-top: 0.25rem;
-  border-top: 1px dashed color-mix(in srgb, var(--theme-border) 70%, transparent);
+.gp-col + .gp-col {
+  border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
 }
 
-.gp-section__label {
+.gp-col__label {
   color: color-mix(in srgb, var(--theme-text-muted) 90%, transparent);
   font-size: var(--type-hairline);
   letter-spacing: 0.16em;
 }
 
-.gp-rows {
+.gp-col__rows {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 1px;
-  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .gp-row {
@@ -3127,15 +3143,33 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .gp-row--repo .gp-row__tag { color: var(--theme-warn); }
 
+.gp-more {
+  align-self: flex-start;
+  padding: 1px 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.gp-more:hover { color: var(--theme-accent-bright); }
+
 .gp-empty {
   color: var(--theme-text-muted);
   font-size: var(--type-hairline);
   opacity: 0.7;
 }
 
-.gp-hf {
+/* One row for a direct HF id, under both columns. */
+.gp-panel__hf {
   display: flex;
-  gap: 0.3rem;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   min-width: 0;
 }
 
@@ -3161,13 +3195,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   cursor: pointer;
 }
 
-.gp-panel__foot {
-  display: flex;
-  gap: 0.35rem;
-  margin-top: auto;
-  padding: 0.3rem 0.55rem;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-}
 
 .gp-panel__btn {
   padding: 0 0.35rem;
