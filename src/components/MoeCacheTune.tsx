@@ -34,6 +34,20 @@ interface MoeTuneReport {
   driver_version: string | null;
   engine_build: string | null;
   start_free_mib: number;
+  pair_runs: { label: string; cache_mib: number; cpu_share: number; tps: number | null }[];
+  gain_pct: number | null;
+  noise_pct: number | null;
+  verdict: string | null;
+}
+
+/** Confirmation line: how the winner did against the baseline when they alternated. */
+function verdictLine(report: MoeTuneReport): string | null {
+  if (!report.verdict) return null;
+  const gain = report.gain_pct != null ? `${report.gain_pct >= 0 ? "+" : ""}${report.gain_pct.toFixed(0)}%` : "";
+  const noise = report.noise_pct != null ? ` +/-${report.noise_pct.toFixed(1)}%` : "";
+  const label =
+    report.verdict === "improved" ? "confirmed" : report.verdict === "flat" ? "no gain" : "inconclusive";
+  return `${label} ${gain}${noise}`.trim();
 }
 
 interface TuneProgress {
@@ -264,6 +278,7 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
               : "full GPU · no cache"}
             {report?.best_tps != null ? ` · ${report.best_tps.toFixed(1)} t/s` : ""}
             {staged.cpu_moe && gain != null ? ` (+${(gain * 100).toFixed(0)}% vs CPU)` : ""}
+            {report && verdictLine(report) ? ` | ${verdictLine(report)}` : ""}
             {!staged.cpu_moe && gpuGain != null && gpuGain > 0
               ? ` (+${(gpuGain * 100).toFixed(0)}% vs best cache)`
               : ""}

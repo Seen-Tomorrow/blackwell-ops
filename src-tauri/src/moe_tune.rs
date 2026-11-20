@@ -21,6 +21,12 @@ const HEALTH_POLL: Duration = Duration::from_millis(500);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(240);
 const GEN_TIMEOUT: Duration = Duration::from_secs(300);
 const N_PREDICT: u32 = 512;
+/// VRAM kept free on top of the launch, on NVML: filling to the last hundred MiB costs speed even
+/// when the engine "fits" (measured on a 16 GB card: 14.6 GB used lost to 14.2).
+const RESERVE_MIB: u64 = 512;
+/// Base/candidate alternations used to confirm the winner. Two pairs is the smallest count that
+/// can tell a real gain from run-to-run drift.
+const CONFIRM_PAIRS: usize = 2;
 /// Fixed, plain prose: the calibrated number must not depend on sampling.
 const PROMPT: &str = "The lighthouse keeper had kept a logbook for thirty-one years, and in all that time he had never once written down a lie. So when the ship appeared on the horizon on the first calm morning of October, with no flag, no lights and no one on deck, he sat at his small wooden table for a long while before he picked up the pen. Below him the sea was flat and grey, and the gulls had gone quiet. He wrote the date, the hour and the direction of the wind, and then he stopped, because the next line would have to say what he had seen. This is what he finally wrote:";
 
@@ -97,6 +103,25 @@ pub struct MoeTuneReport {
     /// Free VRAM on the target cards when the run started (what the budget was derived from).
     #[serde(default)]
     pub start_free_mib: u64,
+    /// The confirmation alternations: label ("base" / "candidate") and the measured t/s.
+    #[serde(default)]
+    pub pair_runs: Vec<MoeTunePairRun>,
+    /// Median gain of the winner over the CPU-expert baseline, and the run-to-run spread it had to
+    /// clear. `verdict` is "improved", "inconclusive" or "flat" - or absent when no pairing ran.
+    #[serde(default)]
+    pub gain_pct: Option<f64>,
+    #[serde(default)]
+    pub noise_pct: Option<f64>,
+    #[serde(default)]
+    pub verdict: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoeTunePairRun {
+    pub label: String,
+    pub cache_mib: u32,
+    pub cpu_share: f64,
+    pub tps: Option<f64>,
 }
 
 /// Round to the 256 MiB step the cache flag is tuned in.
@@ -104,51 +129,66 @@ fn step_mib(mib: u64) -> u32 {
     ((mib / 256) * 256).max(0) as u32
 }
 
-/// The candidate set, in run order: the plain all-on-GPU launch (the answer when the model fits),
-/// the CPU-expert launch with no cache, a quarter and three quarters of the budget, and the larger
-/// cache with CPU compute for the misses.
+/// Usable VRAM for the expert cache, from what the launch itself needs.
 ///
-/// The all-on-GPU run is what makes the result conclusive on a card that fits the model: without
-/// it the best number only describes the best way to run with experts in host RAM, which is the
-/// wrong regime for such a model.
-pub fn candidates_for_budget(budget_mib: u64) -> Vec<MoeTuneCandidate> {
-    let mut out = vec![
-        MoeTuneCandidate {
-            cpu_moe: false,
-            cache_mib: 0,
-            cpu_share: 0.0,
-        },
-        MoeTuneCandidate {
-            cpu_moe: true,
-            cache_mib: 0,
-            cpu_share: 0.0,
-        },
-    ];
-    let budget = step_mib(budget_mib);
-    if budget >= 2048 {
-        let small = step_mib((budget / 4) as u64).max(1024);
-        let large = step_mib((budget * 3 / 4) as u64);
-        if small > 0 && small != large {
-            out.push(MoeTuneCandidate {
-                cpu_moe: true,
-                cache_mib: small,
-                cpu_share: 0.0,
-            });
-        }
-        if large > 0 {
-            out.push(MoeTuneCandidate {
-                cpu_moe: true,
-                cache_mib: large,
-                cpu_share: 0.0,
-            });
-            out.push(MoeTuneCandidate {
-                cpu_moe: true,
-                cache_mib: large,
-                cpu_share: 0.95,
-            });
+/// `start_free` is NVML free before tuning; `components` is the ledger of the cache-off run
+/// (model + KV + compute on the device). The reserve keeps the card off its last hundred MiB.
+pub fn compute_budget(start_free_mib: u64, components: Option<MoeTuneComponents>) -> u64 {
+    let launch_mib = components
+        .map(|c| c.model_mib + c.kv_mib + c.compute_mib)
+        .unwrap_or(0);
+    start_free_mib
+        .saturating_sub(launch_mib)
+        .saturating_sub(RESERVE_MIB)
+}
+
+/// Cache sizes to measure: 25, 50, 75 and 100 % of the budget, on the 256 MiB step the flag uses.
+/// Granular on purpose - a home test found its optimum at 6.2 GiB on a 16 GB card, which a
+/// quarter/half/three-quarter grid can miss entirely.
+pub fn cache_steps(budget_mib: u64) -> Vec<u32> {
+    let mut out: Vec<u32> = Vec::new();
+    for pct in [25u64, 50, 75, 100] {
+        let mib = step_mib(budget_mib * pct / 100);
+        if mib >= 1024 && !out.contains(&mib) {
+            out.push(mib);
         }
     }
     out
+}
+
+/// Confirm the winner against the CPU-expert baseline: alternate base/candidate, then compare.
+/// Returns (median gain %, noise %, verdict). "inconclusive" is a legitimate answer - a difference
+/// smaller than the run-to-run spread is not a tuning.
+pub fn pair_verdict(baselines: &[f64], bests: &[f64]) -> (Option<f64>, Option<f64>, Option<String>) {
+    if baselines.len() < 2 || bests.len() < 2 || baselines.len() != bests.len() {
+        return (None, None, None);
+    }
+    let b_mean = baselines.iter().sum::<f64>() / baselines.len() as f64;
+    if !(b_mean > 0.0) {
+        return (None, None, None);
+    }
+    let spread = (baselines[0] - baselines[1]).abs() / b_mean;
+    let mut gains: Vec<f64> = baselines
+        .iter()
+        .zip(bests.iter())
+        .map(|(b, s)| if *b > 0.0 { s / b } else { 1.0 })
+        .collect();
+    gains.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = gains[gains.len() / 2];
+    let all_above = gains.iter().all(|g| *g >= 1.0 + spread);
+    let any_below = gains.iter().any(|g| *g < 1.0 + spread);
+    let verdict = if all_above && median > 1.02 {
+        "improved"
+    } else if any_below && median < 1.0 + spread {
+        "inconclusive"
+    } else {
+        "flat"
+    };
+    (
+        Some((median - 1.0) * 100.0),
+        Some(spread * 100.0),
+        Some(verdict.to_string()),
+    )
 }
 
 /// The winner: the all-on-GPU launch unless a CPU-expert configuration beats it by more than 2 %.
@@ -540,6 +580,111 @@ struct StoredTune {
     report: MoeTuneReport,
 }
 
+/// Run one candidate: private port, private log, progress events, and the measurement back.
+#[allow(clippy::too_many_arguments)]
+async fn measure_candidate(
+    app: &tauri::AppHandle,
+    binary: &PathBuf,
+    profile: &str,
+    gpu_mask: &str,
+    model_path: &str,
+    ctx_size: usize,
+    kv_quant: &str,
+    split_mode: &str,
+    tensor_split: Option<&str>,
+    batch: u32,
+    ubatch: u32,
+    target_device: u32,
+    log_dir: &std::path::Path,
+    cand: &MoeTuneCandidate,
+    index: usize,
+    total: usize,
+) -> MoeTunePoint {
+    let port = match pick_port() {
+        Ok(port) => port,
+        Err(e) => {
+            return MoeTunePoint {
+                cpu_moe: cand.cpu_moe,
+                cache_mib: cand.cache_mib,
+                cpu_share: cand.cpu_share,
+                tps: None,
+                error: Some(e),
+                vram_used_mib: None,
+                vram_free_mib: None,
+                components: None,
+            }
+        }
+    };
+    let args = build_tune_args(
+        model_path,
+        ctx_size,
+        kv_quant,
+        split_mode,
+        tensor_split,
+        batch,
+        ubatch,
+        port,
+        cand,
+    );
+    let log_path = log_dir.join(format!(
+        "{}-{}-{}.log",
+        cand.cache_mib,
+        (cand.cpu_share * 100.0).round() as u32,
+        port
+    ));
+    let _ = app.emit(
+        "moe-tune-progress",
+        serde_json::json!({
+            "index": index,
+            "total": total,
+            "cpu_moe": cand.cpu_moe,
+            "cache_mib": cand.cache_mib,
+            "cpu_share": cand.cpu_share,
+            "status": "running",
+        }),
+    );
+    let measured = run_one(binary, profile, gpu_mask, &args, port, &log_path, target_device).await;
+    let (tps, error, vram_used_mib, vram_free_mib, components) = match measured {
+        Ok(m) => (
+            Some(m.tps),
+            None,
+            m.vram_used_mib,
+            m.vram_free_mib,
+            m.components,
+        ),
+        Err(e) => (None, Some(e), None, None, None),
+    };
+    if let Some(e) = &error {
+        log::warn!(
+            "[moe-tune] cache {} MiB share {:.2} failed: {e}",
+            cand.cache_mib,
+            cand.cpu_share
+        );
+    }
+    let _ = app.emit(
+        "moe-tune-progress",
+        serde_json::json!({
+            "index": index,
+            "total": total,
+            "cpu_moe": cand.cpu_moe,
+            "cache_mib": cand.cache_mib,
+            "cpu_share": cand.cpu_share,
+            "status": "done",
+            "tps": tps,
+        }),
+    );
+    MoeTunePoint {
+        cpu_moe: cand.cpu_moe,
+        cache_mib: cand.cache_mib,
+        cpu_share: cand.cpu_share,
+        tps,
+        error,
+        vram_used_mib,
+        vram_free_mib,
+        components,
+    }
+}
+
 #[tauri::command]
 pub async fn moe_tune_history(
     model_path: String,
@@ -659,88 +804,164 @@ pub async fn moe_tune_run(
         }
     }
 
-    let budget = start_free_mib;
-    let candidates = candidates.unwrap_or_else(|| candidates_for_budget(budget));
-    if candidates.is_empty() {
-        return Err("no calibration candidates".to_string());
-    }
-
     let log_dir = crate::config::cache_dir().join("moe-tune");
-    let total = candidates.len();
-    let mut points: Vec<MoeTunePoint> = Vec::with_capacity(total);
-    for (index, cand) in candidates.iter().enumerate() {
-        let port = pick_port()?;
-        let args = build_tune_args(
-            &model_path,
-            ctx_size,
-            &kv_quant,
-            &split_mode,
-            tensor_split.as_deref(),
-            batch,
-            ubatch,
-            port,
-            cand,
-        );
-        let log_path = log_dir.join(format!(
-            "{}-{}-{}.log",
-            cand.cache_mib,
-            (cand.cpu_share * 100.0).round() as u32,
-            port
-        ));
-        let _ = app.emit(
-            "moe-tune-progress",
-            serde_json::json!({
-                "index": index,
-                "total": total,
-                "cpu_moe": cand.cpu_moe,
-                "cache_mib": cand.cache_mib,
-                "cpu_share": cand.cpu_share,
-                "status": "running",
-            }),
-        );
+    let explicit = candidates.clone();
+    let mut points: Vec<MoeTunePoint> = Vec::new();
+    let mut ran = 0usize;
 
-        let measured =
-            run_one(&binary, &profile, &gpu_mask, &args, port, &log_path, target_device).await;
-        let (tps, error, vram_used_mib, vram_free_mib, components) = match measured {
-            Ok(m) => (
-                Some(m.tps),
-                None,
-                m.vram_used_mib,
-                m.vram_free_mib,
-                m.components,
-            ),
-            Err(e) => (None, Some(e), None, None, None),
-        };
-        if let Some(e) = &error {
-            log::warn!(
-                "[moe-tune] cache {} MiB share {:.2} failed: {e}",
-                cand.cache_mib,
-                cand.cpu_share
-            );
-        }
-        points.push(MoeTunePoint {
-            cpu_moe: cand.cpu_moe,
-            cache_mib: cand.cache_mib,
-            cpu_share: cand.cpu_share,
-            tps,
-            error,
-            vram_used_mib,
-            vram_free_mib,
-            components,
-        });
-        let _ = app.emit(
-            "moe-tune-progress",
-            serde_json::json!({
-                "index": index,
-                "total": total,
-                "cpu_moe": cand.cpu_moe,
-                "cache_mib": cand.cache_mib,
-                "cpu_share": cand.cpu_share,
-                "status": "done",
-                "tps": tps,
-            }),
+    // ── Phase 0: the CPU-expert baseline. It also tells the ledger how much the launch itself
+    // needs (model + KV + compute), which is the base of every cache size below.
+    let baseline = MoeTuneCandidate {
+        cpu_moe: true,
+        cache_mib: 0,
+        cpu_share: 0.0,
+    };
+    let first = measure_candidate(
+        &app,
+        &binary,
+        &profile,
+        &gpu_mask,
+        &model_path,
+        ctx_size,
+        &kv_quant,
+        &split_mode,
+        tensor_split.as_deref(),
+        batch,
+        ubatch,
+        target_device,
+        &log_dir,
+        &baseline,
+        ran,
+        1,
+    )
+    .await;
+    let components = first.components;
+    points.push(first);
+    ran += 1;
+
+    // The plan is known only now: 1 baseline + 1 all-on-GPU + cache steps + 2 share points + pairs.
+    let budget = match &explicit {
+        Some(_) => start_free_mib,
+        None => compute_budget(start_free_mib, components),
+    };
+    let steps = match &explicit {
+        Some(_) => Vec::new(),
+        None => cache_steps(budget),
+    };
+    let share_points = if steps.is_empty() { 0 } else { 2 };
+    let total = 1 + 1 + steps.len() + share_points + CONFIRM_PAIRS * 2;
+
+    // ── Phase 1: the plain all-on-GPU launch. It is the answer for a model that fits, and the
+    // number any cache has to beat.
+    let full_gpu = MoeTuneCandidate {
+        cpu_moe: false,
+        cache_mib: 0,
+        cpu_share: 0.0,
+    };
+    points.push(
+        measure_candidate(
+            &app, &binary, &profile, &gpu_mask, &model_path, ctx_size, &kv_quant, &split_mode,
+            tensor_split.as_deref(), batch, ubatch, target_device, &log_dir, &full_gpu, ran, total,
+        )
+        .await,
+    );
+    ran += 1;
+
+    // ── Phase 2: the granular cache sizes from the computed budget (or the caller's list).
+    let planned: Vec<MoeTuneCandidate> = match &explicit {
+        Some(list) => list.clone(),
+        None => steps
+            .iter()
+            .map(|mib| MoeTuneCandidate {
+                cpu_moe: true,
+                cache_mib: *mib,
+                cpu_share: 0.0,
+            })
+            .collect(),
+    };
+    for cand in &planned {
+        points.push(
+            measure_candidate(
+                &app, &binary, &profile, &gpu_mask, &model_path, ctx_size, &kv_quant, &split_mode,
+                tensor_split.as_deref(), batch, ubatch, target_device, &log_dir, cand, ran, total,
+            )
+            .await,
         );
+        ran += 1;
     }
+
+    // ── Phase 3: does computing the misses on the CPU pay at the size that won?
+    if !steps.is_empty() {
+        let best_size = points
+            .iter()
+            .filter(|p| p.cpu_moe && p.cache_mib > 0)
+            .filter_map(|p| p.tps.map(|t| (p.cache_mib, t)))
+            .fold(None::<(u32, f64)>, |acc, (mib, t)| match acc {
+                Some((bm, bt)) if bt >= t => Some((bm, bt)),
+                _ => Some((mib, t)),
+            })
+            .map(|(mib, _)| mib);
+        if let Some(size) = best_size {
+            for share in [0.5_f64, 0.95] {
+                let cand = MoeTuneCandidate {
+                    cpu_moe: true,
+                    cache_mib: size,
+                    cpu_share: share,
+                };
+                points.push(
+                    measure_candidate(
+                        &app, &binary, &profile, &gpu_mask, &model_path, ctx_size, &kv_quant,
+                        &split_mode, tensor_split.as_deref(), batch, ubatch, target_device,
+                        &log_dir, &cand, ran, total,
+                    )
+                    .await,
+                );
+                ran += 1;
+            }
+        }
+    }
+
+    // ── Phase 4: confirm the winner against the baseline, alternating them.
+    let mut pair_runs: Vec<MoeTunePairRun> = Vec::new();
+    if let Some((winner, winner_tps)) = pick_best(&points) {
+        let worth_confirming = winner.cpu_moe
+            && winner.cache_mib > 0
+            && winner_tps > points
+                .iter()
+                .find(|p| p.cpu_moe && p.cache_mib == 0 && p.cpu_share == 0.0)
+                .and_then(|p| p.tps)
+                .unwrap_or(0.0);
+        if worth_confirming {
+            for _ in 0..CONFIRM_PAIRS {
+                for (label, cand) in [("base", baseline), ("candidate", winner)] {
+                    let point = measure_candidate(
+                        &app, &binary, &profile, &gpu_mask, &model_path, ctx_size, &kv_quant,
+                        &split_mode, tensor_split.as_deref(), batch, ubatch, target_device,
+                        &log_dir, &cand, ran, total,
+                    )
+                    .await;
+                    pair_runs.push(MoeTunePairRun {
+                        label: label.to_string(),
+                        cache_mib: point.cache_mib,
+                        cpu_share: point.cpu_share,
+                        tps: point.tps,
+                    });
+                    ran += 1;
+                }
+            }
+        }
+    }
+    let baselines: Vec<f64> = pair_runs
+        .iter()
+        .filter(|r| r.label == "base")
+        .filter_map(|r| r.tps)
+        .collect();
+    let candidates_tps: Vec<f64> = pair_runs
+        .iter()
+        .filter(|r| r.label == "candidate")
+        .filter_map(|r| r.tps)
+        .collect();
+    let (gain_pct, noise_pct, verdict) = pair_verdict(&baselines, &candidates_tps);
 
     let best = pick_best(&points);
     let baseline_tps = points
@@ -773,6 +994,10 @@ pub async fn moe_tune_run(
         engine_build: crate::engine_build_info::read_sidecar_commit(&binary),
         driver_version,
         start_free_mib,
+        pair_runs,
+        gain_pct,
+        noise_pct,
+        verdict,
     };
     if let Err(e) = save_report(&report, &store_key(&identity)) {
         log::warn!("[moe-tune] could not store the report: {e}");
@@ -798,18 +1023,45 @@ mod tests {
     }
 
     #[test]
-    fn candidates_include_baseline_and_grow_with_the_budget() {
-        let c = candidates_for_budget(32 * 1024);
-        // The all-on-GPU launch comes first: without it a fitting model has no baseline to beat.
-        assert!(!c[0].cpu_moe);
-        assert_eq!(c[0].cache_mib, 0);
-        assert!(c[1].cpu_moe);
-        assert_eq!(c[1].cache_mib, 0);
-        assert_eq!(c.len(), 5);
-        assert!(c.iter().all(|x| x.cache_mib <= 32 * 1024));
-        assert!(c[3].cache_mib > c[2].cache_mib);
-        // No budget: the two launches that need no cache budget still run.
-        assert_eq!(candidates_for_budget(0).len(), 2);
+    fn cache_steps_are_granular_and_derived_from_the_budget() {
+        // 12 GiB of cache budget: 3, 6, 9 and 12 GiB, on the flag's 256 MiB step.
+        let steps = cache_steps(12 * 1024);
+        assert_eq!(steps, vec![3 * 1024, 6 * 1024, 9 * 1024, 12 * 1024]);
+        assert!(steps.windows(2).all(|w| w[0] < w[1]));
+        // Granularity is the point: a home optimum of 6.2 GiB falls inside this set.
+        assert!(steps.contains(&(6 * 1024)));
+        // No budget, no cache steps.
+        assert!(cache_steps(0).is_empty());
+    }
+
+    #[test]
+    fn budget_reserves_the_launch_and_a_safe_margin() {
+        let components = Some(MoeTuneComponents {
+            model_mib: 1820,
+            kv_mib: 610,
+            compute_mib: 420,
+            host_mib: 26_800,
+        });
+        // 16384 free - 2850 launch - 512 reserve = 13022.
+        assert_eq!(compute_budget(16_384, components), 13_022);
+        // No ledger: reserve only, so the estimate stays conservative.
+        assert_eq!(compute_budget(16_384, None), 16_384 - RESERVE_MIB);
+    }
+
+    #[test]
+    fn pair_verdict_believes_a_gain_only_above_the_spread() {
+        // Baseline drifts 2 %, candidate wins 30 % both times.
+        let (gain, noise, verdict) = pair_verdict(&[60.0, 61.2], &[78.0, 79.5]);
+        assert!(verdict.as_deref() == Some("improved"));
+        assert!(gain.unwrap() > 29.0 && gain.unwrap() < 31.0);
+        assert!(noise.unwrap() > 1.0 && noise.unwrap() < 3.0);
+
+        // The same candidate against a baseline that swings 20 %: not conclusive.
+        let (_, _, verdict) = pair_verdict(&[60.0, 72.0], &[78.0, 80.0]);
+        assert!(verdict.as_deref() != Some("improved"));
+
+        // No pairs: no verdict at all.
+        assert_eq!(pair_verdict(&[], &[]), (None, None, None));
     }
 
     #[test]
