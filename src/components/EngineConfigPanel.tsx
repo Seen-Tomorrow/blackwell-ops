@@ -2407,32 +2407,64 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   ]);
 
   /**
-   * MOE OVERDRIVE launch: the same engine path as LAUNCH, with the experts forced into host RAM
-   * and the cache starting at 0 (or the stored record). The screen it opens owns the measuring.
+   * MOE OVERDRIVE launch: the same engine path as LAUNCH, with the experts forced into host RAM.
+   *
+   * The three knobs are *written*, not just patched into this one payload: CPU MOE reads ON in the
+   * panel (and in the next launch), the screen measures the regime it is about to show, and the
+   * learned key records the launch as a CPU-cache launch. The cache is the stored calibration for
+   * this shape, or 0 when there is none — never a stale number from a different launch.
    */
   const performOverdriveLaunch = useCallback(() => {
     if (!model) return;
-    const fullConfig = buildCurrentLaunchConfig();
-    if (!fullConfig) return;
-    const params = (fullConfig.extra_params ??= {});
-    params.cpu_moe = "on";
-    params.moe_cache_cpu_share = 0;
-    if (params.moe_cache_mib == null) params.moe_cache_mib = 0;
     setOverdriveActive(true);
     pulseLaunchAck();
-    void onLaunch(fullConfig)
-      .then((result) => {
-        if (result?.port) {
-          dispatchAppEvent(EVENTS.launchSuccess, {
-            alias: result?.alias ?? fullConfig.alias,
-            port: result.port,
-          });
-        }
-      })
-      .catch((err: unknown) => {
-        dispatchAppEvent(EVENTS.launchError, { message: errorMessage(err) });
-      });
-  }, [model, buildCurrentLaunchConfig, onLaunch, pulseLaunchAck]);
+
+    const launch = (cacheMib: number) => {
+      updateParam("cpu_moe", "on");
+      updateParam("moe_cache_mib", cacheMib);
+      updateParam("moe_cache_cpu_share", 0);
+      const fullConfig = buildCurrentLaunchConfig();
+      if (!fullConfig) return;
+      const params = (fullConfig.extra_params ??= {});
+      params.cpu_moe = "on";
+      params.moe_cache_mib = cacheMib;
+      params.moe_cache_cpu_share = 0;
+      void onLaunch(fullConfig)
+        .then((result) => {
+          if (result?.port) {
+            dispatchAppEvent(EVENTS.launchSuccess, {
+              alias: result?.alias ?? fullConfig.alias,
+              port: result.port,
+            });
+          }
+        })
+        .catch((err: unknown) => {
+          dispatchAppEvent(EVENTS.launchError, { message: errorMessage(err) });
+        });
+    };
+
+    // Same identity the screen reads the record with, so a stored calibration is found here too.
+    const specType = String(config.spec_type ?? "none");
+    void invoke<{ record: { cache_mib: number } } | null>("moe_overdrive_record", {
+      modelPath: model.path,
+      ctxSize: Number(config.ctx) || 32768,
+      kvQuant: String(config.kv_quant ?? "f16"),
+      splitMode: String(config.split ?? "none"),
+      gpuMask: booterProps.gpuMask,
+      draft: `${specType}:${String(config[`${specType.toLowerCase()}_draft_model`] ?? "")}`,
+      draftNMax: Number(config.dflash_n_max ?? config.mtp_n_max ?? 0),
+    })
+      .then((stored) => launch(Math.max(0, Number(stored?.record?.cache_mib) || 0)))
+      .catch(() => launch(0));
+  }, [
+    model,
+    config,
+    booterProps.gpuMask,
+    buildCurrentLaunchConfig,
+    onLaunch,
+    pulseLaunchAck,
+    updateParam,
+  ]);
 
   const modelIsMoe = Number(model?.metadata?.n_expert ?? 0) > 1;
 
