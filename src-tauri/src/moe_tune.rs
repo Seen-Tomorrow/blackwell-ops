@@ -347,6 +347,10 @@ pub async fn moe_tune_run(
     candidates: Option<Vec<MoeTuneCandidate>>,
 ) -> Result<MoeTuneReport, String> {
     let started = Instant::now();
+    // Fail before touching the engine: a wrong path must not wait out the health timeout.
+    if !std::path::Path::new(&model_path).exists() {
+        return Err(format!("model file not found: {model_path}"));
+    }
     let provider = provider_id
         .filter(|p| !p.trim().is_empty())
         .unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());

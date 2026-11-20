@@ -28,6 +28,7 @@ import {
 import BatchRangeSlider from "./BatchRangeSlider";
 import CockpitNavSegment from "./CockpitNavSegment";
 import TweaksPanel from "./TweaksPanel";
+import ExpertCachePanel from "./ExpertCachePanel";
 
 interface SamplerTaskProps {
   defs: UserEditedTemplateParam[];
@@ -245,6 +246,11 @@ interface CockpitInstrumentsProps {
   standalone?: boolean;
   /** Cockpit renders the batch slider in its own grid cell; standalone keeps it here. */
   showBatch?: boolean;
+  /** Selected model path — the expert calibration launches it. */
+  modelPath?: string | null;
+  /** Expert knobs are only meaningful for a MoE model. */
+  modelIsMoe?: boolean;
+  providerId?: string;
 }
 
 /**
@@ -313,6 +319,9 @@ export function CockpitInstruments({
   onModelDefaults,
   standalone = false,
   showBatch = true,
+  modelPath = null,
+  modelIsMoe = false,
+  providerId = "",
 }: CockpitInstrumentsProps) {
   return (
     <div
@@ -335,6 +344,14 @@ export function CockpitInstruments({
         <PromptCache defs={defs} config={config} onChange={onChange} />
       </div>
       <TweaksPanel defs={defs} config={config} onChange={onChange} />
+      <ExpertCachePanel
+        defs={defs}
+        config={config}
+        onChange={onChange}
+        modelPath={modelPath}
+        modelIsMoe={modelIsMoe}
+        providerId={providerId}
+      />
     </div>
   );
 }

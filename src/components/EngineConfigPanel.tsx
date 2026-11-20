@@ -3378,6 +3378,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               modelSampler={modelSampler}
               onModelDefaults={applyModelDefaults}
               showBatch={false}
+              modelPath={model?.path ?? null}
+              modelIsMoe={Number(model?.metadata?.n_expert ?? 0) > 1}
+              providerId={currentProvider?.id ?? "ggml-master"}
             />
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
@@ -3399,6 +3402,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             modelSampler={modelSampler}
             onModelDefaults={applyModelDefaults}
             standalone
+            modelPath={model?.path ?? null}
+            modelIsMoe={Number(model?.metadata?.n_expert ?? 0) > 1}
+            providerId={currentProvider?.id ?? "ggml-master"}
           />
         )}
 
