@@ -329,6 +329,18 @@ export default function VramBadge({
               <span className="vram-forecast-draft__body">{fixedFace.body}</span>
               <span className="vram-forecast-draft__hint">{fixedFace.hint}</span>
             </div>
+            {incomplete && onRestage ? (
+              <button
+                type="button"
+                className="vram-forecast-draft__action font-mono uppercase"
+                onClick={onRestage}
+              >
+                RE-DOWNLOAD MISSING SHARDS
+              </button>
+            ) : null}
+            {incomplete && restageStatus ? (
+              <span className="vram-forecast-draft__status font-mono">{restageStatus}</span>
+            ) : null}
             {(modelName || modelQuant) && (
               <div className="vram-forecast-draft__meta font-mono" title={modelName}>
                 <span className="vram-forecast-draft__meta-name">{modelName || "draft pack"}</span>

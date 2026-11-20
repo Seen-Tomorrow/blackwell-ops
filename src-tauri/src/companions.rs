@@ -1169,3 +1169,143 @@ mod tests {    use super::*;
         assert!(score < 45, "score {score}");
     }
 }
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeadHuntReport {
+    /// Repos whose tree actually contained a head of the needed kind.
+    pub repo_id: String,
+    pub rows: Vec<RepoCompanion>,
+    /// Repos whose NAME matched but whose tree did not contain a usable head (bounded).
+    pub rejected: Vec<String>,
+    pub searched: usize,
+}
+
+fn head_kind_token(lane: &str) -> Option<&'static str> {
+    match lane {
+        "mtp" => Some("mtp"),
+        "dflash" => Some("dflash"),
+        "dspark" => Some("dspark"),
+        _ => None,
+    }
+}
+
+/// The model's identifying tokens, e.g. "Qwen3.8-Flash-Next" -> qwen3, flash, next.
+/// Family words alone are not enough, so the quant / shard noise is stripped first.
+fn stem_tokens(name: &str) -> Vec<String> {
+    let base = name
+        .to_lowercase()
+        .replace(".gguf", "")
+        .replace("_gguf", "")
+        .replace("-gguf", "");
+    let mut tokens: Vec<String> = base
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '.')
+        .filter(|s| !s.is_empty())
+        .filter(|s| {
+            s.len() >= 3
+                && !matches!(
+                    *s,
+                    "the" | "and" | "ud" | "gguf" | "q4" | "q5" | "q6" | "q8" | "iq" | "bf16"
+                )
+        })
+        .map(|s| s.trim_matches('.').to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    tokens.dedup();
+    tokens
+}
+
+/// Find a repo that actually carries a head of this kind for this model.
+///
+/// Bounded on purpose: one search, a deterministic name filter (the repo must contain every
+/// stem token AND the kind token), then at most THREE tree lookups - stopping at the first
+/// tree that really contains a matching head. No scoring, no ordering by popularity.
+#[tauri::command]
+pub async fn find_head_for_model(
+    model_path: String,
+    lane: String,
+) -> Result<HeadHuntReport, String> {
+    let kind = head_kind_token(&lane).ok_or_else(|| format!("Unsupported lane '{lane}'"))?;
+    let name = std::path::Path::new(&model_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let tokens = stem_tokens(&name);
+    if tokens.is_empty() {
+        return Err("The model name gives nothing to search for".to_string());
+    }
+    // The head kind is not part of the model's own name.
+    let stem_tokens: Vec<&String> = tokens.iter().filter(|t| !t.contains(kind)).collect();
+    if stem_tokens.is_empty() {
+        return Err("The model name gives nothing to search for".to_string());
+    }
+    let query = format!("{} {} gguf", stem_tokens.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "), kind);
+    let hf_token = crate::secrets::get_secret("hf_token")?;
+    let filters = crate::config::normalize_hf_search_inputs(query, None, None, Some(20))?;
+    let response = crate::hf_api::search_models(&filters, hf_token.as_deref()).await?;
+
+    // Deterministic name filter: every stem token and the kind token must be in the id.
+    let mut candidates: Vec<String> = Vec::new();
+    for model in response.models.iter() {
+        let id = model.id.to_lowercase();
+        if !id.contains(kind) {
+            continue;
+        }
+        if !stem_tokens.iter().all(|t| id.contains(t.as_str())) {
+            continue;
+        }
+        candidates.push(model.id.clone());
+    }
+
+    let mut rejected: Vec<String> = Vec::new();
+    let searched = candidates.len();
+    for repo_id in candidates.into_iter().take(3) {
+        let Some(repo) = normalize_repo_id(&repo_id) else { continue };
+        let files = match crate::hf_api::list_repo_gguf_files(&repo, hf_token.as_deref()).await {
+            Ok(files) => files,
+            Err(e) => {
+                log::warn!("[head-hunt] {repo}: {e}");
+                continue;
+            }
+        };
+        let mut rows = Vec::new();
+        for file in files {
+            let Some(path_in_repo) = crate::types::hf_resolve_path_from_url(&file.url) else {
+                continue;
+            };
+            let file_name = path_in_repo.rsplit('/').next().unwrap_or("").to_string();
+            let lower = file_name.to_lowercase();
+            let matched = match kind {
+                "dspark" => lower.contains("dspark"),
+                "dflash" => lower.contains("dflash") || lower.contains("dspark"),
+                _ => lower.contains("mtp"),
+            };
+            if !matched || file.shard_count > 1 {
+                continue;
+            }
+            let precision = crate::model_catalog::extract_quant(&file_name);
+            rows.push(RepoCompanion {
+                repo_id: repo.clone(),
+                path_in_repo,
+                file_name,
+                size_bytes: file.size_bytes,
+                size_str: crate::model_catalog::calc_size_str_from_bytes(file.size_bytes),
+                precision: if precision == "GGUF" { String::new() } else { precision },
+                url: file.url.clone(),
+                lfs_oid: file.lfs_oid.clone(),
+            });
+        }
+        if rows.is_empty() {
+            rejected.push(repo);
+            continue;
+        }
+        rows.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes));
+        return Ok(HeadHuntReport { repo_id: repo, rows, rejected, searched });
+    }
+    Ok(HeadHuntReport {
+        repo_id: String::new(),
+        rows: Vec::new(),
+        rejected,
+        searched,
+    })
+}

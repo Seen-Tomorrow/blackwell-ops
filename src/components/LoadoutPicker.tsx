@@ -80,6 +80,8 @@ export default function LoadoutPicker({
   const [hfRepoBusy, setHfRepoBusy] = useState(false);
   const [hfRepoError, setHfRepoError] = useState<string | null>(null);
   const [hiddenHeads, setHiddenHeads] = useState<string[]>([]);
+  const [hunting, setHunting] = useState(false);
+  const [huntNote, setHuntNote] = useState<string | null>(null);
   // Hub quota countdown: while it runs, no button can spend a request and the reason is
   // visible, never a blinking error.
   const [cooldownMs, setCooldownMs] = useState(() => hfCooldownMs());
@@ -121,6 +123,60 @@ export default function LoadoutPicker({
     if (laneKind === "dspark") return kind === "dspark" || kind === "dflash";
     return kind === "dflash" || kind === "dspark";
   };
+  /**
+   * Bounded hunt for a repo that actually carries a head of this lane's kind: one search,
+   * a name filter, then at most three tree lookups. Used only when the model's own repo
+   * offered nothing usable.
+   */
+  const huntHead = useCallback(async () => {
+    if (!modelHubId && !modelPath) return;
+    const cool = hfCooldownMs();
+    if (cool > 0) {
+      setHuntNote(`Hub quota reached — retry in ${Math.ceil(cool / 60000)} min`);
+      return;
+    }
+    setHunting(true);
+    setHuntNote(null);
+    try {
+      const report = await invoke<{
+        repoId: string;
+        searched: number;
+        rejected: string[];
+        rows: RepoCompanion[];
+      }>("find_head_for_model", { modelPath, lane: laneKind ?? "dflash" });
+      if (!report.rows.length) {
+        setHuntNote(
+          `No repo among ${report.searched} name match(es) carries a usable head${
+            report.rejected.length ? ` (checked ${report.rejected.length})` : ""
+          }`,
+        );
+      } else {
+        setHfRepoRows(
+          report.rows.map((item) => ({
+            key: `${item.repo_id}/${item.path_in_repo}`,
+            quant: item.precision || "file",
+            size: item.size_str,
+            name: `${item.file_name} · ${item.repo_id}`,
+            onPick: () => {
+              if (role) void downloadRow(item);
+              else onPickDraftFile?.(item);
+            },
+          })),
+        );
+        setHuntNote(
+          `Found in ${report.repoId}${
+            report.rejected.length ? ` · ${report.rejected.length} repo(s) looked right but held nothing` : ""
+          }`,
+        );
+      }
+      setRemoteRequested(true);
+    } catch (err) {
+      noteHfError(err);
+      setHuntNote(typeof err === "string" ? err : "Head hunt failed");
+    } finally {
+      setHunting(false);
+    }
+  }, [modelHubId, modelPath, laneKind, role, onPickDraftFile]);
   /** List a pasted repo's files for this role — nothing downloads until a row is clicked. */
   const submitHfRepo = useCallback(
     async (modelId: string) => {
