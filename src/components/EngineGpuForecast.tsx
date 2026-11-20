@@ -9,6 +9,7 @@ import type {
 import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
 import type { LayerPlan } from "../lib/vramLayerPlan";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
+import { useOverdriveActive } from "../lib/moeOverdriveState";
 import type { DisplayCardsPerRow, FusionDualOrient } from "../lib/storage";
 import {
   loadDisplayGpuPerRow,
@@ -291,7 +292,10 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     }
   });
   const forecastHeightPx = computeForecastPhosphorHeightPx(gpus.length, gpuPerRow);
+  // MOE OVERDRIVE owns the glass while it is on: fusion must not auto-open over it on readiness.
+  const overdriveActive = useOverdriveActive();
   const fusionOverlayActive =
+    !overdriveActive &&
     selectedSlotIdx != null &&
     activeEnginePort != null &&
     (engineStatus === "LOADING" || engineStatus === "RUNNING");

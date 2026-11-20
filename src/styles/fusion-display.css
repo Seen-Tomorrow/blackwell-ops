@@ -6540,3 +6540,160 @@ html[data-industrial-bezel="brush"] {
   font-size: var(--type-micro);
   color: var(--theme-warn);
 }
+
+/* ── MOE OVERDRIVE ─────────────────────────────────────────────────────────
+   Its own screen, its own classes: if this path dies, delete this block and the panel. */
+.moe-od {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  min-height: 0;
+  overflow: auto;
+  font-family: var(--font-mono, monospace);
+}
+
+.moe-od__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.moe-od__title {
+  font-size: var(--type-label);
+  letter-spacing: 0.12em;
+  color: var(--theme-accent);
+}
+
+.moe-od__chip {
+  font-size: var(--type-micro);
+  padding: 0.1rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  color: var(--theme-text-muted);
+  background: transparent;
+}
+
+.moe-od__chip:hover:not(:disabled) {
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.moe-od__chip:disabled {
+  opacity: 0.45;
+}
+
+.moe-od__chip--primary {
+  color: var(--theme-accent);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+
+.moe-od__hero {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.moe-od__tps {
+  font-size: 2.1rem;
+  line-height: 1;
+  color: var(--theme-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.moe-od__unit {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}
+
+.moe-od__sub {
+  margin-left: auto;
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+
+.moe-od__bar {
+  display: flex;
+  height: 14px;
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  overflow: hidden;
+}
+
+.moe-od__seg {
+  display: block;
+  min-width: 1px;
+  height: 100%;
+}
+
+.moe-od__seg--model {
+  background: color-mix(in srgb, var(--theme-text) 55%, transparent);
+}
+
+.moe-od__seg--kv {
+  background: var(--fixed-cyan-400);
+  opacity: 0.75;
+}
+
+.moe-od__seg--compute {
+  background: var(--fixed-violet-400, var(--fixed-cyan-400));
+  opacity: 0.55;
+}
+
+.moe-od__seg--cache {
+  background: var(--theme-accent);
+}
+
+.moe-od__seg--free {
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.moe-od__legend {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
+}
+
+.moe-od__legend [data-kind="cache"] {
+  color: var(--theme-accent);
+}
+
+.moe-od__dial,
+.moe-od__probe {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.moe-od__label {
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  color: var(--theme-text-muted);
+}
+
+.moe-od__probe-text {
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-text) 65%, transparent);
+}
+
+.moe-od__note {
+  font-size: var(--type-micro);
+  color: var(--theme-warn);
+}
+
+.moe-od__empty {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+  padding: 0.5rem 0;
+}
+
+.vram-fc-overdrive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}

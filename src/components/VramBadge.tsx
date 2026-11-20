@@ -25,6 +25,8 @@ import type { FusionDualOrient } from "../lib/storage";
 import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import { memoryLabelForKvQuant } from "../lib/multiAgentBooster";
 import type { MoeCacheSizing } from "./MoeOptimizerTypes";
+import MoeOverdrive from "./MoeOverdrive";
+import { setOverdriveActive, useOverdriveActive } from "../lib/moeOverdriveState";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -200,6 +202,8 @@ export default function VramBadge({
   // split, so what the bars paint and what this glass prints cannot disagree.
 
   // MOE optimizer: one measurement of the loaded launch, then the cache it justifies.
+  const overdriveActive = useOverdriveActive();
+  const moeDeviceIndex = Number(selectedGpuIndices?.[0] ?? 0);
   const [moeSizing, setMoeSizing] = useState<MoeCacheSizing | null>(null);
   const [moeStaged, setMoeStaged] = useState<number | null>(null);
   const [moeBusy, setMoeBusy] = useState(false);
@@ -636,6 +640,26 @@ export default function VramBadge({
       ` · ${layerPlan.deviceLayers.join("/")} layers`
     : "No layer table for this model yet - the engine's own fit chooses placement";
 
+  if (overdriveActive) {
+    return (
+      <div
+        className={`vram-badge-forecast vram-fc vram-fc--overdrive relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        data-forecast-mode="overdrive"
+      >
+        <MoeOverdrive
+          slotIdx={selectedSlotIdx ?? null}
+          port={activeEnginePort ?? null}
+          deviceIndex={moeDeviceIndex}
+          cacheMib={moeCacheMib}
+          ctxTokens={ctxTokens}
+          kvQuant={kvQuant}
+          onApplyCache={(mib) => onMoeApply?.(mib)}
+          onExit={() => setOverdriveActive(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`vram-badge-forecast vram-fc relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
@@ -704,6 +728,22 @@ export default function VramBadge({
             {moeNote && <span className="vram-fc-moe-opt__note">{moeNote}</span>}
           </div>
         ) : null}
+        <div className="vram-fc-overdrive-toggle">
+          <span className="vram-fc-moe-opt__label">FORECAST</span>
+          <button
+            type="button"
+            className="vram-fc-moe-opt__btn"
+            onClick={() => setOverdriveActive(true)}
+            disabled={!modelMeta || (modelMeta.n_expert ?? 0) <= 1}
+            title={
+              (modelMeta?.n_expert ?? 0) > 1
+                ? "MOE OVERDRIVE: run this MoE model as fast as this rig allows (measured, not projected)"
+                : "Dense model - OVERDRIVE is for mixture-of-experts models"
+            }
+          >
+            MOE OVERDRIVE →
+          </button>
+        </div>
         {/* Placement ownership is always on screen. There is no operator switch: an app-owned
             launch carries -ts + fit off, and one without a split lets the engine place. SPLIT EQ
             is the manual nudge for the case where the automatic pass had nothing to arm. */}
