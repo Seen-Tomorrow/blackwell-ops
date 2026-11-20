@@ -1077,6 +1077,18 @@
   color: var(--fixed-cyan-200);
 }
 
+.dev-fake-gpu-modal__preset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Selected ballast target / device. */
+.dev-fake-gpu-modal__preset--active {
+  border-color: var(--fixed-cyan-400-a45);
+  color: var(--fixed-cyan-200);
+  background: color-mix(in srgb, var(--fixed-cyan-400) 12%, transparent);
+}
+
 .dev-fake-gpu-modal__foot {
   display: flex;
   align-items: center;

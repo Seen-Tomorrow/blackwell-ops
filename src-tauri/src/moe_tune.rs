@@ -425,12 +425,22 @@ pub async fn moe_tune_run(
         crate::engine_utils::compute_gpu_mask_from_params(&device, &split_mode, gpu_count, false);
 
     // A calibration launch allocates real VRAM; refuse rather than fight an engine for the card.
+    // DEV may proceed on an occupied card on purpose: that is how the VRAM ballast turns a 96 GB
+    // card into an 8/16/32 GB one, and the free figure it leaves becomes the tuning budget. A
+    // release build keeps the refusal - no reduced figure is ever honoured outside DEV.
     let occupied = crate::engine_utils::occupied_target_devices(&gpu_mask, 4096);
     if let Some((index, used_mib)) = occupied.first() {
-        return Err(format!(
-            "GPU-{index} already has {:.1} GiB in use - stop the engines on that card before tuning",
-            *used_mib as f64 / 1024.0
-        ));
+        if cfg!(debug_assertions) {
+            log::warn!(
+                "[moe-tune] GPU-{index} already has {:.1} GiB in use - DEV build, measuring against the free remainder",
+                *used_mib as f64 / 1024.0
+            );
+        } else {
+            return Err(format!(
+                "GPU-{index} already has {:.1} GiB in use - stop the engines on that card before tuning",
+                *used_mib as f64 / 1024.0
+            ));
+        }
     }
 
     let budget = cache_budget_mib(&gpu_mask);

@@ -30,6 +30,7 @@ mod fit_adapters;
 mod fit_scanner;
 mod fit_low_vram;
 mod moe_tune;
+mod vram_ballast_ctl;
 mod vram_learn;
 mod forecast_log;
 mod automation;
@@ -596,6 +597,9 @@ async fn main() {
             // FIT Scanner commands — the probe lives in fit_scanner with the rest of the domain
             fit_scanner::fit_scan_model,
             moe_tune::moe_tune_run,
+            vram_ballast_ctl::vram_ballast_start,
+            vram_ballast_ctl::vram_ballast_stop,
+            vram_ballast_ctl::vram_ballast_status,
             vram_learn::get_learned_vram,
             vram_learn::get_learned_vram_for_model,
             vram_learn::get_learned_vram_curve,

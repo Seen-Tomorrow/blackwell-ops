@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { createPortal } from "react-dom";
 import { useTelemetry } from "../context/TelemetryContext";
 import {
@@ -18,6 +19,18 @@ import {
   subscribeDevFakeGpuExtra,
   type DevFakeGpuPlan,
 } from "../lib/devFakeGpuTopo";
+
+/** Presets the ballast can leave free on a card. */
+const BALLAST_TARGETS_GB = [8, 12, 16, 24, 32, 48, 72] as const;
+
+interface BallastStatus {
+  running: boolean;
+  supported: boolean;
+  device: number;
+  target_mib: number;
+  nvml_free_mib: number;
+  note: string;
+}
 
 type Draft = {
   extras: DevFakeGpuPlan;
@@ -39,6 +52,10 @@ function extraTotal(p: DevFakeGpuPlan): number {
 export default function DevFakeGpuTopoTool() {
   const { gpus } = useTelemetry();
   const [open, setOpen] = useState(false);
+  const [ballast, setBallast] = useState<BallastStatus | null>(null);
+  const [ballastDevice, setBallastDevice] = useState(0);
+  const [ballastBusy, setBallastBusy] = useState(false);
+  const [ballastError, setBallastError] = useState<string | null>(null);
   const [applied, setApplied] = useState<Draft>(snap);
   const [draft, setDraft] = useState<Draft>(snap);
   const nvmlCount = Math.max(getDevLastRealGpuCount(), 1);
@@ -54,6 +71,63 @@ export default function DevFakeGpuTopoTool() {
   useEffect(() => {
     if (open) setDraft(snap());
   }, [open]);
+
+  // The ballast lives in another process; poll its status while the modal is open.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const next = await invoke<BallastStatus>("vram_ballast_status", {
+          deviceIndex: ballastDevice,
+        });
+        // Explicitly typed above; the catch below only clears the readout.
+        if (!cancelled) setBallast(next);
+      } catch {
+        if (!cancelled) setBallast(null);
+      }
+    };
+    void tick();
+    const timer = window.setInterval((): void => {
+      void tick();
+    }, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [open, ballastDevice]);
+
+  const startBallast = useCallback(
+    async (targetFreeMib: number) => {
+      setBallastBusy(true);
+      setBallastError(null);
+      try {
+        const next = await invoke<BallastStatus>("vram_ballast_start", {
+          targetFreeMib,
+          deviceIndex: ballastDevice,
+        });
+        setBallast(next);
+      } catch (e) {
+        setBallastError(String(e));
+      } finally {
+        setBallastBusy(false);
+      }
+    },
+    [ballastDevice],
+  );
+
+  const stopBallast = useCallback(async () => {
+    setBallastBusy(true);
+    setBallastError(null);
+    try {
+      const next = await invoke<BallastStatus>("vram_ballast_stop");
+      setBallast(next);
+    } catch (e) {
+      setBallastError(String(e));
+    } finally {
+      setBallastBusy(false);
+    }
+  }, []);
 
   const bumpSku = useCallback((id: string, delta: number) => {
     setDraft((prev) => {
@@ -181,6 +255,71 @@ export default function DevFakeGpuTopoTool() {
                   </div>
                 );
               })}
+            </div>
+
+            <div className="dev-fake-gpu-modal__card" style={{ marginTop: "0.45rem" }}>
+              <div className="dev-fake-gpu-modal__card-name">VRAM BALLAST (DEV)</div>
+              <div className="dev-fake-gpu-modal__card-meta">
+                Holds raw VRAM in a separate process, leaving the chosen FREE size on a real card.
+                Not a model; the tune then measures against that remainder.
+              </div>
+              <div className="dev-fake-gpu-modal__presets" style={{ marginTop: "0.35rem" }}>
+                <span className="dev-fake-gpu-modal__presets-label">GPU</span>
+                {Array.from({ length: Math.max(nvmlCount, 1) }, (_, i) => (
+                  <button
+                    key={`ballast-gpu-${i}`}
+                    type="button"
+                    className={`dev-fake-gpu-modal__preset${
+                      ballastDevice === i ? " dev-fake-gpu-modal__preset--active" : ""
+                    }`}
+                    onClick={() => setBallastDevice(i)}
+                    disabled={ballastBusy || !!ballast?.running}
+                  >
+                    GPU-{i}
+                  </button>
+                ))}
+              </div>
+              <div className="dev-fake-gpu-modal__presets">
+                <span className="dev-fake-gpu-modal__presets-label">FREE</span>
+                {BALLAST_TARGETS_GB.map((gb) => {
+                  const active = !!ballast?.running && ballast.device === ballastDevice
+                    && ballast.target_mib === gb * 1024;
+                  return (
+                    <button
+                      key={`ballast-${gb}`}
+                      type="button"
+                      className={`dev-fake-gpu-modal__preset${
+                        active ? " dev-fake-gpu-modal__preset--active" : ""
+                      }`}
+                      onClick={() => void startBallast(gb * 1024)}
+                      disabled={ballastBusy}
+                      title={`Leave ${gb} GB free on GPU-${ballastDevice}`}
+                    >
+                      {gb} GB
+                    </button>
+                  );
+                })}
+                {ballast?.running && (
+                  <button
+                    type="button"
+                    className="dev-fake-gpu-modal__preset"
+                    onClick={() => void stopBallast()}
+                    disabled={ballastBusy}
+                  >
+                    RELEASE
+                  </button>
+                )}
+              </div>
+              <div className="dev-fake-gpu-modal__card-meta">
+                {ballastBusy
+                  ? "working…"
+                  : ballast?.note
+                    ? ballast.note
+                    : "idle"}
+              </div>
+              {ballastError && (
+                <div className="dev-fake-gpu-modal__card-meta cfg-warn">{ballastError}</div>
+              )}
             </div>
 
             <div className="dev-fake-gpu-modal__presets">

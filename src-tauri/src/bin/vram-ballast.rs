@@ -21,8 +21,9 @@ use std::ffi::c_void;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-/// MiB the ballast never takes: the desktop compositor needs room or the display resets.
-const DESKTOP_HEADROOM_MIB: u64 = 1536;
+/// MiB the ballast never takes. The app drives the display from the iGPU, so these cards carry no
+/// compositor; this is driver/allocation room, not a desktop share.
+const DEFAULT_HEADROOM_MIB: u64 = 512;
 /// Largest single step; chunks shrink as the target approaches.
 const MAX_CHUNK_MIB: u64 = 1024;
 /// Below this the win is smaller than the NVML resolution.
@@ -39,6 +40,26 @@ type CuContext = *mut c_void;
 extern "system" {
     fn LoadLibraryW(name: *const u16) -> *mut c_void;
     fn GetProcAddress(module: *mut c_void, name: *const u8) -> *mut c_void;
+    fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+    fn GetExitCodeProcess(handle: *mut c_void, code: *mut u32) -> i32;
+    fn CloseHandle(handle: *mut c_void) -> i32;
+}
+
+/// PROCESS_QUERY_LIMITED_INFORMATION + STILL_ACTIVE.
+fn parent_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return true;
+    }
+    unsafe {
+        let handle = OpenProcess(0x1000, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut code: u32 = 0;
+        let ok = GetExitCodeProcess(handle, &mut code) != 0;
+        CloseHandle(handle);
+        ok && code == 259
+    }
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -219,7 +240,7 @@ fn usage() {
          --seconds       stop automatically after N seconds (default: run until Ctrl+C)\n\
          \n\
          The allocation is raw device memory (no model); it is touched every 3 s so WDDM\n\
-         cannot demote it to shared RAM. It refuses to leave less than {DESKTOP_HEADROOM_MIB} MiB free."
+         cannot demote it to shared RAM. It refuses to leave less than {DEFAULT_HEADROOM_MIB} MiB free (--headroom)."
     );
 }
 
@@ -229,6 +250,8 @@ fn main() {
     let mut device: u32 = 0;
     let mut seconds: Option<u64> = None;
     let mut status = false;
+    let mut parent_pid: u32 = 0;
+    let mut headroom_mib: u64 = DEFAULT_HEADROOM_MIB;
 
     let mut i = 0;
     while i < args.len() {
@@ -254,6 +277,17 @@ fn main() {
             "--seconds" => {
                 i += 1;
                 seconds = args.get(i).and_then(|v| v.parse().ok());
+            }
+            "--parent-pid" => {
+                i += 1;
+                parent_pid = args.get(i).and_then(|v| v.parse().ok()).unwrap_or(0);
+            }
+            "--headroom" => {
+                i += 1;
+                headroom_mib = args
+                    .get(i)
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(DEFAULT_HEADROOM_MIB);
             }
             "--status" => status = true,
             "--help" | "-h" => {
@@ -301,9 +335,9 @@ fn main() {
             std::process::exit(1);
         }
     };
-    if target + DESKTOP_HEADROOM_MIB > total {
+    if target.saturating_add(headroom_mib) > total {
         eprintln!(
-            "target {target} MiB leaves less than {DESKTOP_HEADROOM_MIB} MiB on a {total} MiB card - refusing"
+            "target {target} MiB leaves less than {headroom_mib} MiB on a {total} MiB card - refusing"
         );
         std::process::exit(2);
     }
@@ -340,6 +374,10 @@ fn main() {
             if started.elapsed() >= Duration::from_secs(limit) {
                 break;
             }
+        }
+        if !parent_alive(parent_pid) {
+            println!("parent process exited - releasing");
+            break;
         }
         let free = match nvidia_smi_free_mib(device) {
             Ok((_, free)) => free,
@@ -386,6 +424,10 @@ fn main() {
             }
         }
         std::thread::sleep(Duration::from_millis(500));
+        if !parent_alive(parent_pid) {
+            println!("parent process exited - releasing");
+            break;
+        }
         if held.last_touch.elapsed() >= TOUCH_INTERVAL {
             held.re_touch();
             let free = nvidia_smi_free_mib(device).map(|(_, f)| f).unwrap_or(0);
