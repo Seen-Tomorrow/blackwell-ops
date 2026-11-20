@@ -4,6 +4,7 @@ import { useTauriListen } from "../hooks/useTauriListen";
 
 /** Shape returned by the Rust `moe_tune_run` command. */
 interface MoeTunePoint {
+  cpu_moe: boolean;
   cache_mib: number;
   cpu_share: number;
   tps: number | null;
@@ -12,9 +13,11 @@ interface MoeTunePoint {
 
 interface MoeTuneReport {
   points: MoeTunePoint[];
-  best: { cache_mib: number; cpu_share: number } | null;
+  best: { cpu_moe: boolean; cache_mib: number; cpu_share: number } | null;
   best_tps: number | null;
   baseline_tps: number | null;
+  full_gpu_tps: number | null;
+  full_gpu_error: string | null;
   budget_mib: number;
   seconds: number;
 }
@@ -48,7 +51,11 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
   const [done, setDone] = useState(0);
   const [total, setTotal] = useState(0);
   const [report, setReport] = useState<MoeTuneReport | null>(null);
-  const [staged, setStaged] = useState<{ cache_mib: number; cpu_share: number } | null>(null);
+  const [staged, setStaged] = useState<{
+    cpu_moe: boolean;
+    cache_mib: number;
+    cpu_share: number;
+  } | null>(null);
   const [applied, setApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,6 +104,8 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
 
   const apply = useCallback(() => {
     if (!staged) return;
+    // The winner may be "leave the experts on the GPU" - then -cmoe must go away too.
+    updateParam("cpu_moe", staged.cpu_moe ? "on" : "off");
     updateParam("moe_cache_mib", staged.cache_mib);
     updateParam("moe_cache_cpu_share", staged.cpu_share);
     setStaged(null);
@@ -104,9 +113,15 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
   }, [staged, updateParam]);
 
   const label = running ? (total > 0 ? `TUNE ${done}/${total}` : "TUNE…") : "TUNE";
+  // A win over the CPU-expert launch is what the cache buys; a win over the all-on-GPU launch is
+  // what keeps the cache honest on a card that already fits the model.
   const gain =
     report?.best_tps != null && report.baseline_tps != null && report.baseline_tps > 0
       ? report.best_tps / report.baseline_tps - 1
+      : null;
+  const gpuGain =
+    report?.best_tps != null && report.full_gpu_tps != null && report.full_gpu_tps > 0
+      ? report.best_tps / report.full_gpu_tps - 1
       : null;
 
   return (
@@ -126,10 +141,22 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
       </button>
       {staged && !running && (
         <>
-          <span className="moe-tune__staged type-micro font-mono" title="Measured, not applied yet">
-            {gilb(staged.cache_mib)} · share {staged.cpu_share.toFixed(2)}
+          <span
+            className="moe-tune__staged type-micro font-mono"
+            title={
+              staged.cpu_moe
+                ? "Measured with experts in host RAM; not applied yet"
+                : "The model fits fully on the GPU - no expert cache is needed"
+            }
+          >
+            {staged.cpu_moe
+              ? `${gilb(staged.cache_mib)} · share ${staged.cpu_share.toFixed(2)}`
+              : "full GPU · no cache"}
             {report?.best_tps != null ? ` · ${report.best_tps.toFixed(1)} t/s` : ""}
-            {gain != null ? ` (+${(gain * 100).toFixed(0)}%)` : ""}
+            {staged.cpu_moe && gain != null ? ` (+${(gain * 100).toFixed(0)}% vs CPU)` : ""}
+            {!staged.cpu_moe && gpuGain != null && gpuGain > 0
+              ? ` (+${(gpuGain * 100).toFixed(0)}% vs best cache)`
+              : ""}
           </span>
           <button
             type="button"

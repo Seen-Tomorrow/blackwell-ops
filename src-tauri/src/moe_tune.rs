@@ -26,12 +26,16 @@ const PROMPT: &str = "The lighthouse keeper had kept a logbook for thirty-one ye
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct MoeTuneCandidate {
+    /// Expert weights in host RAM (`-cmoe`). False measures the plain all-on-GPU launch.
+    #[serde(default)]
+    pub cpu_moe: bool,
     pub cache_mib: u32,
     pub cpu_share: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MoeTunePoint {
+    pub cpu_moe: bool,
     pub cache_mib: u32,
     pub cpu_share: f64,
     pub tps: Option<f64>,
@@ -44,8 +48,12 @@ pub struct MoeTuneReport {
     /// Best measured configuration - `None` when every run failed.
     pub best: Option<MoeTuneCandidate>,
     pub best_tps: Option<f64>,
-    /// Cache-off baseline, when one of the candidates measured it.
+    /// CPU-expert baseline (cache off), when one of the candidates measured it.
     pub baseline_tps: Option<f64>,
+    /// The plain all-on-GPU launch: the answer for a model that fits, and the number a cache has
+    /// to beat. `None` speed means it did not fit (or failed to load).
+    pub full_gpu_tps: Option<f64>,
+    pub full_gpu_error: Option<String>,
     /// Usable VRAM the candidates were derived from, MiB (0 when the caller supplied its own).
     pub budget_mib: u64,
     pub seconds: f64,
@@ -56,30 +64,45 @@ fn step_mib(mib: u64) -> u32 {
     ((mib / 256) * 256).max(0) as u32
 }
 
-/// The candidate set: cache off (baseline), a quarter and three quarters of the budget, and the
-/// larger cache with CPU compute for the misses. Three runs answer both questions that matter -
-/// "does the cache help" and "does computing misses on the CPU help".
+/// The candidate set, in run order: the plain all-on-GPU launch (the answer when the model fits),
+/// the CPU-expert launch with no cache, a quarter and three quarters of the budget, and the larger
+/// cache with CPU compute for the misses.
+///
+/// The all-on-GPU run is what makes the result conclusive on a card that fits the model: without
+/// it the best number only describes the best way to run with experts in host RAM, which is the
+/// wrong regime for such a model.
 pub fn candidates_for_budget(budget_mib: u64) -> Vec<MoeTuneCandidate> {
-    let mut out = vec![MoeTuneCandidate {
-        cache_mib: 0,
-        cpu_share: 0.0,
-    }];
+    let mut out = vec![
+        MoeTuneCandidate {
+            cpu_moe: false,
+            cache_mib: 0,
+            cpu_share: 0.0,
+        },
+        MoeTuneCandidate {
+            cpu_moe: true,
+            cache_mib: 0,
+            cpu_share: 0.0,
+        },
+    ];
     let budget = step_mib(budget_mib);
     if budget >= 2048 {
         let small = step_mib((budget / 4) as u64).max(1024);
         let large = step_mib((budget * 3 / 4) as u64);
         if small > 0 && small != large {
             out.push(MoeTuneCandidate {
+                cpu_moe: true,
                 cache_mib: small,
                 cpu_share: 0.0,
             });
         }
         if large > 0 {
             out.push(MoeTuneCandidate {
+                cpu_moe: true,
                 cache_mib: large,
                 cpu_share: 0.0,
             });
             out.push(MoeTuneCandidate {
+                cpu_moe: true,
                 cache_mib: large,
                 cpu_share: 0.95,
             });
@@ -88,8 +111,11 @@ pub fn candidates_for_budget(budget_mib: u64) -> Vec<MoeTuneCandidate> {
     out
 }
 
-/// Highest measured t/s wins; a tie within 2 % keeps the smaller cache (and share 0), because a
-/// bigger cache costs VRAM the user may want for context or a second engine.
+/// The winner: the all-on-GPU launch unless a CPU-expert configuration beats it by more than 2 %.
+///
+/// The 2 % band matters: keeping the experts on the GPU is the simpler, more predictable launch,
+/// so a cache that merely ties it is not worth recommending. Between cache configurations a tie
+/// within 2 % keeps the smaller cache (and share 0), because VRAM is also context and neighbours.
 pub fn pick_best(points: &[MoeTunePoint]) -> Option<(MoeTuneCandidate, f64)> {
     let mut best: Option<(MoeTuneCandidate, f64)> = None;
     for p in points {
@@ -98,6 +124,7 @@ pub fn pick_best(points: &[MoeTunePoint]) -> Option<(MoeTuneCandidate, f64)> {
             continue;
         }
         let cand = MoeTuneCandidate {
+            cpu_moe: p.cpu_moe,
             cache_mib: p.cache_mib,
             cpu_share: p.cpu_share,
         };
@@ -105,9 +132,12 @@ pub fn pick_best(points: &[MoeTunePoint]) -> Option<(MoeTuneCandidate, f64)> {
             None => Some((cand, tps)),
             Some((b_cand, b_tps)) => {
                 let better = tps > b_tps * 1.02;
+                // Prefer the GPU: on a tie the launch without host experts wins.
+                let equal_band = tps >= b_tps * 0.98;
+                let gpu_preferred = !cand.cpu_moe && b_cand.cpu_moe;
                 let cheaper = (cand.cache_mib, cand.cpu_share.to_bits())
                     < (b_cand.cache_mib, b_cand.cpu_share.to_bits());
-                if better || (!better && tps >= b_tps * 0.98 && cheaper) {
+                if better || (equal_band && (gpu_preferred || (!b_cand.cpu_moe && cheaper))) {
                     Some((cand, tps))
                 } else {
                     Some((b_cand, b_tps))
@@ -154,9 +184,10 @@ pub fn build_tune_args(
         port.to_string(),
         "-np".into(),
         "1".into(),
-        // Every expert starts in host RAM; the cache is what this run measures.
-        "-cmoe".into(),
     ];
+    if candidate.cpu_moe {
+        args.push("-cmoe".into());
+    }
     let split = split_mode.trim();
     if !split.is_empty() && !split.eq_ignore_ascii_case("none") {
         args.push("--split-mode".into());
@@ -435,6 +466,7 @@ pub async fn moe_tune_run(
             serde_json::json!({
                 "index": index,
                 "total": total,
+                "cpu_moe": cand.cpu_moe,
                 "cache_mib": cand.cache_mib,
                 "cpu_share": cand.cpu_share,
                 "status": "running",
@@ -454,6 +486,7 @@ pub async fn moe_tune_run(
             );
         }
         points.push(MoeTunePoint {
+            cpu_moe: cand.cpu_moe,
             cache_mib: cand.cache_mib,
             cpu_share: cand.cpu_share,
             tps,
@@ -464,6 +497,7 @@ pub async fn moe_tune_run(
             serde_json::json!({
                 "index": index,
                 "total": total,
+                "cpu_moe": cand.cpu_moe,
                 "cache_mib": cand.cache_mib,
                 "cpu_share": cand.cpu_share,
                 "status": "done",
@@ -475,12 +509,17 @@ pub async fn moe_tune_run(
     let best = pick_best(&points);
     let baseline_tps = points
         .iter()
-        .find(|p| p.cache_mib == 0 && p.cpu_share == 0.0)
+        .find(|p| p.cpu_moe && p.cache_mib == 0 && p.cpu_share == 0.0)
         .and_then(|p| p.tps);
+    let full_gpu = points.iter().find(|p| !p.cpu_moe);
+    let full_gpu_tps = full_gpu.and_then(|p| p.tps);
+    let full_gpu_error = full_gpu.and_then(|p| p.error.clone());
     Ok(MoeTuneReport {
         best: best.map(|(c, _)| c),
         best_tps: best.map(|(_, t)| t),
         baseline_tps,
+        full_gpu_tps,
+        full_gpu_error,
         budget_mib: budget,
         points,
         seconds: started.elapsed().as_secs_f64(),
@@ -493,6 +532,7 @@ mod tests {
 
     fn point(cache_mib: u32, cpu_share: f64, tps: Option<f64>) -> MoeTunePoint {
         MoeTunePoint {
+            cpu_moe: cache_mib > 0 || cpu_share > 0.0,
             cache_mib,
             cpu_share,
             tps,
@@ -503,13 +543,16 @@ mod tests {
     #[test]
     fn candidates_include_baseline_and_grow_with_the_budget() {
         let c = candidates_for_budget(32 * 1024);
+        // The all-on-GPU launch comes first: without it a fitting model has no baseline to beat.
+        assert!(!c[0].cpu_moe);
         assert_eq!(c[0].cache_mib, 0);
-        assert_eq!(c[0].cpu_share, 0.0);
-        assert_eq!(c.len(), 4);
+        assert!(c[1].cpu_moe);
+        assert_eq!(c[1].cache_mib, 0);
+        assert_eq!(c.len(), 5);
         assert!(c.iter().all(|x| x.cache_mib <= 32 * 1024));
-        assert!(c[2].cache_mib > c[1].cache_mib);
-        // No budget: only the baseline, so a tune still measures cache-off.
-        assert_eq!(candidates_for_budget(0).len(), 1);
+        assert!(c[3].cache_mib > c[2].cache_mib);
+        // No budget: the two launches that need no cache budget still run.
+        assert_eq!(candidates_for_budget(0).len(), 2);
     }
 
     #[test]
@@ -523,6 +566,27 @@ mod tests {
         let (best, tps) = pick_best(&points).expect("a winner");
         assert_eq!(best.cache_mib, 8192);
         assert!((tps - 80.0).abs() < 0.01);
+        assert!(best.cpu_moe);
+    }
+
+    #[test]
+    fn pick_best_keeps_the_gpu_when_a_cache_only_ties() {
+        let gpu = MoeTunePoint {
+            cpu_moe: false,
+            cache_mib: 0,
+            cpu_share: 0.0,
+            tps: Some(80.0),
+            error: None,
+        };
+        let cache = point(24576, 0.0, Some(81.0)); // +1.25 % - inside the band
+        let (best, _) = pick_best(&[gpu.clone(), cache]).expect("a winner");
+        assert!(!best.cpu_moe);
+        assert_eq!(best.cache_mib, 0);
+
+        let clear_win = point(24576, 0.0, Some(90.0));
+        let (best2, _) = pick_best(&[gpu, clear_win]).expect("a winner");
+        assert!(best2.cpu_moe);
+        assert_eq!(best2.cache_mib, 24576);
     }
 
     #[test]
@@ -549,6 +613,7 @@ mod tests {
             1024,
             8899,
             &MoeTuneCandidate {
+                cpu_moe: true,
                 cache_mib: 24576,
                 cpu_share: 0.95,
             },
@@ -572,6 +637,7 @@ mod tests {
             512,
             8899,
             &MoeTuneCandidate {
+                cpu_moe: true,
                 cache_mib: 0,
                 cpu_share: 0.0,
             },
@@ -580,5 +646,25 @@ mod tests {
         assert!(!off.contains("--moe-cache-mib"));
         assert!(!off.contains("--moe-cache-cpu-share"));
         assert!(!off.contains("--split-mode"));
+        assert!(off.contains("-cmoe"));
+
+        // The all-on-GPU launch must not carry -cmoe at all.
+        let gpu = build_tune_args(
+            "m",
+            4096,
+            "f16",
+            "none",
+            None,
+            512,
+            512,
+            8899,
+            &MoeTuneCandidate {
+                cpu_moe: false,
+                cache_mib: 0,
+                cpu_share: 0.0,
+            },
+        )
+        .join(" ");
+        assert!(!gpu.contains("-cmoe"));
     }
 }
