@@ -433,6 +433,18 @@ export default function LoadoutPicker({
               )}
 
             </div>
+            {role === null && !remoteLoading && remoteList.length === 0 ? (
+              <button
+                type="button"
+                className="gp-search font-mono"
+                onClick={() => void huntHead()}
+                disabled={hunting}
+                title="One Hub search from the model name, then at most three repos checked for a head of this kind"
+              >
+                {hunting ? "SEARCHING…" : "FIND HEAD ON THE HUB"}
+              </button>
+            ) : null}
+            {huntNote ? <span className="gp-empty font-mono">{huntNote}</span> : null}
             <button
               type="button"
               className="gp-search font-mono"
