@@ -423,7 +423,7 @@ function ModelPathsPanel() {
                   DRAFT HEADS · MMPROJ · ENGRAM
                 </span>
                 <span className="type-label font-mono cfg-mut opacity-70">
-                  — its own folder, e.g. &lt;library&gt;\model_EXTRAS
+                  — picking a model library or a drive root lands in its model_EXTRAS
                 </span>
               </div>
               <div className="type-body font-mono cfg-txt truncate">

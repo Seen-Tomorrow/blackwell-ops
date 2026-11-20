@@ -58,34 +58,46 @@ fn info_for(path: &Path) -> SwapStoreInfo {
     }
 }
 
-/// A store must be its own folder. Accepting a model library (or its parent) turns every
-/// model file into an "extra", and the catalog then counts the library twice.
-fn reject_library_target(cfg: &crate::config::AppConfig, target: &Path) -> Result<(), String> {
-    let norm = |raw: &str| {
-        raw.replace('/', "\\")
-            .trim_end_matches('\\')
-            .to_lowercase()
-    };
-    let t = norm(&target.to_string_lossy());
-    for entry in crate::config::get_model_paths(cfg) {
-        let m = norm(&entry.path);
-        if t == m {
-            return Err(format!(
-                "{} is a model library. Put the SWAP store in a folder of its own, e.g. {}\\{}",
-                entry.path,
-                entry.path,
-                crate::config::EXTRAS_DIR_NAME
-            ));
-        }
-        if m.starts_with(&format!("{t}\\")) {
-            return Err(format!(
-                "{} contains the model library {} - one folder cannot be both.",
-                target.display(),
-                entry.path
-            ));
-        }
+fn norm_path(raw: &str) -> String {
+    raw.replace('/', "\\").trim_end_matches('\\').to_lowercase()
+}
+
+/// True when `candidate` IS a configured model library, or would contain one.
+fn overlaps_library(candidate: &Path, model_roots: &[String]) -> bool {
+    let c = norm_path(&candidate.to_string_lossy());
+    if c.is_empty() {
+        return false;
     }
-    Ok(())
+    model_roots.iter().map(|r| norm_path(r)).any(|m| {
+        m == c || m.starts_with(&format!("{c}\\"))
+    })
+}
+
+/// Where a chosen folder actually lands.
+///
+/// Picking a model library is the natural mistake — and the hint itself says the store
+/// belongs *inside* one (`<library>\model_EXTRAS`). Same for a drive root. Rather than
+/// refusing with a message that contradicts the hint, both resolve to `<chosen>/model_EXTRAS`,
+/// which is its own folder and cannot swallow the library.
+pub(crate) fn resolve_store_target(chosen: &Path, model_roots: &[String]) -> Option<PathBuf> {
+    if chosen.as_os_str().is_empty() {
+        return None;
+    }
+    let mut candidate = chosen.to_path_buf();
+    if overlaps_library(&candidate, model_roots) {
+        candidate = candidate.join(crate::config::EXTRAS_DIR_NAME);
+    }
+    if overlaps_library(&candidate, model_roots) {
+        return None;
+    }
+    Some(candidate)
+}
+
+fn model_roots(cfg: &crate::config::AppConfig) -> Vec<String> {
+    crate::config::get_model_paths(cfg)
+        .into_iter()
+        .map(|e| e.path)
+        .collect()
 }
 
 #[tauri::command]
@@ -109,15 +121,20 @@ pub fn set_swap_store(path: String) -> Result<SwapStoreInfo, String> {
     if trimmed.is_empty() {
         return Err("Pick a folder for the SWAP store".to_string());
     }
-    let dir = PathBuf::from(trimmed);
-    if dir.is_file() {
+    let chosen = PathBuf::from(trimmed);
+    if chosen.is_file() {
         return Err("That path is a file, not a folder".to_string());
     }
+    let roots = {
+        let cfg = crate::config::load_config();
+        model_roots(&cfg)
+    };
+    let dir = resolve_store_target(&chosen, &roots)
+        .ok_or_else(|| format!("Cannot use {} as the SWAP store", chosen.display()))?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create {}: {e}", dir.display()))?;
 
     let mut cfg = crate::config::load_config();
-    reject_library_target(&cfg, &dir)?;
     cfg.extras_paths = vec![crate::types::ModelPathEntry {
         path: dir.to_string_lossy().to_string(),
         label: crate::config::EXTRAS_DIR_NAME.to_string(),
@@ -135,20 +152,21 @@ pub fn set_swap_store(path: String) -> Result<SwapStoreInfo, String> {
 pub fn move_swap_store(target: String) -> Result<SwapStoreInfo, String> {
     let from = store_path().ok_or_else(|| "No SWAP store configured".to_string())?;
     let to = PathBuf::from(target.trim());
-    {
+    let to = {
         let cfg = crate::config::load_config();
-        reject_library_target(&cfg, &to)?;
+        let roots = model_roots(&cfg);
         // A store that is currently a model library must not be "moved": that would
-        // relocate the whole library. CHANGE points the setting instead; the user moves
-        // the handful of real extras files themselves.
-        if reject_library_target(&cfg, &from).is_err() {
+        // relocate the whole library. CHANGE points the setting instead.
+        if overlaps_library(&from, &roots) {
             return Err(format!(
                 "The current store ({}) is a model library, not an extras folder. Use CHANGE \
                  to point the store at a dedicated folder first — MOVE would relocate the library.",
                 from.display()
             ));
         }
-    }
+        resolve_store_target(&to, &roots)
+            .ok_or_else(|| format!("Cannot use {} as the SWAP store", to.display()))?
+    };
     if to.as_os_str().is_empty() {
         return Err("Pick a destination folder".to_string());
     }
@@ -268,4 +286,51 @@ fn repoint_pins(from: &Path, to: &Path) {
 fn invalidate_catalog_cache() {
     let index = crate::config::config_dir().join("cache").join("extras_index.json");
     let _ = std::fs::remove_file(index);
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn roots() -> Vec<String> {
+        vec![r"E:\STORAGE-MODELS".to_string(), r"C:\AI-MASTER\models".to_string()]
+    }
+
+    fn resolve(raw: &str) -> Option<String> {
+        resolve_store_target(&PathBuf::from(raw), &roots()).map(|p| p.to_string_lossy().to_string())
+    }
+
+    /// Picking a library means "this library's extras folder", not an error.
+    #[test]
+    fn library_choice_lands_in_its_own_model_extras() {
+        assert_eq!(
+            resolve(r"E:\STORAGE-MODELS").unwrap(),
+            r"E:\STORAGE-MODELS\model_EXTRAS"
+        );
+    }
+
+    /// A drive root contains the library, so it gets the same treatment instead of being
+    /// refused for "containing a model library".
+    #[test]
+    fn drive_root_lands_in_model_extras_at_that_root() {
+        assert_eq!(resolve(r"E:\").unwrap(), r"E:\model_EXTRAS");
+    }
+
+    /// The canonical store is left alone, however it is spelled.
+    #[test]
+    fn canonical_store_path_is_unchanged() {
+        assert_eq!(
+            resolve(r"C:\AI-MASTER\models\model_EXTRAS").unwrap(),
+            r"C:\AI-MASTER\models\model_EXTRAS"
+        );
+        assert_eq!(
+            resolve(r"C:\AI-MASTER\models\model_EXTRAS").unwrap(),
+            r"C:\AI-MASTER\models\model_EXTRAS"
+        );
+    }
+
+    /// An unrelated folder is taken as given.
+    #[test]
+    fn unrelated_folder_is_used_as_is() {
+        assert_eq!(resolve(r"D:\swap").unwrap(), r"D:\swap");
+    }
 }
