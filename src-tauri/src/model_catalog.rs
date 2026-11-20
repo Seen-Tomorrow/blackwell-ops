@@ -92,26 +92,18 @@ pub fn catalog_exclusions_from_downloads(
     let mut dest_paths = HashSet::new();
     let mut shard_groups = HashSet::new();
 
+    // Only a task that is WRITING bytes today hides its own destination: a finished file
+    // never exists mid-write (the manager renames from `.part`), so this is belt and
+    // braces. Queued, paused and failed sets are NOT hidden — they are exactly what the
+    // INCOMPLETE kind exists to show. Excluding their whole shard group made an
+    // interrupted model vanish from the catalog the moment its download was paused.
+    let _ = batches;
     for task in tasks.values() {
-        if matches!(
-            task.status,
-            DownloadStatus::Queued | DownloadStatus::Downloading | DownloadStatus::Paused
-        ) {
+        if task.status == DownloadStatus::Downloading {
             let resolved = crate::config::resolve_path(&task.dest_path)
                 .to_string_lossy()
                 .to_string();
-            dest_paths.insert(resolved.clone());
-            shard_groups.insert(shard_group_key_from_path(&resolved));
-        }
-    }
-
-    for batch in batches.values() {
-        for part in &batch.parts {
-            let resolved = crate::config::resolve_path(&part.dest_path)
-                .to_string_lossy()
-                .to_string();
-            dest_paths.insert(resolved.clone());
-            shard_groups.insert(shard_group_key_from_path(&resolved));
+            dest_paths.insert(resolved);
         }
     }
 
@@ -1494,8 +1486,57 @@ mod tests {
         );
 
         let ex = catalog_exclusions_from_downloads(&tasks, &batches);
-        assert!(ex.dest_paths.len() >= 2);
-        assert_eq!(ex.shard_groups.len(), 1);
-        assert!(ex.shard_groups.iter().any(|g| g.contains("m.gguf")));
+        // A paused set must stay in the catalog: INCOMPLETE is its home, and hiding the
+        // shard group made the model disappear when a download was paused.
+        assert!(ex.shard_groups.is_empty());
+        for status in [
+            DownloadStatus::Paused,
+            DownloadStatus::Queued,
+            DownloadStatus::Failed,
+        ] {
+            let mut paused = tasks.clone();
+            for task in paused.values_mut() {
+                task.status = status.clone();
+            }
+            let ex = catalog_exclusions_from_downloads(&paused, &batches);
+            assert!(ex.dest_paths.is_empty());
+            assert!(ex.shard_groups.is_empty());
+        }
+    }
+
+    /// Only bytes being written today are hidden, and only their own path.
+    #[test]
+    fn downloading_task_hides_its_destination_path_only() {
+        let mut tasks = HashMap::new();
+        tasks.insert(
+            "t1".to_string(),
+            DownloadTask {
+                id: "t1".to_string(),
+                hf_model_id: "a/m".to_string(),
+                file_name: "m-00001-of-00004.gguf".to_string(),
+                download_url: String::new(),
+                total_bytes: 100,
+                downloaded_bytes: 0,
+                status: DownloadStatus::Downloading,
+                dest_path: "models/m-00001-of-00004.gguf".to_string(),
+                speed_bps: 0,
+                pause_offset: 0,
+                error: None,
+                status_message: None,
+                retry_count: 0,
+                eta_seconds: 0,
+                hf_author: String::new(),
+                quant_type: String::new(),
+                lfs_oid: String::new(),
+                task_kind: crate::types::TASK_KIND_HF.to_string(),
+                expected_sha256: None,
+                source_tag: String::new(),
+                batch_id: None,
+                priority: 100,
+            },
+        );
+        let ex = catalog_exclusions_from_downloads(&tasks, &HashMap::new());
+        assert_eq!(ex.dest_paths.len(), 1);
+        assert!(ex.shard_groups.is_empty());
     }
 }
