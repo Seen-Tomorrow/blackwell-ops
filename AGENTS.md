@@ -220,6 +220,11 @@ tick, quiet-stderr loads, GPU "external apps", FIT adapters + library cache, run
 
 - **`npm run check` is the one command**: `css:audit` → `css:minify` → `tsc --noEmit` → vitest →
   `cargo test`, ~15 s warm. Run it instead of the parts.
+- **The build env is isolated — activate it first.** No machine-wide VS is registered, so a fresh
+  shell has no `LIB`/`INCLUDE` and the cargo link dies with
+  `rust-lld: could not open 'kernel32.lib'`. Dot-source the portable toolchain in the same shell
+  before any cargo/npm build: `. .\scripts\toolchain-env.ps1` (`-Quiet` for scripts). It resolves
+  `src-tauri/target/<profile>/toolchain` (VS, Windows Kits, cmake, sccache) by itself.
 - **Invariants only**: no snapshots, no assertions on exact user-visible strings or tooltips, no
   tests that mirror an implementation.
 - `src/lib/repoInvariants.test.ts` scans tracked files (UTF-8, no mojibake; no `Instant - Duration`
