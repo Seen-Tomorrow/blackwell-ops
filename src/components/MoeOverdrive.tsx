@@ -85,11 +85,11 @@ export default function MoeOverdrive({
     setDialMib(cacheMib);
   }, [cacheMib]);
 
-  const running = fusion != null;
+  const engineUp = port != null;
 
   // The ledger is cheap (one HTTP call); refresh while the engine is up so the bar follows reality.
   useEffect(() => {
-    if (!port || !running) {
+    if (!port) {
       setLedger(null);
       return;
     }
@@ -113,11 +113,11 @@ export default function MoeOverdrive({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [port, running, deviceIndex]);
+  }, [port, deviceIndex]);
 
   const runProbe = useCallback(async () => {
-    if (!port || !running) {
-      setNote("load the model first - the probe measures the real launch");
+    if (port == null) {
+      setNote("no engine port - launch the engine first (the probe measures the real launch)");
       return;
     }
     setBusy(true);
@@ -138,7 +138,7 @@ export default function MoeOverdrive({
     } finally {
       setBusy(false);
     }
-  }, [port, running, deviceIndex]);
+  }, [port, deviceIndex]);
 
   const liveTps = fusion
     ? fusion.genTpsInstant ?? fusion.genTpsSession ?? fusion.genTps ?? 0
@@ -176,7 +176,7 @@ export default function MoeOverdrive({
         <span className="moe-od__unit">tok/s</span>
         <span className="moe-od__sub">
           {ppTps > 0 ? `prefill ${ppTps.toFixed(0)} t/s · ` : ""}
-          {fusion ? `${fusion.ctxFillPct.toFixed(0)}% ctx` : "engine idle"}
+          {fusion ? `${fusion.ctxFillPct.toFixed(0)}% ctx` : engineUp ? "engine ready" : "no engine"}
           {specLine ? ` · ${specLine}` : ""}
         </span>
       </div>
@@ -200,7 +200,7 @@ export default function MoeOverdrive({
         </>
       ) : (
         <div className="moe-od__empty">
-          {running ? "reading the engine ledger…" : "no engine loaded"}
+          {engineUp ? "reading the engine ledger…" : "no engine loaded"}
         </div>
       )}
 
@@ -231,7 +231,7 @@ export default function MoeOverdrive({
           type="button"
           className="moe-od__chip moe-od__chip--primary"
           onClick={() => void runProbe()}
-          disabled={busy || !running}
+          disabled={busy || !engineUp}
           title="Run a short prefill and a short generation against the loaded engine, then size the cache from the VRAM left"
         >
           {busy ? "PROBING…" : "PROBE + SIZE"}
@@ -243,8 +243,11 @@ export default function MoeOverdrive({
           </span>
         ) : (
           <span className="moe-od__probe-text">
-            {ctxTokens ? `${Math.round(ctxTokens / 1024)}K · ${kvQuant ?? "f16"} · ` : ""}
-            measured from the real launch, not a model of it
+            {!engineUp
+              ? "no engine port - launch the engine first"
+              : ctxTokens
+                ? `${Math.round(ctxTokens / 1024)}K · ${kvQuant ?? "f16"} · measured from the real launch`
+                : "measured from the real launch, not a model of it"}
           </span>
         )}
         {staged != null && (
