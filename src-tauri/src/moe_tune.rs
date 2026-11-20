@@ -384,7 +384,13 @@ async fn fetch_components(client: &reqwest::Client, base: &str) -> Option<MoeTun
     }
     let mut c = MoeTuneComponents::default();
     for entry in ledger {
-        let mib = entry.get("mib").and_then(|m| m.as_u64()).unwrap_or(0);
+        // `mib` can be an integer or a float in JSON; as_u64() is None for floats, which used to
+        // turn every component into 0 and made the cache budget ignore the launch entirely.
+        let mib = entry
+            .get("mib")
+            .and_then(|m| m.as_f64())
+            .map(|v| v.max(0.0).round() as u64)
+            .unwrap_or(0);
         let kind = entry.get("kind").and_then(|k| k.as_str()).unwrap_or("");
         let device = entry.get("device").and_then(|d| d.as_str()).unwrap_or("");
         if device.eq_ignore_ascii_case("CUDA_Host") || device.eq_ignore_ascii_case("host") {
@@ -398,9 +404,14 @@ async fn fetch_components(client: &reqwest::Client, base: &str) -> Option<MoeTun
         }
     }
     if c.host_mib == 0 {
-        if let Some(host) = payload.get("host_self_mib").and_then(|h| h.as_u64()) {
-            c.host_mib = host;
+        if let Some(host) = payload.get("host_self_mib").and_then(|h| h.as_f64()) {
+            c.host_mib = host.max(0.0).round() as u64;
         }
+    }
+    // An all-zero ledger is not a measurement: report "unknown" so the budget falls back instead of
+    // believing the launch costs nothing.
+    if c.model_mib + c.kv_mib + c.compute_mib + c.host_mib == 0 {
+        return None;
     }
     Some(c)
 }
