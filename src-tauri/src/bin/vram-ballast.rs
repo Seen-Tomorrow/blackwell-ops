@@ -306,7 +306,10 @@ fn main() {
     if status {
         match nvidia_smi_free_mib(device) {
             Ok((total, free)) => {
-                println!("GPU-{device}: total {total} MiB, free {free} MiB, used {} MiB", total - free);
+                println!(
+                    "GPU-{device}: total {total} MiB, free {free} MiB, used+reserved {} MiB",
+                    total - free
+                );
                 if let Ok(api) = CudaApi::load() {
                     unsafe {
                         let _ = api.bind(device);

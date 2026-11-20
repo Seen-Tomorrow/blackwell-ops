@@ -94,9 +94,12 @@ pub struct GpuSample {
     /// `WDDM` | `TCC` | empty when the driver refuses the query.
     pub driver_model: String,
     pub memory_total_mib: u64,
+    /// Process-attributed usage. Taken from `nvmlMemory_v2_t.used`, which excludes the driver
+    /// pool; the v1 struct folds the pool in (`v1.used == v2.used + v2.reserved`), so reporting
+    /// v1.used here made an idle card look like it had 1.3 GiB in use.
     pub memory_used_mib: u64,
-    /// Driver pool that `used` above folds in (`v1.used == v2.used + v2.reserved`). 0 when the
-    /// v2 query is unavailable.
+    /// Driver pool (WDDM/TCC reservation), reported separately. `total = reserved + used + free`.
+    /// 0 when the v2 query is unavailable.
     pub memory_reserved_mib: u64,
     pub memory_free_mib: u64,
     pub temperature_gpu: u32,
@@ -400,11 +403,14 @@ pub fn scan() -> Option<Vec<GpuSample>> {
             };
 
             let memory = memory_info(lib, dev).unwrap_or_default();
-            // v2 splits the driver pool out of `used`; v1 folds it in. Keep both numbers apart so
-            // the UI can name what the reservation is instead of inventing a constant for it.
-            let reserved_mib = memory_info_v2(lib, dev)
-                .map(|v2| v2.reserved / BYTES_PER_MIB)
-                .unwrap_or(0);
+            // v2 splits the driver pool out of `used`; v1 folds it in. Prefer v2 for BOTH numbers:
+            // an idle card must read 0 used, with the reservation named separately, or the topo
+            // shows phantom "System/External apps" from the driver pool itself.
+            let v2 = memory_info_v2(lib, dev);
+            let reserved_mib = v2.map(|m| m.reserved / BYTES_PER_MIB).unwrap_or(0);
+            let used_mib = v2
+                .map(|m| m.used / BYTES_PER_MIB)
+                .unwrap_or(memory.used / BYTES_PER_MIB);
             let utilization = utilization_rates(lib, dev).unwrap_or_default();
             samples.push(GpuSample {
                 index,
@@ -412,7 +418,7 @@ pub fn scan() -> Option<Vec<GpuSample>> {
                 driver_version: version.clone(),
                 driver_model: model,
                 memory_total_mib: memory.total / BYTES_PER_MIB,
-                memory_used_mib: memory.used / BYTES_PER_MIB,
+                memory_used_mib: used_mib,
                 memory_reserved_mib: reserved_mib,
                 memory_free_mib: memory.free / BYTES_PER_MIB,
                 temperature_gpu: read_u32_arg(lib, b"nvmlDeviceGetTemperature\0", dev, NVML_TEMPERATURE_GPU)
