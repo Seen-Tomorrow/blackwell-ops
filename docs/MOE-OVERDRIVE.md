@@ -3,7 +3,8 @@
 One screen for one question: **run this MoE model as fast as this rig allows.** It is deliberately
 separate from the forecast, which answers the other question (where do the layers go when several
 models share a machine). If this path dies, delete `MoeOverdrive.tsx`, `moe_overdrive.rs`,
-`moe_overdrive_state` and the `.moe-od-*` block in `fusion-display.css` — nothing else depends on it.
+`moe_overdrive_state` and the `.moe-od-*` / `.vram-fc-overdrive-entry*` blocks in
+`fusion-display.css` — nothing else depends on it.
 
 ## The idea
 
@@ -16,6 +17,7 @@ forecast. OVERDRIVE measures that and keeps the result.
 
 ```
 LAUNCH [ OVERDRIVE ]                       (cockpit, MoE model, ASSISTED only)
+MOE OVERDRIVE →                            (forecast badge, opens the screen without launching)
         │
         ├─ no stored record ──────────────────────────────────────────────┐
         │   load cache 0 (-cmoe)      [boot widget + STOP]                │
@@ -29,7 +31,7 @@ LAUNCH [ OVERDRIVE ]                       (cockpit, MoE model, ASSISTED only)
         │
         └─ stored record ── load with the saved cache (one load) · bench · compare
 
-STAY on the screen after the run: ledger, dial, RECALIBRATE, RESET.
+STAY on the screen after the run: ledger, dial, PROBE + SIZE, RESET.
 Leave with ← FORECAST. Later launches reuse the saved knobs and record.
 ```
 
@@ -42,9 +44,10 @@ is only for sizing. RESET clears the record **and** restores `cpu_moe=off`, cach
 |---|---|
 | Learned-key namespace `|experts=cpu-cache:<mib>` | **done** (`ecfd079fb`) — a cache launch can no longer teach the forecast that a plain launch fits |
 | Record per shape (`config/cache/moe-overdrive/<hash>.json`) | **done** (`fca3299b9`) — identity = model+size, ctx, kv, split, GPU mask, draft, n-max; stores free PP/TG, cache, reserve, before/after t/s, engine, driver |
-| Split LAUNCH button (left regular, right OVERDRIVE) | **done** (`a4ef905ff`) — right half forces `cpu_moe=on`, cache 0 or the record, share 0, opens the screen, launches through the normal engine path |
+| Split LAUNCH button (left regular, right OVERDRIVE) | **done** — the right half **writes** `cpu_moe=on`, the stored record's cache (or 0) and share 0 into the panel, then launches through the normal engine path; the switch reads ON and the next regular launch keeps it |
+| Forecast badge entry | **done** — one `MOE OVERDRIVE →` button opens the screen; there is no FORECAST/OVERDRIVE toggle and no badge SIZE/optimizer block |
 | Screen reads/saves the record, RESET restores the plain path | **done** (`66639c48c`) |
-| Probe + SIZE (PP/TG, tighter number, reserve) | **done** (`b6b2e30ec`, `7a12e5cd5`) |
+| Probe + SIZE (PP/TG, tighter number, reserve) | **done** (`b6b2e30ec`, `7a12e5cd5`) — lives on the screen, not in the badge |
 | Ledger bar (weights/KV/compute/cache/free) | **done** — reads `/memory` of the loaded engine |
 | **Automatic cycle** (calibrate → write → relaunch → bench → compare) | **not built** — today the user presses PROBE + SIZE, then WRITE, then relaunches |
 | **Before/after TG bench in the record** | **not built** (fields exist, both null) |
@@ -60,15 +63,20 @@ is only for sizing. RESET clears the record **and** restores `cpu_moe=off`, cach
   auto-exit.
 - **A plain launch is never repainted as a fit.** A stored record only adds the measured
   alternative line, never a green verdict for a launch shape that does not fit.
+- **The OVERDRIVE launch owns its knobs.** It writes `cpu_moe=on`, the record's cache (or 0) and
+  share 0 into the panel before building the payload, so the switch, the learned key, the screen
+  and the next regular launch all read the same regime. It never reuses a stale cache from another
+  shape.
 - Exit keeps `cpu_moe=on` and the measured cache (that is the product); RESET is the way back.
 
 ## Testing the manual loop today
 
 1. Pick a MoE model, ASSISTED. Click `OVERDRIVE` on the launch button.
-2. The engine loads with `cpu_moe=on`, cache 0, share 0; the screen shows the ledger bar.
+2. The launch writes `cpu_moe=on`, cache 0 (or the stored record), share 0; the CPU MOE switch reads
+   ON and the screen shows the ledger bar.
 3. `PROBE + SIZE` — the button says PROBING… while the paged passes run. Result:
    `PP 8,342 · TG 8,118 free → cache 7,918 (reserve 512)`.
-4. `APPLY`/`WRITE` — writes the knobs and the record.
+4. `WRITE` — writes the knobs and the record.
 5. Relaunch (regular LAUNCH is fine; the knobs persist). The screen shows the stored line
    `stored: cache 7,918 MiB · free 8,118 after load · 3m ago`.
 6. `RESET` — record gone, `cpu_moe=off`, cache 0: the next launch is the plain one.
