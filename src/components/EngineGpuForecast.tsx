@@ -294,6 +294,11 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
   const forecastHeightPx = computeForecastPhosphorHeightPx(gpus.length, gpuPerRow);
   // MOE OVERDRIVE owns the glass while it is on: fusion must not auto-open over it on readiness.
   const overdriveActive = useOverdriveActive();
+  // OVERDRIVE only needs a port; the selected-slot port is empty until the cockpit selects one.
+  const overdrivePort =
+    activeEnginePort ??
+    stack.find((s) => s.status === "RUNNING" || s.status === "LOADING")?.port ??
+    null;
   const fusionOverlayActive =
     !overdriveActive &&
     selectedSlotIdx != null &&
@@ -526,6 +531,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               dualActive={dualActive}
               dualOrient={dualOrient}
               secondaryPane={secondaryPane}
+              overdrivePort={overdrivePort}
               moeCacheMib={moeCacheMib}
               moeOptimizerAuto={moeOptimizerAuto}
               onMoeOptimize={onMoeOptimize}
