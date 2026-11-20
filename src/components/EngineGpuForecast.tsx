@@ -146,8 +146,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     moeCpuExperts = false,
     moeDraft = "",
     moeDraftNMax = 0,
-    moeOptimizerAuto = false,
-    onMoeOptimize,
     onMoeApply,
     onOverdriveReset,
   } = props;
@@ -540,8 +538,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               moeCpuExperts={moeCpuExperts}
               moeDraft={moeDraft}
               moeDraftNMax={moeDraftNMax}
-              moeOptimizerAuto={moeOptimizerAuto}
-              onMoeOptimize={onMoeOptimize}
               onMoeApply={onMoeApply}
               onOverdriveReset={onOverdriveReset}
             />
@@ -704,21 +700,12 @@ export interface EngineGpuForecastProps {
   monitorFocus?: boolean;
   onToggleMonitor?: () => void;
 
-  /** MOE optimizer: cache size in the config, the measured sizing, and how to write it. */
+  /** MOE OVERDRIVE screen: the config's cache, the CPU-expert regime and the draft identity. */
   moeCacheMib?: number;
   /** CPU MOE switch of the current config: the regime decides whether a cache can exist at all. */
   moeCpuExperts?: boolean;
   moeDraft?: string;
   moeDraftNMax?: number;
-  moeOptimizerAuto?: boolean;
-  onMoeOptimize?: () => Promise<{
-    device: number;
-    free_mib: number;
-    used_mib: number;
-    reserve_mib: number;
-    recommended_mib: number;
-    engine_loaded: boolean;
-  }>;
   onMoeApply?: (cacheMib: number) => void;
   /** RESET restores the plain launch path (cpu_moe off, cache 0), not just the record. */
   onOverdriveReset?: () => void;

@@ -2112,20 +2112,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
 
-  /** MOE optimizer: measure the loaded launch's leftover VRAM and write the cache it justifies. */
-  const handleMoeOptimize = useCallback(async () => {
-    const deviceIndex =
-      Number(String(config.device ?? "GPU-0").replace(/^GPU-/, "")) || 0;
-    return await invoke<{
-      device: number;
-      free_mib: number;
-      used_mib: number;
-      reserve_mib: number;
-      recommended_mib: number;
-      engine_loaded: boolean;
-    }>("moe_cache_autosize", { deviceIndex });
-  }, [config.device]);
-
   /** RESET of the overdrive record also returns the launch to the plain path. */
   const handleOverdriveReset = useCallback(() => {
     updateParam("cpu_moe", "off");
@@ -3205,8 +3191,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         moeDraftNMax={Number(
           config.dflash_n_max ?? config.mtp_n_max ?? 0,
         )}
-        moeOptimizerAuto={fullAutoMode}
-        onMoeOptimize={handleMoeOptimize}
         onMoeApply={handleMoeApply}
         onOverdriveReset={handleOverdriveReset}
         gpus={gpus}

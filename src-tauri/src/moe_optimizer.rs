@@ -1,9 +1,9 @@
-//! MOE optimizer: where the expert cache should sit, measured from a real launch.
+//! MOE OVERDRIVE measurements: where the expert cache should sit, measured from a real launch.
 //!
 //! There is no predictive formula worth trusting here - the cache is a cliff, not a curve, and the
-//! launch's own footprint (weights, KV, compute, MTP/DFlash, slots) moves it. So the optimizer runs
-//! the real configuration with the cache off, reads what the card has left, keeps a reserve and
-//! writes the difference. That is the manual loop, automated.
+//! launch's own footprint (weights, KV, compute, MTP/DFlash, slots) moves it. So the panel probes
+//! the real configuration and reads what the card has left after the traffic the cache must
+//! survive, keeps a reserve and writes the difference. That is the manual loop, measured.
 
 use serde::Serialize;
 
@@ -22,58 +22,9 @@ fn sample_vram(index: u32) -> (Option<u64>, Option<u64>) {
     }
 }
 
-/// Where the expert cache should be sized from a *running* engine: whatever NVML says is free on
-/// the card right now, minus the reserve.
-#[derive(Debug, Clone, Serialize)]
-pub struct MoeCacheSizing {
-    pub device: u32,
-    pub free_mib: u64,
-    pub used_mib: u64,
-    pub reserve_mib: u64,
-    /// `free - reserve`, floored at 0. The value to put in `--moe-cache-mib`.
-    pub recommended_mib: u64,
-    /// False when the card looks idle - launch the model (cache off) before sizing.
-    pub engine_loaded: bool,
-}
-
-/// Cache size from a card's free VRAM: the leftover after the reserve, or nothing when the engine
-/// is not loaded (an idle card says nothing about this launch's footprint).
-pub fn resolve_cache_mib(free_mib: u64, engine_loaded: bool) -> u64 {
-    if engine_loaded {
-        free_mib.saturating_sub(RESERVE_MIB)
-    } else {
-        0
-    }
-}
-
-/// Size the cache off a running launch, the way a manual search does it: load with no cache, look
-/// at what the card has left, keep a reserve. No extra launches, and the reading includes whatever
-/// the real launch carries (weights, KV, compute, MTP/draft, slots).
-#[tauri::command]
-pub async fn moe_cache_autosize(device_index: Option<u32>) -> Result<MoeCacheSizing, String> {
-    let device = device_index.unwrap_or(0);
-    let (used_mib, free_mib) = sample_vram(device);
-    let (used_mib, free_mib) = (used_mib.unwrap_or(0), free_mib.unwrap_or(0));
-    if free_mib == 0 && used_mib == 0 {
-        return Err(format!("NVML has no reading for GPU-{device}"));
-    }
-    // Under ~1 GiB in use the model is not loaded; sizing now would hand out the whole card.
-    let engine_loaded = used_mib >= 1024;
-    let recommended_mib = resolve_cache_mib(free_mib, engine_loaded);
-    Ok(MoeCacheSizing {
-        device,
-        free_mib,
-        used_mib,
-        reserve_mib: RESERVE_MIB,
-        recommended_mib,
-        engine_loaded,
-    })
-}
-
-
 // ── MOE OVERDRIVE ──────────────────────────────────────────────────────────
 // Isolated on purpose: this path may live or die on its own, so it shares only the NVML reading
-// and the reserve with the rest of the optimizer.
+// and the reserve with the rest of the app.
 
 /// Where the loaded engine's VRAM went, from its own ledger (`/memory`).
 #[derive(Debug, Clone, Default, Serialize)]
@@ -272,11 +223,7 @@ pub async fn moe_overdrive_probe(
     if pp_free_mib == 0 && tg_free_mib == 0 {
         return Err("the engine did not answer the probe (no NVML reading after it)".to_string());
     }
-    let free_after_load_mib = match (pp_free_mib, tg_free_mib) {
-        (0, tg) => tg,
-        (pp, 0) => pp,
-        (pp, tg) => pp.min(tg),
-    };
+    let free_after_load_mib = tighter_free_mib(pp_free_mib, tg_free_mib);
     Ok(OverdriveProbe {
         device,
         pp_free_mib,
@@ -287,8 +234,24 @@ pub async fn moe_overdrive_probe(
         pp_tps,
         tg_tps,
         reserve_mib: reserve,
-        recommended_mib: free_after_load_mib.saturating_sub(reserve),
+        recommended_mib: cache_from_probe_free(free_after_load_mib, reserve),
     })
+}
+
+/// The cache is sized against the *tighter* of the two probe readings: prefill grows the graph for
+/// its batch, generation for the draft/verify window. A zero reading is "that pass raced a stop",
+/// not "the card is full".
+fn tighter_free_mib(pp_free_mib: u64, tg_free_mib: u64) -> u64 {
+    match (pp_free_mib, tg_free_mib) {
+        (0, tg) => tg,
+        (pp, 0) => pp,
+        (pp, tg) => pp.min(tg),
+    }
+}
+
+/// Keep the reserve free: filling to the last hundred MiB costs speed even when the launch "fits".
+fn cache_from_probe_free(free_after_load_mib: u64, reserve_mib: u64) -> u64 {
+    free_after_load_mib.saturating_sub(reserve_mib)
 }
 
 #[cfg(test)]
@@ -322,10 +285,17 @@ mod tests {
     #[test]
     fn reserve_is_a_real_margin_not_a_rounding() {
         // 8,432 free on a loaded card leaves 7,920 for the cache.
-        assert_eq!(resolve_cache_mib(8_432, true), 8_432 - RESERVE_MIB);
-        // An idle card cannot size anything: the launch is what defines the leftover.
-        assert_eq!(resolve_cache_mib(96_573, false), 0);
+        assert_eq!(cache_from_probe_free(8_432, RESERVE_MIB), 8_432 - RESERVE_MIB);
         // Never negative.
-        assert_eq!(resolve_cache_mib(200, true), 0);
+        assert_eq!(cache_from_probe_free(200, RESERVE_MIB), 0);
+    }
+
+    #[test]
+    fn probe_sizes_against_the_tighter_pass_and_ignores_a_raced_zero() {
+        // Generation is tighter than prefill: its graph must fit too.
+        assert_eq!(tighter_free_mib(9_100, 8_432), 8_432);
+        // One pass raced a stop: the other reading is still a real measurement.
+        assert_eq!(tighter_free_mib(0, 8_432), 8_432);
+        assert_eq!(tighter_free_mib(9_100, 0), 9_100);
     }
 }

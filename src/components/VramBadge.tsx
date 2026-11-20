@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
@@ -24,7 +24,6 @@ import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { FusionDualOrient } from "../lib/storage";
 import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import { memoryLabelForKvQuant } from "../lib/multiAgentBooster";
-import type { MoeCacheSizing } from "./MoeOptimizerTypes";
 import MoeOverdrive from "./MoeOverdrive";
 import { setOverdriveActive, useOverdriveActive } from "../lib/moeOverdriveState";
 
@@ -53,15 +52,13 @@ interface VramBadgeProps {
   placementActive?: boolean;
   /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
   onSplitEq?: () => void;
-  /** MOE optimizer: cache size, sizing result and how to write it. */
+  /** MOE OVERDRIVE screen: cache, CPU-expert regime, draft identity and the knob writer. */
   moeCacheMib?: number;
   moeCpuExperts?: boolean;
   moeDraft?: string;
   moeDraftNMax?: number;
   /** Port of the running engine, even when no slot is selected (OVERDRIVE does not need fusion). */
   overdrivePort?: number | null;
-  moeOptimizerAuto?: boolean;
-  onMoeOptimize?: () => Promise<MoeCacheSizing>;
   onMoeApply?: (cacheMib: number) => void;
   onOverdriveReset?: () => void;
   /** Bezel control: full-glass NVRAM snapshot log. */
@@ -203,8 +200,6 @@ export default function VramBadge({
   moeDraft = "",
   moeDraftNMax = 0,
   overdrivePort = null,
-  moeOptimizerAuto = false,
-  onMoeOptimize,
   onMoeApply,
   onOverdriveReset,
 }: VramBadgeProps) {
@@ -212,39 +207,8 @@ export default function VramBadge({
   // The plan arrives from EngineConfigPanel: the same object feeds the manifest's per-card
   // split, so what the bars paint and what this glass prints cannot disagree.
 
-  // MOE optimizer: one measurement of the loaded launch, then the cache it justifies.
   const overdriveActive = useOverdriveActive();
   const moeDeviceIndex = Number(selectedGpuIndices?.[0] ?? 0);
-  const [moeSizing, setMoeSizing] = useState<MoeCacheSizing | null>(null);
-  const [moeStaged, setMoeStaged] = useState<number | null>(null);
-  const [moeBusy, setMoeBusy] = useState(false);
-  const [moeNote, setMoeNote] = useState<string | null>(null);
-
-  const runMoeOptimize = useCallback(async () => {
-    if (!onMoeOptimize) return;
-    setMoeBusy(true);
-    setMoeNote(null);
-    try {
-      const sizing = await onMoeOptimize();
-      setMoeSizing(sizing);
-      if (!sizing.engine_loaded) {
-        setMoeNote(`GPU-${sizing.device} idle - load the model with cache 0 first`);
-      } else if (sizing.recommended_mib < 1024) {
-        setMoeNote(`only ${sizing.free_mib} MiB left - nothing to cache`);
-      } else if (moeOptimizerAuto && onMoeApply) {
-        onMoeApply(sizing.recommended_mib);
-        setMoeNote(
-          `auto: ${sizing.recommended_mib.toLocaleString("en-US")} MiB - applies on the next launch`,
-        );
-      } else {
-        setMoeStaged(sizing.recommended_mib);
-      }
-    } catch (e) {
-      setMoeNote(String(e).split("\n")[0]);
-    } finally {
-      setMoeBusy(false);
-    }
-  }, [onMoeOptimize, onMoeApply, moeOptimizerAuto]);
 
   // Publish what this glass shows, so an agent can read it instead of asking for a
   // screenshot. DEV builds write config/automation/ui/vram-badge.json.
@@ -702,56 +666,11 @@ export default function VramBadge({
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
-        {/* MOE optimizer: one measured reading of the loaded launch, then the cache it justifies.
-            ASSISTED stages the number, FULL AUTO writes it straight into the knobs. */}
-        {onMoeOptimize ? (
-          <div className="vram-fc-moe-opt" data-auto={moeOptimizerAuto ? "1" : undefined}>
-            <span className="vram-fc-moe-opt__label">MOE OPTIMIZER</span>
-            <button
-              type="button"
-              className="vram-fc-moe-opt__btn"
-              onClick={() => void runMoeOptimize()}
-              disabled={moeBusy}
-              title="Read the loaded launch's free VRAM and size the expert cache to it (minus the reserve)"
-            >
-              {moeBusy ? "SIZING…" : "SIZE"}
-            </button>
-            <span className="vram-fc-moe-opt__value">
-              cache {moeCacheMib.toLocaleString("en-US")}
-              {moeSizing && moeSizing.engine_loaded
-                ? ` · free ${moeSizing.free_mib.toLocaleString("en-US")} - ${moeSizing.reserve_mib}`
-                : ""}
-            </span>
-            {moeStaged != null && (
-              <>
-                <button
-                  type="button"
-                  className="vram-fc-moe-opt__btn vram-fc-moe-opt__btn--apply"
-                  onClick={() => {
-                    onMoeApply?.(moeStaged);
-                    setMoeStaged(null);
-                  }}
-                  title={`Write ${moeStaged.toLocaleString("en-US")} MiB into MOE CACHE (share 0, experts on host)`}
-                >
-                  APPLY {moeStaged.toLocaleString("en-US")}
-                </button>
-                <button
-                  type="button"
-                  className="vram-fc-moe-opt__btn"
-                  onClick={() => setMoeStaged(null)}
-                >
-                  ✕
-                </button>
-              </>
-            )}
-            {moeNote && <span className="vram-fc-moe-opt__note">{moeNote}</span>}
-          </div>
-        ) : null}
-        <div className="vram-fc-overdrive-toggle">
-          <span className="vram-fc-moe-opt__label">FORECAST</span>
+        {/* One entry, one screen: OVERDRIVE is not a mode the forecast can toggle into. */}
+        <div className="vram-fc-overdrive-entry">
           <button
             type="button"
-            className="vram-fc-moe-opt__btn"
+            className="vram-fc-overdrive-entry__btn"
             onClick={() => setOverdriveActive(true)}
             disabled={!modelMeta || (modelMeta.n_expert ?? 0) <= 1}
             title={
