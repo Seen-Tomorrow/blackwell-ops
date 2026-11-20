@@ -667,6 +667,8 @@ pub async fn check_hf_files_against_disk(
 pub struct RestageReport {
     pub repo_id: String,
     pub queued: usize,
+    /// Parts already complete (or queued elsewhere) and therefore untouched.
+    pub skipped: usize,
     pub already_complete: bool,
     pub missing: Vec<String>,
 }
@@ -712,16 +714,27 @@ pub async fn restage_incomplete(
     let author = repo_id.split('/').next().unwrap_or("").to_string();
     let mut missing: Vec<String> = Vec::new();
     let mut ids: Vec<String> = Vec::new();
+    let mut skipped: usize = 0;
     let mut dm = manager.write().await;
     for part in &parts {
         if part.size_bytes > crate::config::MAX_DOWNLOAD_SIZE_BYTES {
             return Err(format!("Shard too large: {}", part.file_name));
         }
         let dest_str = dir.join(&part.file_name).to_string_lossy().to_string();
-        if crate::config::quant_part_already_downloaded(&dest_str, part.size_bytes, &part.lfs_oid) {
+        let dest = std::path::Path::new(&dest_str);
+        let present = dest.exists()
+            && (std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0) == part.size_bytes
+                || crate::config::quant_part_already_downloaded(
+                    &dest_str,
+                    part.size_bytes,
+                    &part.lfs_oid,
+                ));
+        if present {
+            skipped += 1;
             continue;
         }
         if dm.has_active_task_for_dest(&dest_str) {
+            skipped += 1;
             continue;
         }
         {
@@ -756,6 +769,7 @@ pub async fn restage_incomplete(
     Ok(RestageReport {
         repo_id,
         queued: ids.len(),
+        skipped,
         already_complete: missing.is_empty(),
         missing,
     })

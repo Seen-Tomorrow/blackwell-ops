@@ -1481,12 +1481,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const report = await invoke<{
         repoId: string;
         queued: number;
+        skipped: number;
         alreadyComplete: boolean;
       }>("restage_incomplete", { modelPath: model.path });
+      const kept = report.skipped > 0 ? ` · ${report.skipped} already on disk` : "";
       setRestageStatus(
         report.alreadyComplete
-          ? "Everything already on disk — rescan to reclassify."
-          : `Queued ${report.queued} shard(s) from ${report.repoId} — see the Download Manager`,
+          ? "Everything is already on disk — rescan to reclassify."
+          : `Queued ${report.queued} shard(s) from ${report.repoId}${kept}`,
       );
     } catch (e) {
       setRestageStatus(typeof e === "string" ? e : "Could not queue the missing shards");

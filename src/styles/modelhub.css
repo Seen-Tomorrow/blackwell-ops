@@ -109,6 +109,16 @@
   color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
 }
 
+/* Card form: its own quiet line under the repo id, so five shards of one repo read as
+   five files instead of five identical rows. */
+.dl-row-card > .dl-row-file {
+  display: block;
+  margin: 0.05rem 0 0.15rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* Size readout (stealth-muted/55 inline, /40 card) */
 .dl-row-size {
   font-size: var(--type-tiny);

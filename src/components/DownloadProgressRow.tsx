@@ -400,6 +400,10 @@ export default function DownloadProgressRow({
           </span>
         </div>
       </div>
+      {/* Shard name under the repo id: five rows of one repo are five different files. */}
+      {task.fileName && task.hfModelId && task.fileName !== task.hfModelId ? (
+        <p className="dl-row-file font-mono">{task.fileName}</p>
+      ) : null}
       {showProgress && (
         <div className={`dl-row-bar overflow-hidden rounded-full ${compact ? "h-1" : "h-1.5"}`}>
           <div
