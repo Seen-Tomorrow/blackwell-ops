@@ -143,6 +143,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     monitorFocus = false,
     onToggleMonitor,
     moeCacheMib = 0,
+    moeCpuExperts = false,
     moeOptimizerAuto = false,
     onMoeOptimize,
     onMoeApply,
@@ -533,6 +534,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               secondaryPane={secondaryPane}
               overdrivePort={overdrivePort}
               moeCacheMib={moeCacheMib}
+              moeCpuExperts={moeCpuExperts}
               moeOptimizerAuto={moeOptimizerAuto}
               onMoeOptimize={onMoeOptimize}
               onMoeApply={onMoeApply}
@@ -698,6 +700,8 @@ export interface EngineGpuForecastProps {
 
   /** MOE optimizer: cache size in the config, the measured sizing, and how to write it. */
   moeCacheMib?: number;
+  /** CPU MOE switch of the current config: the regime decides whether a cache can exist at all. */
+  moeCpuExperts?: boolean;
   moeOptimizerAuto?: boolean;
   onMoeOptimize?: () => Promise<{
     device: number;

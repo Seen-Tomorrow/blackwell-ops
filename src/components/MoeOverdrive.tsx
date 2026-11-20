@@ -45,6 +45,8 @@ export interface MoeOverdriveProps {
   port: number | null;
   deviceIndex: number;
   cacheMib: number;
+  /** Whether the current config keeps the experts in host RAM (cpu_moe=on). */
+  cpuMoe?: boolean;
   /** Writes the cache knob (and the rest of the CPU-expert placement). */
   onApplyCache: (cacheMib: number) => void;
   /** Back to the forecast glass. */
@@ -68,6 +70,7 @@ export default function MoeOverdrive({
   port,
   deviceIndex,
   cacheMib,
+  cpuMoe = false,
   onApplyCache,
   onExit,
   ctxTokens,
@@ -116,11 +119,6 @@ export default function MoeOverdrive({
   }, [port, deviceIndex]);
 
   const c = ledger?.components;
-  // With -cmoe the experts sit in host RAM (host_mib is tens of GiB, device model is small); a
-  // launch without it holds everything on the card, and then there is nothing for a cache to do.
-  const allOnGpu =
-    !!c && c.host_mib < 1024 && c.model_mib > 4096;
-
   const runProbe = useCallback(async () => {
     if (port == null) {
       setNote("no engine port - launch the engine first (the probe measures the real launch)");
@@ -135,10 +133,12 @@ export default function MoeOverdrive({
       });
       setProbe(result);
       if (result.recommended_mib < 1024) {
+        const weights = gib(c?.model_mib ?? 0);
+        const left = `${num(result.pp_free_mib)} MiB after prefill, ${num(result.tg_free_mib)} after generation`;
         setNote(
-          allOnGpu
-            ? `the launch already holds ${gib(c?.model_mib ?? 0)} of weights on the GPU - there is nothing to cache. OVERDRIVE pays when the experts live in host RAM: enable CPU MOE, relaunch, then PROBE.`
-            : `only ${num(result.free_after_load_mib)} MiB left after the probe - no room for a cache on this shape`,
+          !cpuMoe
+            ? `CPU MOE is off, so the experts sit on the card (${weights} of device weights) and the launch already fills it - ${left}. The cache can only exist on top of -cmoe: ENABLE CPU MOE, relaunch, then PROBE.`
+            : `CPU MOE is on, but this shape already fills the card - ${left}. Nothing is left for a cache: lower ctx or KV, or drop the draft, then PROBE again.`,
         );
       } else {
         setStaged(result.recommended_mib);
@@ -259,7 +259,7 @@ export default function MoeOverdrive({
                 : "measured from the real launch, not a model of it"}
           </span>
         )}
-        {allOnGpu && (
+        {!cpuMoe && (
           <button
             type="button"
             className="moe-od__chip"

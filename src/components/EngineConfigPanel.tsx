@@ -3128,6 +3128,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         showFitOrDeviceChrome={!modelIsDraftOnly && !modelIsAttachment && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
         showGpuAssign={Boolean(model && !modelIsDraftOnly && !modelIsAttachment && gpus.length > 0 && !fullAutoMode)}
         moeCacheMib={Number(config.moe_cache_mib ?? 0)}
+        moeCpuExperts={String(config.cpu_moe ?? "off").toLowerCase() === "on"}
         moeOptimizerAuto={fullAutoMode}
         onMoeOptimize={handleMoeOptimize}
         onMoeApply={handleMoeApply}

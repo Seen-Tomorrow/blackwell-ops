@@ -55,6 +55,7 @@ interface VramBadgeProps {
   onSplitEq?: () => void;
   /** MOE optimizer: cache size, sizing result and how to write it. */
   moeCacheMib?: number;
+  moeCpuExperts?: boolean;
   /** Port of the running engine, even when no slot is selected (OVERDRIVE does not need fusion). */
   overdrivePort?: number | null;
   moeOptimizerAuto?: boolean;
@@ -195,6 +196,7 @@ export default function VramBadge({
   dualOrient = "side",
   secondaryPane = null,
   moeCacheMib = 0,
+  moeCpuExperts = false,
   overdrivePort = null,
   moeOptimizerAuto = false,
   onMoeOptimize,
@@ -655,6 +657,7 @@ export default function VramBadge({
           port={activeEnginePort ?? overdrivePort ?? null}
           deviceIndex={moeDeviceIndex}
           cacheMib={moeCacheMib}
+          cpuMoe={moeCpuExperts}
           ctxTokens={ctxTokens}
           kvQuant={kvQuant}
           onApplyCache={(mib) => onMoeApply?.(mib)}
