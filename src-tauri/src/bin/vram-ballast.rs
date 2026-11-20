@@ -371,7 +371,24 @@ fn main() {
     };
     let started = Instant::now();
 
-    // Allocate towards the target: the step shrinks as the gap closes, so the last chunk is small.
+    // Two phases, because the slow part was never the memory: each step paid an `nvidia-smi`
+    // process plus a 200 ms nap. First take the bulk in one allocation (free - target - 1 GiB),
+    // then converge with a handful of small steps.
+    let coarse_gap = free_now.saturating_sub(target).saturating_sub(1024);
+    if coarse_gap >= 1024 {
+        let bytes = (coarse_gap as usize) * 1048576;
+        let mut dptr: CuDeviceptr = 0;
+        let rc = unsafe { (held.api.cu_mem_alloc)(&mut dptr, bytes) };
+        if rc == 0 {
+            unsafe { (held.api.cu_memset_d8)(dptr, 1, bytes) };
+            held.ptrs.push(dptr);
+            held.sizes.push(bytes);
+            println!("+{coarse_gap:>5} MiB  held {:>5} MiB  (bulk)", held.allocated_mib());
+        } else {
+            eprintln!("bulk allocation of {coarse_gap} MiB failed (CUresult {rc}) - converging in steps");
+        }
+    }
+
     loop {
         if let Some(limit) = seconds {
             if started.elapsed() >= Duration::from_secs(limit) {
@@ -408,7 +425,8 @@ fn main() {
             held.allocated_mib(),
             free.saturating_sub(chunk)
         );
-        std::thread::sleep(Duration::from_millis(200));
+        // 50 ms is enough for NVML to reflect the allocation; the old 200 ms dominated the run.
+        std::thread::sleep(Duration::from_millis(50));
     }
 
     let (total_now, free_after) = nvidia_smi_free_mib(device).unwrap_or((total, 0));
