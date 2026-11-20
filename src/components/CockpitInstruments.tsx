@@ -348,9 +348,7 @@ export function CockpitInstruments({
         defs={defs}
         config={config}
         onChange={onChange}
-        modelPath={modelPath}
         modelIsMoe={modelIsMoe}
-        providerId={providerId}
       />
     </div>
   );

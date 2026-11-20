@@ -3,7 +3,6 @@ import type { UserEditedTemplateParam } from "../lib/types";
 import { formatParamValue, isParamTuned, visibleParamValuesOf } from "../lib/engineSurfaces";
 import SegmentSwitch from "./SegmentSwitch";
 import SliderParam from "./SliderParam";
-import { MoeCacheTune } from "./MoeCacheTune";
 
 /** The expert offload/cache knobs, promoted to their own cockpit instrument. */
 const EXPERT_KEYS = ["cpu_moe", "moe_cache_mib", "moe_cache_cpu_share"] as const;
@@ -14,9 +13,7 @@ interface ExpertCachePanelProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
-  modelPath: string | null;
   modelIsMoe: boolean;
-  providerId: string;
 }
 
 /**
@@ -29,9 +26,7 @@ export default function ExpertCachePanel({
   defs,
   config,
   onChange,
-  modelPath,
   modelIsMoe,
-  providerId,
 }: ExpertCachePanelProps) {
   // Open by default: TUNE is the point of this instrument, not a hidden extra.
   const [open, setOpen] = useState(true);
@@ -120,14 +115,6 @@ export default function ExpertCachePanel({
               </Fragment>
             );
           })}
-          <span className="cockpit-tweak-label">MEASURE</span>
-          <MoeCacheTune
-            config={config}
-            modelPath={modelPath}
-            modelIsMoe={modelIsMoe}
-            providerId={providerId}
-            updateParam={onChange}
-          />
         </div>
       ) : null}
     </div>

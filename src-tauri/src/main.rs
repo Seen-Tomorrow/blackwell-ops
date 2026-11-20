@@ -29,7 +29,7 @@ mod nsys_profile_cmd;
 mod fit_adapters;
 mod fit_scanner;
 mod fit_low_vram;
-mod moe_tune;
+mod moe_optimizer;
 mod vram_ballast_ctl;
 mod vram_learn;
 mod forecast_log;
@@ -596,10 +596,7 @@ async fn main() {
             config::reorder_provider,
             // FIT Scanner commands — the probe lives in fit_scanner with the rest of the domain
             fit_scanner::fit_scan_model,
-            moe_tune::moe_tune_run,
-            moe_tune::moe_tune_history,
-            moe_tune::moe_tune_stop,
-            moe_tune::moe_cache_autosize,
+            moe_optimizer::moe_cache_autosize,
             vram_ballast_ctl::vram_ballast_start,
             vram_ballast_ctl::vram_ballast_stop,
             vram_ballast_ctl::vram_ballast_status,
