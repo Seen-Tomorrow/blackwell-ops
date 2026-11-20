@@ -314,6 +314,19 @@ export function draftRoleFromModel(
   return draftRoleFromPathHints(model) ?? "none";
 }
 
+/**
+ * True for anything that can never be launched on its own: a draft head, a companion
+ * file, or an interrupted set. These get a fixed glass instead of a forecast, and the
+ * engine panel must not spend a FIT probe on them.
+ */
+export function isNonLaunchableModel(model: ModelEntry | null | undefined): boolean {
+  if (!model) return false;
+  return (
+    model.completeness === "incomplete" ||
+    isExternalDraftOnly(model) ||
+    isAttachmentModel(model)
+  );
+}
 export function isExternalDraftOnly(
   model: Pick<
     ModelEntry,
