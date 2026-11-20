@@ -13,6 +13,7 @@ import type { SpecCapability } from "../lib/specDraft";
 import { filterParamValuesForConfigView } from "../lib/launchProfile";
 import { paramValuesMatch } from "../lib/paramConfigResolve";
 import { formatCtxChipLabel } from "../lib/sliderParamUtils";
+import { MoeCacheTune } from "./MoeCacheTune";
 import {
   essentialsSpecChipLabel,
   specTypeNeedsExternalDraft,
@@ -197,6 +198,11 @@ export { resolveCtxSlotCount, resolveParallelSlots };
  */
 export interface ParamGroupsCtx {
   config: Record<string, any>;
+  /** Catalog path of the selected model - the calibration launches it. */
+  modelPath: string | null;
+  /** False for dense models: there is no expert cache to tune. */
+  modelIsMoe: boolean;
+  providerId: string;
   fullAutoFixed: boolean;
   configView: ConfigViewMode;
   specCapabilities: SpecCapability[];
@@ -278,6 +284,15 @@ export function renderParamRow(
                 : undefined
             }
           />
+          {def.key === "moe_cache_mib" && (
+            <MoeCacheTune
+              config={ctx.config}
+              modelPath={ctx.modelPath}
+              modelIsMoe={ctx.modelIsMoe}
+              providerId={ctx.providerId}
+              updateParam={ctx.updateParam}
+            />
+          )}
         </div>
       </div>
     );

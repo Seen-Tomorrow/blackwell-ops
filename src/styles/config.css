@@ -2019,3 +2019,50 @@ select option {
   outline: 1px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
   outline-offset: 3px;
 }
+
+/* Expert-cache calibration: measured values are STAGED before they touch the knobs. */
+[data-config-panel] .moe-tune {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-left: 0.375rem;
+}
+
+[data-config-panel] .moe-tune__btn {
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  color: var(--theme-text-muted);
+  padding: 0 0.375rem;
+  line-height: 16px;
+}
+
+[data-config-panel] .moe-tune__btn:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 4%, transparent);
+}
+
+[data-config-panel] .moe-tune__btn:disabled {
+  opacity: 0.45;
+}
+
+[data-config-panel] .moe-tune__btn.is-running {
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent);
+}
+
+[data-config-panel] .moe-tune__btn--apply {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  color: var(--theme-accent);
+}
+
+[data-config-panel] .moe-tune__staged {
+  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
+}
+
+[data-config-panel] .moe-tune__error {
+  color: var(--theme-warn);
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

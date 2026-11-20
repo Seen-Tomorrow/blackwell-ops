@@ -2113,6 +2113,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const paramGroupsCtx = useMemo<ParamGroupsCtx>(() => ({
     config,
+    modelPath: model?.path ?? null,
+    modelIsMoe: Number(model?.metadata?.n_expert ?? 0) > 1,
+    providerId: currentProvider?.id ?? "ggml-master",
     fullAutoFixed,
     configView,
     specCapabilities,
