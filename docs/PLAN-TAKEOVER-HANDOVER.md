@@ -141,6 +141,59 @@ offloading all of them.
 model with `-cmoe --moe-cache-mib N` and check that VRAM ≈ non-expert + KV + compute + N in the memory
 log's `CORE` ledger, and that host still holds the full expert set.
 
+## Expert cache — what exists now (wired, not yet forecast)
+
+Shipped this session, all pushed (`8ea9d4ae9` … `0c510f737`):
+
+- **Template `EXPERTS` group** (`templateVersion` 64): `cpu_moe`, `n_cpu_moe`, `moe_cache_mib` (slider,
+  256 MiB step), `moe_cache_cpu_share` (0–1). The engine already carries `-cmoe`, `-ncmoe`,
+  `--moe-cache-mib`, `--moe-cache-cpu-share`.
+- **EXPERT CACHE instrument** in the ASSISTED cockpit (next to TASK / PROMPT CACHE / TWEAKS, open by
+  default, hidden for dense models). The template rows alone were invisible there — the cockpit does
+  not render the full param matrix, which is why the first cut looked like "no TUNE in the UI".
+- **TUNE is measured, not predicted** (`src-tauri/src/moe_tune.rs`): one private `llama-server` per
+  candidate on a loopback port with the real split/`-ts`, a fixed prompt ending on an open
+  continuation and `ignore_eos: true` (without that a quantized model answers the sentence and stops
+  on token 1 — the first live run measured 0 t/s four times). t/s comes from the server's own timings.
+- **Candidates, in run order:** plain all-on-GPU launch → `-cmoe` no cache → ¼ budget → ¾ budget →
+  ¾ budget + share 0.95. The GPU launch wins unless a cache config beats it by **more than 2 %**, so
+  a fitting model gets `full GPU · no cache` and APPLY clears `-cmoe` instead of writing a cache size.
+  APPLY is always explicit: DEV runs stage and wait (ASSISTED rule); FULL AUTO can take the numbers later.
+- **VRAM ballast** (`src-tauri/src/bin/vram-ballast.rs`, separate bin, DEV only): holds raw device
+  memory via the CUDA driver API — no gguf, no toolkit — and closes on the **NVML** free number (the
+  one the glass, the guard and the tune read). Measured: target 61,440 MiB free → 61,470 MiB
+  (+30 MiB, 0.05 %). Touches pages every 3 s so WDDM cannot demote them; `--parent-pid` makes it
+  release if the app dies. Driven from **GPU TOPO (DEV) → VRAM BALLAST** with presets
+  8/12/16/24/32/48/72 GB; `--status` still works from a shell.
+- **DEV gating:** ballast commands reject in release, the UI block only exists in DEV tools, and the
+  tune's "card is busy" refusal stays in REL. In DEV an occupied card is allowed and the free
+  remainder becomes the tuning budget — that is how the ballast turns a 96 GB card into a 16 GB one
+  for the calibration.
+
+### Next, in order
+
+1. **Run the reduced-VRAM test.** Ballast 16 GB on the card, then TUNE on the Flash: the all-on-GPU
+   candidate should now lose, and the cache numbers become the recommendation. Verify the DEV path
+   actually passes the reduced budget (not just that it avoids the refusal).
+2. **Glass segment.** VRAM need gains `moe_cache_mib` (split across devices like `-ts`); `ramNeed`
+   keeps the full expert set because the cache is a copy. Verdict should read "expert cache" instead
+   of "spill" for such a launch. Until then the forecast calls a cache launch a spill.
+3. **REL surface review.** Confirm nothing from the ballast / DEV budget path can be reached in a
+   release build (command bodies, UI mount, and the tune gate are the three places).
+4. **Tune polish (optional):** print the measured table to the BOC console; persist the last report
+   under `config/cache/moe-tune/` so a re-tune is opt-in.
+
+### Traps found
+
+- A second `[[bin]]` makes plain `cargo run` ambiguous and breaks `tauri dev`; `default-run` in
+  `Cargo.toml` fixes it (`0c510f737`).
+- The calibration child is not in the engines' Job Object; if the app is killed hard, a
+  `llama-server` from a running calibration can survive. `--parent-pid` covers the ballast, not the
+  tune's servers — the fix is the same one line (borrow the engine job) when this goes deeper.
+- On WDDM a ballast does **not** force a hard OOM: CUDA may overcommit into shared memory, so the
+  engine pages instead of failing. That is fine for comparing speed, but it cannot manufacture
+  "does not fit".
+
 ## Landmines
 
 - `--fit` on WDDM is blind (budget). Never trust its "will leave N free".
