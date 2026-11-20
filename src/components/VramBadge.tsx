@@ -62,6 +62,10 @@ interface VramBadgeProps {
   ubatch?: number;
   /** External draft pack selected — no main forecast / FIT. */
   draftOnly?: boolean;
+  /** Interrupted download: finish the set from the Hub pair already on record. */
+  onRestage?: () => void;
+  /** Result/status of the last restage attempt, shown under the hint. */
+  restageStatus?: string | null;
   /** Interrupted download: { missing, declared } shard counts. */
   incomplete?: { missing: number; declared: number } | null;
   /** Attachment role — renders the same fixed face as a draft, tinted per role. */
@@ -145,7 +149,7 @@ export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
-  hideFitProbe = false, draftOnly = false, attachmentKind = null, incomplete = null, className,
+  hideFitProbe = false, draftOnly = false, attachmentKind = null, incomplete = null, onRestage, restageStatus = null, className,
   placementActive = false, onSplitEq,
   snapLogOpen = false,
   onCloseSnapLog,

@@ -938,6 +938,29 @@
   color: color-mix(in srgb, var(--theme-text) 82%, var(--vram-draft-ink) 18%);
 }
 
+/* The incomplete face is the only fixed face with an action: finishing the set is the
+   one thing a user can do about it from here. */
+.vram-forecast-draft__action {
+  padding: 3px 0.7rem;
+  border: 1px solid var(--vram-draft-edge);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vram-draft-edge) 18%, transparent);
+  color: var(--theme-text);
+  font-size: var(--type-tiny);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.vram-forecast-draft__action:hover {
+  background: color-mix(in srgb, var(--vram-draft-edge) 32%, transparent);
+}
+
+.vram-forecast-draft__status {
+  max-width: 26rem;
+  color: color-mix(in srgb, var(--theme-text) 72%, var(--vram-draft-edge));
+  font-size: var(--type-tiny);
+  letter-spacing: 0.04em;
+}
 .vram-forecast-draft__hint {
   font-size: var(--type-tiny);
   letter-spacing: 0.08em;

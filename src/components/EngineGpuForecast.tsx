@@ -112,6 +112,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     hideMoeBadge,
     draftOnly = false,
     incomplete = null,
+    onRestage,
+    restageStatus = null,
     attachmentKind = null,
     modelMeta,
     modelName,
@@ -499,6 +501,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               hideMoeBadge={hideMoeBadge}
               draftOnly={draftOnly}
               incomplete={incomplete}
+              onRestage={onRestage}
+              restageStatus={restageStatus}
               attachmentKind={attachmentKind}
               modelMeta={modelMeta}
               modelName={modelName}
@@ -632,6 +636,9 @@ export interface EngineGpuForecastProps {
   hideMoeBadge: boolean;
   /** External draft pack — full-face draft explanation, no FIT. */
   draftOnly?: boolean;
+  /** Finish an interrupted set from its Hub pairing. */
+  onRestage?: () => void;
+  restageStatus?: string | null;
   /** Set when the selected model is an interrupted download (missing shards). */
   incomplete?: { missing: number; declared: number } | null;
   /** Companion file (Engram table / projector / adapter) — same fixed face, role tint. */

@@ -513,6 +513,7 @@ async fn main() {
             companions::repo_companions_for,
             companions::repo_draft_files,
             downloads::download_companion,
+            downloads::restage_incomplete,
             engine::launch_engine,
             engine::stop_engine,
             engine::stop_engine_slot,

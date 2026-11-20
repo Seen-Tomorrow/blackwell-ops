@@ -662,3 +662,101 @@ pub async fn check_hf_files_against_disk(
     let log_hub = app.state::<AppContext>().log_hub.clone();
     Ok(crate::model_catalog::check_hf_files_against_disk(&paths, &gguf_files, Some(&log_hub), hf_model_id.as_deref()))
 }
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestageReport {
+    pub repo_id: String,
+    pub queued: usize,
+    pub already_complete: bool,
+    pub missing: Vec<String>,
+}
+
+/// Finish an interrupted set: enqueue only the shards that are not on disk, beside the
+/// ones that are. The existing quant's Hub pairing supplies the repo, so nothing is
+/// guessed; the destination is the folder the file already lives in.
+#[tauri::command]
+pub async fn restage_incomplete(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    app_config: tauri::State<'_, Arc<std::sync::Mutex<crate::config::AppConfig>>>,
+    model_path: String,
+) -> Result<RestageReport, String> {
+    let local = std::path::Path::new(&model_path);
+    let local_name = local
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Not a file path".to_string())?
+        .to_string();
+    let dir = local
+        .parent()
+        .ok_or_else(|| "The file has no folder".to_string())?
+        .to_path_buf();
+    let meta = crate::model_cache::get_hf_metadata(&model_path).ok_or_else(|| {
+        "No Hub pairing for this file - run VERIFY HUB PAIRINGS in CONFIG -> MODEL PATHS"
+            .to_string()
+    })?;
+    let repo_id = crate::companions::normalize_repo_id(&meta.hf_model_id)
+        .ok_or_else(|| format!("'{}' is not an org/repo id", meta.hf_model_id))?;
+    let hf_token = crate::secrets::get_secret("hf_token")?;
+    let files = crate::hf_api::list_repo_gguf_files(&repo_id, hf_token.as_deref()).await?;
+    let set = files
+        .iter()
+        .find(|f| {
+            f.download_parts()
+                .iter()
+                .any(|p| p.file_name.eq_ignore_ascii_case(&local_name))
+        })
+        .ok_or_else(|| format!("{repo_id} no longer publishes {local_name}"))?;
+
+    let parts = set.download_parts();
+    let author = repo_id.split('/').next().unwrap_or("").to_string();
+    let mut missing: Vec<String> = Vec::new();
+    let mut ids: Vec<String> = Vec::new();
+    let mut dm = manager.write().await;
+    for part in &parts {
+        if part.size_bytes > crate::config::MAX_DOWNLOAD_SIZE_BYTES {
+            return Err(format!("Shard too large: {}", part.file_name));
+        }
+        let dest_str = dir.join(&part.file_name).to_string_lossy().to_string();
+        if crate::config::quant_part_already_downloaded(&dest_str, part.size_bytes, &part.lfs_oid) {
+            continue;
+        }
+        if dm.has_active_task_for_dest(&dest_str) {
+            continue;
+        }
+        {
+            let cfg = app_config.lock().map_err(|e| e.to_string())?;
+            crate::config::validate_download_dest(&dest_str, &cfg)?;
+        }
+        let task = dm
+            .start_download(
+                repo_id.clone(),
+                part.file_name.clone(),
+                part.url.clone(),
+                part.size_bytes,
+                dest_str,
+                author.clone(),
+                set.r#type.clone(),
+                part.lfs_oid.clone(),
+                None,
+                Arc::clone(&manager),
+            )
+            .await?;
+        missing.push(part.file_name.clone());
+        ids.push(task);
+    }
+    drop(dm);
+    if !ids.is_empty() {
+        crate::ipc_emit::emit_guarded(
+            &app,
+            "download-event",
+            serde_json::json!({ "type": "queued", "taskIds": ids }),
+        );
+    }
+    Ok(RestageReport {
+        repo_id,
+        queued: ids.len(),
+        already_complete: missing.is_empty(),
+        missing,
+    })
+}

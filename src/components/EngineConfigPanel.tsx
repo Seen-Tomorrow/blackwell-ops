@@ -1469,6 +1469,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           declared: model.declaredShards ?? 0,
         }
       : null;
+  /**
+   * Finish an interrupted set from the pair already on record: the file's Hub pairing
+   * names the repo, and only the missing shards are enqueued.
+   */
+  const [restageStatus, setRestageStatus] = useState<string | null>(null);
+  const handleRestageIncomplete = useCallback(async () => {
+    if (!model?.path) return;
+    setRestageStatus("Queuing missing shards…");
+    try {
+      const report = await invoke<{
+        repoId: string;
+        queued: number;
+        alreadyComplete: boolean;
+      }>("restage_incomplete", { modelPath: model.path });
+      setRestageStatus(
+        report.alreadyComplete
+          ? "Everything already on disk — rescan to reclassify."
+          : `Queued ${report.queued} shard(s) from ${report.repoId} — see the Download Manager`,
+      );
+    } catch (e) {
+      setRestageStatus(typeof e === "string" ? e : "Could not queue the missing shards");
+    }
+  }, [model?.path]);
   /** Drafts, attachments and interrupted sets cannot launch: no cockpit for them at all. */
   const modelIsNonLaunchable =
     modelIsDraftOnly || modelIsAttachment || modelIncomplete != null;
@@ -3121,6 +3144,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         draftOnly={modelIsDraftOnly}
         attachmentKind={modelAttachmentKind}
         incomplete={modelIncomplete}
+        onRestage={modelIncomplete ? handleRestageIncomplete : undefined}
+        restageStatus={modelIncomplete ? restageStatus : null}
         modelMeta={model?.metadata}
         modelName={model?.name}
         modelQuant={model?.quant}
