@@ -2669,3 +2669,20 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .cockpit-instrument--experts--collapsed .cockpit-expert-rows {
   display: none;
 }
+
+/* The cache knob is a slider with a typed MiB field; keep it inside the value column. */
+.cockpit-expert-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.cockpit-expert-slider .ctx-slider-row {
+  min-width: 0;
+}
+
+.cockpit-expert-unit {
+  color: var(--theme-text-muted);
+  flex-shrink: 0;
+}

@@ -2,13 +2,13 @@ import { Fragment, useState } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
 import { formatParamValue, isParamTuned, visibleParamValuesOf } from "../lib/engineSurfaces";
 import SegmentSwitch from "./SegmentSwitch";
+import SliderParam from "./SliderParam";
 import { MoeCacheTune } from "./MoeCacheTune";
 
 /** The expert offload/cache knobs, promoted to their own cockpit instrument. */
 const EXPERT_KEYS = ["cpu_moe", "moe_cache_mib", "moe_cache_cpu_share"] as const;
 
-/** Cache presets shown as chips: every value above 8 GiB would overflow the row. */
-const CACHE_CHIP_MIB = new Set([0, 8192, 16384, 24576, 32768, 65536]);
+
 
 interface ExpertCachePanelProps {
   defs: UserEditedTemplateParam[];
@@ -74,33 +74,48 @@ export default function ExpertCachePanel({
       {open ? (
         <div className="cockpit-expert-rows">
           {rows.map((def) => {
-            const values = visibleParamValuesOf(def).filter((value) =>
-              def.key === "moe_cache_mib" ? CACHE_CHIP_MIB.has(Number(value)) : true,
-            );
+            const values = visibleParamValuesOf(def);
             const current = String(config[def.key] ?? def.defaultValue ?? "");
+            const cacheRow = def.key === "moe_cache_mib";
             return (
               <Fragment key={def.key}>
                 <span
-                  className={`cockpit-tweak-label${isParamTuned(def, config) ? " cockpit-tweak-label--tuned" : ""}`}
+                  className={`cockpit-tweak-label${isParamTuned(def, config) ? "cockpit-tweak-label--tuned" : ""}`}
                   title={def.note ?? def.label}
                 >
                   {def.label}
                 </span>
-                <SegmentSwitch
-                  ariaLabel={def.label}
-                  options={values.map((value) => ({
-                    id: String(value),
-                    label: formatParamValue(value).toUpperCase(),
-                  }))}
-                  selectedId={current}
-                  onSelect={(id) => {
-                    const value = values.find((item) => String(item) === id);
-                    if (value !== undefined) onChange(def.key, value);
-                  }}
-                  size="compact"
-                  tone="accent"
-                  className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
-                />
+                {cacheRow ? (
+                  // Granular by hand: a slider with a typed MiB field, not a handful of presets.
+                  // Finding the edge of the cache is the whole point (it is a cliff, not a curve).
+                  <span className="cockpit-expert-slider">
+                    <SliderParam
+                      paramKey={def.key}
+                      currentValue={Number(config[def.key] ?? def.defaultValue ?? 0)}
+                      defaultValue={def.defaultValue}
+                      onChange={(value) => onChange(def.key, value)}
+                      step={def.step ?? 256}
+                      values={values}
+                    />
+                    <span className="cockpit-expert-unit type-micro font-mono">MiB</span>
+                  </span>
+                ) : (
+                  <SegmentSwitch
+                    ariaLabel={def.label}
+                    options={values.map((value) => ({
+                      id: String(value),
+                      label: formatParamValue(value).toUpperCase(),
+                    }))}
+                    selectedId={current}
+                    onSelect={(id) => {
+                      const value = values.find((item) => String(item) === id);
+                      if (value !== undefined) onChange(def.key, value);
+                    }}
+                    size="compact"
+                    tone="accent"
+                    className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
+                  />
+                )}
               </Fragment>
             );
           })}
