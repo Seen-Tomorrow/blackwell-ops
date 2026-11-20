@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import type { SetupPhase } from "../../lib/setupGuide";
+import { dispatchNavigateConfig } from "../../lib/events";
 import {
   ENV_META,
   ENV_ORDER,
@@ -194,6 +195,22 @@ export default function SetupGuideDisplay({
         </p>
       )}
 
+      {/* Recommended, never required: a key only raises the Hub rate limit and unlocks
+          gated repos. The app works without one. */}
+      <div className="setup-guide__hf">
+        <p className="setup-guide__note setup-guide__note--muted">
+          Optional: add a Hugging Face API key in CONFIG → SECRETS. Switching models, checking
+          for updates and fetching swap files all talk to the Hub — a key raises the hourly
+          request limit and opens gated repos. Everything works without one.
+        </p>
+        <button
+          type="button"
+          className="setup-guide__hf-btn font-mono uppercase"
+          onClick={() => dispatchNavigateConfig({ subTab: "secrets" })}
+        >
+          ADD HF KEY
+        </button>
+      </div>
       <div className="setup-guide__actions">
         {phase === "paths" && !catalogLoaded && (
           <p className="setup-guide__note setup-guide__note--muted">Loading model catalog…</p>

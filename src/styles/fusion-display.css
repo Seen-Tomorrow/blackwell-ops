@@ -6416,3 +6416,33 @@ html[data-industrial-bezel="brush"] {
   color: var(--fixed-red-400);
   font-size: calc(9px * var(--vram-fc-scale, 1.12));
 }
+/* Onboarding: the HF key is recommended, never required — one quiet row, one link. */
+.setup-guide__hf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.1rem;
+}
+
+.setup-guide__hf .setup-guide__note {
+  flex: 1 1 18rem;
+  margin: 0;
+}
+
+.setup-guide__hf-btn {
+  flex: 0 0 auto;
+  padding: 2px 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--theme-text-muted);
+  font-size: var(--type-tiny);
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.setup-guide__hf-btn:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border));
+}
