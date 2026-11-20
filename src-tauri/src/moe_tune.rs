@@ -22,7 +22,7 @@ const HEALTH_TIMEOUT: Duration = Duration::from_secs(240);
 const GEN_TIMEOUT: Duration = Duration::from_secs(300);
 const N_PREDICT: u32 = 512;
 /// Fixed, plain prose: the calibrated number must not depend on sampling.
-const PROMPT: &str = "The lighthouse keeper had kept a logbook for thirty-one years, and in all that time he had never once written down a lie. So when the ship appeared on the horizon on the first calm morning of October, with no flag, no lights and no one on deck, he sat at his small wooden table for a long while before he picked up the pen. Below him the sea was flat and grey, and the gulls had gone quiet. He wrote the date, the hour and the direction of the wind, and then he stopped, because the next line would have to say what he had seen.";
+const PROMPT: &str = "The lighthouse keeper had kept a logbook for thirty-one years, and in all that time he had never once written down a lie. So when the ship appeared on the horizon on the first calm morning of October, with no flag, no lights and no one on deck, he sat at his small wooden table for a long while before he picked up the pen. Below him the sea was flat and grey, and the gulls had gone quiet. He wrote the date, the hour and the direction of the wind, and then he stopped, because the next line would have to say what he had seen. This is what he finally wrote:";
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct MoeTuneCandidate {
@@ -276,6 +276,9 @@ async fn run_one(
         "top_p": 1.0,
         "cache_prompt": false,
         "stream": false,
+        // Without this a quantized model can answer the sentence and stop on the first token,
+        // which measures 0 t/s instead of decode speed.
+        "ignore_eos": true,
     });
     let gen_client = reqwest::Client::builder()
         .timeout(GEN_TIMEOUT)
@@ -309,7 +312,14 @@ async fn run_one(
             )
         })?;
     if !tps.is_finite() || tps <= 0.0 {
-        return Err(format!("implausible decode speed: {tps} t/s"));
+        let predicted_n = json
+            .get("timings")
+            .and_then(|t| t.get("predicted_n"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        return Err(format!(
+            "implausible decode speed: {tps} t/s ({predicted_n} token(s) generated)"
+        ));
     }
     let _ = std::io::stdout().flush();
     Ok(tps)
