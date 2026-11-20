@@ -598,6 +598,7 @@ async fn main() {
             fit_scanner::fit_scan_model,
             moe_tune::moe_tune_run,
             moe_tune::moe_tune_history,
+            moe_tune::moe_tune_stop,
             vram_ballast_ctl::vram_ballast_start,
             vram_ballast_ctl::vram_ballast_stop,
             vram_ballast_ctl::vram_ballast_status,

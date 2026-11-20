@@ -34,6 +34,7 @@ interface MoeTuneReport {
   driver_version: string | null;
   engine_build: string | null;
   start_free_mib: number;
+  cancelled: boolean;
   pair_runs: { label: string; cache_mib: number; cpu_share: number; tps: number | null }[];
   gain_pct: number | null;
   noise_pct: number | null;
@@ -112,6 +113,7 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
   } | null>(null);
   const [applied, setApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
   /** Last stored run for this exact model + placement, loaded on mount. */
   const [history, setHistory] = useState<MoeTuneReport | null>(null);
 
@@ -190,6 +192,18 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
     }
   }, [config, modelPath, providerId, running]);
 
+  const stop = useCallback(async () => {
+    setStopping(true);
+    try {
+      await invoke("moe_tune_stop");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      // The run itself resolves the promise; `running` clears there.
+      setStopping(false);
+    }
+  }, []);
+
   const apply = useCallback(() => {
     if (!staged) return;
     // The winner may be "leave the experts on the GPU" - then -cmoe must go away too.
@@ -200,7 +214,13 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
     setApplied(true);
   }, [staged, updateParam]);
 
-  const label = running ? (total > 0 ? `TUNE ${done}/${total}` : "TUNE…") : "TUNE";
+  const label = running
+    ? stopping
+      ? "STOPPING…"
+      : total > 0
+        ? `STOP ${done}/${total}`
+        : "STOP"
+    : "TUNE";
   // A win over the CPU-expert launch is what the cache buys; a win over the all-on-GPU launch is
   // what keeps the cache honest on a card that already fits the model.
   const gain =
@@ -217,8 +237,14 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
       <button
         type="button"
         className={`value-chip font-mono moe-tune__btn${running ? " is-running" : ""}`}
-        onClick={() => void run()}
-        disabled={!canRun}
+        onClick={() => {
+          if (running) {
+            void stop();
+          } else {
+            void run();
+          }
+        }}
+        disabled={running ? stopping : !canRun}
         title={
           modelIsMoe
             ? "Measure decode speed for cache sizes and CPU share (three launches, ~2 min)"
@@ -300,6 +326,11 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
             DISCARD
           </button>
         </>
+      )}
+      {report?.cancelled && !running && (
+        <span className="moe-tune__staged type-micro font-mono" title="Stopped part-way; the points measured before the stop are kept">
+          stopped after {report.points.filter((p) => p.tps != null).length} measurements
+        </span>
       )}
       {report && !staged && !running && !applied && vramLine(report) && (
         <span className="moe-tune__staged type-micro font-mono">{vramLine(report)}</span>

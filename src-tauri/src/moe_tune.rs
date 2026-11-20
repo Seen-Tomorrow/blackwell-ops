@@ -15,7 +15,32 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
+
+/// Set by `moe_tune_stop`, polled between candidates and during a launch. A tuning is a long chain
+/// of engine starts; without this the only way out was to wait it out or kill the app.
+static TUNE_CANCEL: AtomicBool = AtomicBool::new(false);
+
+fn cancel_requested() -> bool {
+    TUNE_CANCEL.load(Ordering::SeqCst)
+}
+
+/// Resolves as soon as a stop is requested, so a generation in flight can be abandoned.
+async fn cancel_watch() {
+    loop {
+        if cancel_requested() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+#[tauri::command]
+pub async fn moe_tune_stop() -> Result<bool, String> {
+    TUNE_CANCEL.store(true, Ordering::SeqCst);
+    Ok(true)
+}
 
 const HEALTH_POLL: Duration = Duration::from_millis(500);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(240);
@@ -114,6 +139,9 @@ pub struct MoeTuneReport {
     pub noise_pct: Option<f64>,
     #[serde(default)]
     pub verdict: Option<String>,
+    /// True when the run was stopped part-way; the points collected up to that moment are kept.
+    #[serde(default)]
+    pub cancelled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -427,6 +455,9 @@ async fn run_one(
 
     let started = Instant::now();
     loop {
+        if cancel_requested() {
+            return Err("cancelled".to_string());
+        }
         if started.elapsed() > HEALTH_TIMEOUT {
             return Err(format!(
                 "server did not become ready within {}s\n{}",
@@ -458,12 +489,12 @@ async fn run_one(
         .timeout(GEN_TIMEOUT)
         .build()
         .map_err(|e| format!("http client: {e}"))?;
-    let resp = gen_client
-        .post(format!("{base}/completion"))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("completion request failed: {e}\n{}", log_tail(log_path)))?;
+    let resp = tokio::select! {
+        resp = gen_client.post(format!("{base}/completion")).json(&body).send() => {
+            resp.map_err(|e| format!("completion request failed: {e}\n{}", log_tail(log_path)))?
+        }
+        _ = cancel_watch() => return Err("cancelled".to_string()),
+    };
     if !resp.status().is_success() {
         return Err(format!(
             "completion returned {}\n{}",
@@ -632,6 +663,18 @@ async fn measure_candidate(
         (cand.cpu_share * 100.0).round() as u32,
         port
     ));
+    if cancel_requested() {
+        return MoeTunePoint {
+            cpu_moe: cand.cpu_moe,
+            cache_mib: cand.cache_mib,
+            cpu_share: cand.cpu_share,
+            tps: None,
+            error: Some("cancelled".to_string()),
+            vram_used_mib: None,
+            vram_free_mib: None,
+            components: None,
+        };
+    }
     let _ = app.emit(
         "moe-tune-progress",
         serde_json::json!({
@@ -733,6 +776,7 @@ pub async fn moe_tune_run(
     candidates: Option<Vec<MoeTuneCandidate>>,
 ) -> Result<MoeTuneReport, String> {
     let started = Instant::now();
+    TUNE_CANCEL.store(false, Ordering::SeqCst);
     // Fail before touching the engine: a wrong path must not wait out the health timeout.
     if !std::path::Path::new(&model_path).exists() {
         return Err(format!("model file not found: {model_path}"));
@@ -998,6 +1042,7 @@ pub async fn moe_tune_run(
         gain_pct,
         noise_pct,
         verdict,
+        cancelled: cancel_requested(),
     };
     if let Err(e) = save_report(&report, &store_key(&identity)) {
         log::warn!("[moe-tune] could not store the report: {e}");
