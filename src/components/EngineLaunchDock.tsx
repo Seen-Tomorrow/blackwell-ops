@@ -57,6 +57,9 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     onCancelReplaceLaunch,
     acknowledgeReplaceLaunch,
     onLaunchClick,
+  onLaunchOverdrive,
+  overdriveTitle,
+  overdriveHint,
     launchAck,
     customFlagsReplaceActive,
     customFlagsLaunchActive,
@@ -190,6 +193,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           </div>
         </div>
       )}
+      <div className={`config-launch-split${onLaunchOverdrive ? " config-launch-split--armed" : ""}`}>
       <button
         onClick={onLaunchClick}
         disabled={launchDisabled}
@@ -228,6 +232,24 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           Ctrl+Enter
         </span>
       </button>
+      {onLaunchOverdrive ? (
+        <button
+          type="button"
+          onClick={onLaunchOverdrive}
+          disabled={launchDisabled}
+          className="config-launch-overdrive ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          title={
+            overdriveTitle ??
+            "MOE OVERDRIVE: launch with the experts in host RAM and the measured cache, then size it on the dedicated screen"
+          }
+        >
+          <span className="text-center">OVERDRIVE</span>
+          <span className="config-launch-btn__hint type-micro font-mono tracking-wider normal-case font-normal text-center">
+            {overdriveHint ?? "MOE cache"}
+          </span>
+        </button>
+      ) : null}
+      </div>
       <div className="config-launch-dock__aux">
         <button
           type="button"
@@ -362,6 +384,10 @@ export interface EngineLaunchDockProps {
   onCancelReplaceLaunch: () => void;
   acknowledgeReplaceLaunch: () => void;
   onLaunchClick: () => void;
+  /** MOE OVERDRIVE half of the launch button; absent hides it (dense models, autopilot). */
+  onLaunchOverdrive?: () => void;
+  overdriveTitle?: string;
+  overdriveHint?: string;
   launchAck: boolean;
   customFlagsReplaceActive: boolean;
   customFlagsLaunchActive: boolean;

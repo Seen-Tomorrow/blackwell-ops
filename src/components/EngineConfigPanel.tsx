@@ -101,6 +101,7 @@ import ConfigBelowGroups from "./ConfigBelowGroups";
 import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
 import { CockpitInstruments } from "./CockpitInstruments";
+import { setOverdriveActive } from "../lib/moeOverdriveState";
 import BatchRangeSlider from "./BatchRangeSlider";
 import {
   COMPAT_KEYS,
@@ -2398,6 +2399,36 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     config,
   ]);
 
+  /**
+   * MOE OVERDRIVE launch: the same engine path as LAUNCH, with the experts forced into host RAM
+   * and the cache starting at 0 (or the stored record). The screen it opens owns the measuring.
+   */
+  const performOverdriveLaunch = useCallback(() => {
+    if (!model) return;
+    const fullConfig = buildCurrentLaunchConfig();
+    if (!fullConfig) return;
+    const params = (fullConfig.extra_params ??= {});
+    params.cpu_moe = "on";
+    params.moe_cache_cpu_share = 0;
+    if (params.moe_cache_mib == null) params.moe_cache_mib = 0;
+    setOverdriveActive(true);
+    pulseLaunchAck();
+    void onLaunch(fullConfig)
+      .then((result) => {
+        if (result?.port) {
+          dispatchAppEvent(EVENTS.launchSuccess, {
+            alias: result?.alias ?? fullConfig.alias,
+            port: result.port,
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        dispatchAppEvent(EVENTS.launchError, { message: errorMessage(err) });
+      });
+  }, [model, buildCurrentLaunchConfig, onLaunch, pulseLaunchAck]);
+
+  const modelIsMoe = Number(model?.metadata?.n_expert ?? 0) > 1;
+
   /** Manual nudge: re-read free VRAM and make the layer split the active placement. */
   const handleSplitEq = useCallback(() => {
     if (!tensorSplitSupported || gpus.length < 2) return;
@@ -3543,6 +3574,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
           acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
           onLaunchClick={handleAddToStack}
+          onLaunchOverdrive={modelIsMoe && !fullAutoMode ? performOverdriveLaunch : undefined}
+          overdriveHint={
+            String(config.cpu_moe ?? "off").toLowerCase() === "on" ? "cpu experts" : "MOE cache"
+          }
           launchAck={launchAck}
           customFlagsReplaceActive={customFlagsReplaceActive}
           customFlagsLaunchActive={customFlagsLaunchActive}
@@ -3645,6 +3680,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
                 acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
                 onLaunchClick={handleAddToStack}
+          onLaunchOverdrive={modelIsMoe && !fullAutoMode ? performOverdriveLaunch : undefined}
+          overdriveHint={
+            String(config.cpu_moe ?? "off").toLowerCase() === "on" ? "cpu experts" : "MOE cache"
+          }
                 launchAck={launchAck}
                 customFlagsReplaceActive={customFlagsReplaceActive}
                 customFlagsLaunchActive={customFlagsLaunchActive}

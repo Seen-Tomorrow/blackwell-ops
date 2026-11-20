@@ -2066,3 +2066,26 @@ select option {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* LAUNCH split: left = the engine's own placement, right = MOE OVERDRIVE. */
+.config-launch-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.config-launch-split > .config-launch-btn:first-child {
+  flex: 2 1 0%;
+}
+
+.config-launch-overdrive {
+  flex: 1 1 0%;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+
+.config-launch-overdrive:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
+}
