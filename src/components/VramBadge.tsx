@@ -7,6 +7,13 @@ import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
 import MoeBadge from "./MoeBadge";
 import NvramSnapshotOverlay from "./NvramSnapshotOverlay";
 import { formatTensorSplit, type LayerPlan } from "../lib/vramLayerPlan";
+
+/** Same convention as the Rust catalog: MB below a gigabyte, GB above it. */
+function sizeBytesLabel(bytes: number | undefined): string {
+  if (!bytes || bytes <= 0) return "—";
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1 ? `${gb.toFixed(1)}GB` : `${Math.max(1, Math.round(bytes / 1024 ** 2))}MB`;
+}
 import MemorySourcePanel, {
   MemorySourceNeedOverlay,
   MemorySourceReprobe,
@@ -67,7 +74,15 @@ interface VramBadgeProps {
   /** Result/status of the last restage attempt, shown under the hint. */
   restageStatus?: string | null;
   /** Interrupted download: { missing, declared } shard counts. */
-  incomplete?: { missing: number; declared: number } | null;
+  incomplete?: {
+    missing: number;
+    declared: number;
+    present?: number;
+    /** Bytes of the shards already on disk. */
+    onDiskBytes?: number;
+    /** Average-shard estimate for the missing ones — the Hub is not asked. */
+    estimatedMissingBytes?: number;
+  } | null;
   /** Attachment role — renders the same fixed face as a draft, tinted per role. */
   attachmentKind?: AttachmentKind | null;
   className?: string;
@@ -107,8 +122,8 @@ function incompleteFaceCopy(missing: number, declared: number) {
   return {
     title: "INCOMPLETE SET",
     kicker: "MISSING SHARDS",
-    body: `This set has ${set} shard(s) on disk — ${missing || "the last"} missing. Nothing launches until every shard of the set is present.`,
-    hint: "Re-download this quant to finish the set.",
+    body: `${set} shard(s) on disk, ${missing || "the last"} missing — nothing launches until the set is complete.`,
+    hint: "",
     readout: "SHARDS",
     aria: "Incomplete download — missing shards, no VRAM forecast",
   };
@@ -317,18 +332,60 @@ export default function VramBadge({
             </span>
           </div>
 
-          <div className="vram-forecast-draft__center flex flex-col items-center justify-center gap-3 min-w-0 self-center">
-            <div className="vram-forecast-draft__seal font-mono" aria-hidden>
-              <span className="vram-forecast-draft__seal-ring" />
-              <span className="vram-forecast-draft__seal-ring vram-forecast-draft__seal-ring--outer" />
-              <span className="vram-forecast-draft__seal-core">{draftOnly ? "SPEC" : "FILE"}</span>
-            </div>
+          <div className="vram-forecast-draft__center flex flex-col items-center justify-center gap-2 min-w-0 self-center">
+            {/* The interrupted set carries numbers now, so the seal is the one thing that
+                does not fit the fixed glass — the figures are the identity here. */}
+            {!incomplete ? (
+              <div className="vram-forecast-draft__seal font-mono" aria-hidden>
+                <span className="vram-forecast-draft__seal-ring" />
+                <span className="vram-forecast-draft__seal-ring vram-forecast-draft__seal-ring--outer" />
+                <span className="vram-forecast-draft__seal-core">{draftOnly ? "SPEC" : "FILE"}</span>
+              </div>
+            ) : null}
             <div className="vram-forecast-draft__copy font-mono">
               <span className="vram-forecast-draft__kicker">{fixedFace.kicker}</span>
               <span className="vram-forecast-draft__title">{fixedFace.title}</span>
               <span className="vram-forecast-draft__body">{fixedFace.body}</span>
-              <span className="vram-forecast-draft__hint">{fixedFace.hint}</span>
+              {fixedFace.hint ? (
+                <span className="vram-forecast-draft__hint">{fixedFace.hint}</span>
+              ) : null}
             </div>
+            {incomplete ? (
+              <div className="vram-forecast-draft__stats font-mono">
+                <span className="vram-forecast-draft__stat">
+                  <span className="vram-forecast-draft__stat-label">ON DISK</span>
+                  <span className="vram-forecast-draft__stat-value">
+                    {sizeBytesLabel(incomplete.onDiskBytes)}
+                  </span>
+                  <span className="vram-forecast-draft__stat-sub">
+                    {incomplete.present ?? incomplete.declared - incomplete.missing} /{" "}
+                    {incomplete.declared} shards
+                  </span>
+                </span>
+                <span className="vram-forecast-draft__stat">
+                  <span className="vram-forecast-draft__stat-label">MISSING</span>
+                  <span className="vram-forecast-draft__stat-value">
+                    ≈{sizeBytesLabel(incomplete.estimatedMissingBytes)}
+                  </span>
+                  <span className="vram-forecast-draft__stat-sub">
+                    {incomplete.missing} shard{incomplete.missing === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <span className="vram-forecast-draft__stat">
+                  <span className="vram-forecast-draft__stat-label">SET TOTAL</span>
+                  <span className="vram-forecast-draft__stat-value">
+                    ≈
+                    {sizeBytesLabel(
+                      (incomplete.onDiskBytes ?? 0) +
+                        (incomplete.estimatedMissingBytes ?? 0),
+                    )}
+                  </span>
+                  <span className="vram-forecast-draft__stat-sub">
+                    {incomplete.declared} shards
+                  </span>
+                </span>
+              </div>
+            ) : null}
             {incomplete && onRestage ? (
               <button
                 type="button"

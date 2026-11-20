@@ -151,6 +151,7 @@ import {
   stageDraftPairing,
   isSpecDecodingGroupActive,
 } from "../lib/specDraft";
+import { modelSizeBytes } from "../lib/modelSize";
 import {
   type SpecBoostMethod,
   SPEC_PROFILE_MTP,
@@ -1462,13 +1463,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const modelIsAttachment = modelAttachmentKind != null;
   // An interrupted download: the set cannot launch, and that is worth its own face
   // instead of a VRAM forecast for a model that will never start.
-  const modelIncomplete =
-    model && model.completeness === "incomplete"
-      ? {
-          missing: model.missingShards?.length ?? 0,
-          declared: model.declaredShards ?? 0,
-        }
-      : null;
+  const modelIncomplete = useMemo(() => {
+    if (!model || model.completeness !== "incomplete") return null;
+    const missing = model.missingShards?.length ?? 0;
+    const declared = model.declaredShards ?? 0;
+    const present = Math.max(declared - missing, 0);
+    // `size_str` / `file_size_bytes` are the bytes actually on disk (present shards
+    // summed at scan time), so the per-shard average is the cheapest honest estimate
+    // for the missing part — no Hub request on selecting a model.
+    const onDiskBytes = modelSizeBytes(model) ?? 0;
+    const perShard = present > 0 ? onDiskBytes / present : 0;
+    return {
+      missing,
+      declared,
+      present,
+      onDiskBytes,
+      estimatedMissingBytes: Math.round(perShard * missing),
+    };
+  }, [model]);
   /**
    * Finish an interrupted set from the pair already on record: the file's Hub pairing
    * names the repo, and only the missing shards are enqueued.
