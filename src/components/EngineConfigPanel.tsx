@@ -2111,6 +2111,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
 
+  /** MOE optimizer: measure the loaded launch's leftover VRAM and write the cache it justifies. */
+  const handleMoeOptimize = useCallback(async () => {
+    const deviceIndex =
+      Number(String(config.device ?? "GPU-0").replace(/^GPU-/, "")) || 0;
+    return await invoke<{
+      device: number;
+      free_mib: number;
+      used_mib: number;
+      reserve_mib: number;
+      recommended_mib: number;
+      engine_loaded: boolean;
+    }>("moe_cache_autosize", { deviceIndex });
+  }, [config.device]);
+
+  const handleMoeApply = useCallback(
+    (cacheMib: number) => {
+      updateParam("cpu_moe", "on");
+      updateParam("moe_cache_mib", cacheMib);
+      updateParam("moe_cache_cpu_share", 0);
+    },
+    [updateParam],
+  );
+
   const paramGroupsCtx = useMemo<ParamGroupsCtx>(() => ({
     config,
     fullAutoFixed,
@@ -3104,6 +3127,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }}
         showFitOrDeviceChrome={!modelIsDraftOnly && !modelIsAttachment && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
         showGpuAssign={Boolean(model && !modelIsDraftOnly && !modelIsAttachment && gpus.length > 0 && !fullAutoMode)}
+        moeCacheMib={Number(config.moe_cache_mib ?? 0)}
+        moeOptimizerAuto={fullAutoMode}
+        onMoeOptimize={handleMoeOptimize}
+        onMoeApply={handleMoeApply}
         gpus={gpus}
         deviceValue={config.device}
         splitValue={config.split}

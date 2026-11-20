@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
@@ -24,6 +24,7 @@ import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import type { FusionDualOrient } from "../lib/storage";
 import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import { memoryLabelForKvQuant } from "../lib/multiAgentBooster";
+import type { MoeCacheSizing } from "./MoeOptimizerTypes";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -50,6 +51,11 @@ interface VramBadgeProps {
   placementActive?: boolean;
   /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
   onSplitEq?: () => void;
+  /** MOE optimizer: cache size, sizing result and how to write it. */
+  moeCacheMib?: number;
+  moeOptimizerAuto?: boolean;
+  onMoeOptimize?: () => Promise<MoeCacheSizing>;
+  onMoeApply?: (cacheMib: number) => void;
   /** Bezel control: full-glass NVRAM snapshot log. */
   snapLogOpen?: boolean;
   onCloseSnapLog?: () => void;
@@ -184,10 +190,46 @@ export default function VramBadge({
   dualActive = false,
   dualOrient = "side",
   secondaryPane = null,
+  moeCacheMib = 0,
+  moeOptimizerAuto = false,
+  onMoeOptimize,
+  onMoeApply,
 }: VramBadgeProps) {
 
   // The plan arrives from EngineConfigPanel: the same object feeds the manifest's per-card
   // split, so what the bars paint and what this glass prints cannot disagree.
+
+  // MOE optimizer: one measurement of the loaded launch, then the cache it justifies.
+  const [moeSizing, setMoeSizing] = useState<MoeCacheSizing | null>(null);
+  const [moeStaged, setMoeStaged] = useState<number | null>(null);
+  const [moeBusy, setMoeBusy] = useState(false);
+  const [moeNote, setMoeNote] = useState<string | null>(null);
+
+  const runMoeOptimize = useCallback(async () => {
+    if (!onMoeOptimize) return;
+    setMoeBusy(true);
+    setMoeNote(null);
+    try {
+      const sizing = await onMoeOptimize();
+      setMoeSizing(sizing);
+      if (!sizing.engine_loaded) {
+        setMoeNote(`GPU-${sizing.device} idle - load the model with cache 0 first`);
+      } else if (sizing.recommended_mib < 1024) {
+        setMoeNote(`only ${sizing.free_mib} MiB left - nothing to cache`);
+      } else if (moeOptimizerAuto && onMoeApply) {
+        onMoeApply(sizing.recommended_mib);
+        setMoeNote(
+          `auto: ${sizing.recommended_mib.toLocaleString("en-US")} MiB - applies on the next launch`,
+        );
+      } else {
+        setMoeStaged(sizing.recommended_mib);
+      }
+    } catch (e) {
+      setMoeNote(String(e).split("\n")[0]);
+    } finally {
+      setMoeBusy(false);
+    }
+  }, [onMoeOptimize, onMoeApply, moeOptimizerAuto]);
 
   // Publish what this glass shows, so an agent can read it instead of asking for a
   // screenshot. DEV builds write config/automation/ui/vram-badge.json.
@@ -616,6 +658,51 @@ export default function VramBadge({
             needsLowVramReprobe={!!s.needsLowVramReprobe}
             overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
+        ) : null}
+        {/* MOE optimizer: one measured reading of the loaded launch, then the cache it justifies.
+            ASSISTED stages the number, FULL AUTO writes it straight into the knobs. */}
+        {onMoeOptimize ? (
+          <div className="vram-fc-moe-opt" data-auto={moeOptimizerAuto ? "1" : undefined}>
+            <span className="vram-fc-moe-opt__label">MOE OPTIMIZER</span>
+            <button
+              type="button"
+              className="vram-fc-moe-opt__btn"
+              onClick={() => void runMoeOptimize()}
+              disabled={moeBusy}
+              title="Read the loaded launch's free VRAM and size the expert cache to it (minus the reserve)"
+            >
+              {moeBusy ? "SIZING…" : "SIZE"}
+            </button>
+            <span className="vram-fc-moe-opt__value">
+              cache {moeCacheMib.toLocaleString("en-US")}
+              {moeSizing && moeSizing.engine_loaded
+                ? ` · free ${moeSizing.free_mib.toLocaleString("en-US")} - ${moeSizing.reserve_mib}`
+                : ""}
+            </span>
+            {moeStaged != null && (
+              <>
+                <button
+                  type="button"
+                  className="vram-fc-moe-opt__btn vram-fc-moe-opt__btn--apply"
+                  onClick={() => {
+                    onMoeApply?.(moeStaged);
+                    setMoeStaged(null);
+                  }}
+                  title={`Write ${moeStaged.toLocaleString("en-US")} MiB into MOE CACHE (share 0, experts on host)`}
+                >
+                  APPLY {moeStaged.toLocaleString("en-US")}
+                </button>
+                <button
+                  type="button"
+                  className="vram-fc-moe-opt__btn"
+                  onClick={() => setMoeStaged(null)}
+                >
+                  ✕
+                </button>
+              </>
+            )}
+            {moeNote && <span className="vram-fc-moe-opt__note">{moeNote}</span>}
+          </div>
         ) : null}
         {/* Placement ownership is always on screen. There is no operator switch: an app-owned
             launch carries -ts + fit off, and one without a split lets the engine place. SPLIT EQ

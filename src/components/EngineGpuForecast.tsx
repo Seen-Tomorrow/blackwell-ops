@@ -141,6 +141,10 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onPinSecondary,
     monitorFocus = false,
     onToggleMonitor,
+    moeCacheMib = 0,
+    moeOptimizerAuto = false,
+    onMoeOptimize,
+    onMoeApply,
   } = props;
   const { theme } = useTheme();
 
@@ -518,6 +522,10 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               dualActive={dualActive}
               dualOrient={dualOrient}
               secondaryPane={secondaryPane}
+              moeCacheMib={moeCacheMib}
+              moeOptimizerAuto={moeOptimizerAuto}
+              onMoeOptimize={onMoeOptimize}
+              onMoeApply={onMoeApply}
             />
             {/* Overlay veil — does not change VramBadge face law */}
             {harness.veilNode}
@@ -677,4 +685,17 @@ export interface EngineGpuForecastProps {
   onPinSecondary?: (slotIdx: number) => void;
   monitorFocus?: boolean;
   onToggleMonitor?: () => void;
+
+  /** MOE optimizer: cache size in the config, the measured sizing, and how to write it. */
+  moeCacheMib?: number;
+  moeOptimizerAuto?: boolean;
+  onMoeOptimize?: () => Promise<{
+    device: number;
+    free_mib: number;
+    used_mib: number;
+    reserve_mib: number;
+    recommended_mib: number;
+    engine_loaded: boolean;
+  }>;
+  onMoeApply?: (cacheMib: number) => void;
 }
