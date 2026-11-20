@@ -58,6 +58,12 @@ debug = "line-tables-only"
 # Keep high so the final blackwell-ops unit can use the 32-core box.
 codegen-units = 256
 
+# Hashing (and JSON/HTTP/compression) are unoptimized at the DEV default opt-level 0, so a
+# multi-GB integrity check crawls at ~70 MB/s on a Gen5 drive while the CPU sits idle: it is
+# the build, not the disk. Hashing gets optimized code in DEV builds too; REL is unaffected.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 opt-level = 3
 # Prefer link speed over last-percent runtime; pack/ship does many clean release builds.
