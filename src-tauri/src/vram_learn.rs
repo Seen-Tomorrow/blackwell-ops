@@ -649,6 +649,30 @@ pub fn snapshot_from_config(
     }
 }
 
+/// Expert placement of a launch, as part of the learned identity.
+///
+/// A `-cmoe` launch moves the expert weights to host RAM: its device footprint is a fraction of a
+/// plain launch's. Recording it under the plain key would hand the forecast "this model fits" for
+/// a launch that does not. Empty for every launch that keeps the experts on the GPU.
+///
+/// The cache size is part of the token because it is part of the footprint: 4 GiB and 16 GiB of
+/// expert cache are different rows of the same model.
+fn experts_token(cpu_moe: &str, cache_mib: &str) -> String {
+    let on = matches!(cpu_moe.trim().to_lowercase().as_str(), "on" | "true" | "1");
+    if !on {
+        return String::new();
+    }
+    let cache = cache_mib.trim().parse::<u64>().unwrap_or(0);
+    format!("|experts=cpu-cache:{cache}")
+}
+
+fn experts_token_from_config(config: &EngineConfig) -> String {
+    experts_token(
+        &config.get_param_str("cpu_moe").unwrap_or_default(),
+        &config.get_param_str("moe_cache_mib").unwrap_or_default(),
+    )
+}
+
 fn memory_mode_from_config(config: &EngineConfig) -> String {
     config
         .extra_params
@@ -688,7 +712,7 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
         &draft_path_from_config(config),
         &ubatch,
         parallel,
-    )
+    ) + &experts_token_from_config(config)
 }
 
 /// Prefer manufactured-GB topo (`96` / `24+96`) over GPU index.
@@ -723,6 +747,7 @@ fn lookup_learned_vram_fuzzy(
     draft_key: &str,
     ubatch: &str,
     parallel: u32,
+    placement: &str,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
     let primary = learned_vram_key_with_draft_ubatch(
@@ -739,7 +764,7 @@ fn lookup_learned_vram_fuzzy(
         draft_key,
         ubatch,
         parallel,
-    );
+    ) + placement;
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
     }
@@ -768,7 +793,7 @@ fn lookup_learned_vram_fuzzy(
             draft_key,
             ubatch,
             parallel,
-        );
+        ) + placement;
         if let Some(entry) = store.entries.get(&key_alt) {
             return Some(entry.clone());
         }
@@ -882,6 +907,7 @@ pub fn lookup_learned_vram_for_config(
         .get_param_str("parallel")
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or(1);
+    let experts = experts_token_from_config(config);
     lookup_learned_vram_fuzzy(
         model_path,
         provider_id,
@@ -902,6 +928,7 @@ pub fn lookup_learned_vram_for_config(
         &draft_path_from_config(config),
         &ubatch,
         parallel,
+        &experts,
     )
 }
 
@@ -2478,6 +2505,7 @@ pub fn get_learned_vram(
         &draft,
         &ubatch.map(|b| b.to_string()).unwrap_or_default(),
         parallel.unwrap_or(1),
+        "",
     ) {
         Some(entry) => entry,
         None => {
@@ -3363,5 +3391,27 @@ mod compute_model_tests {
             compute_family_key(key),
             "m.gguf|ggml-master|kv=q8_0|topo=96|split=layer|offload=regular"
         );
+    }
+}
+
+#[cfg(test)]
+mod experts_placement_tests {
+    use super::experts_token;
+
+    /// A plain launch keeps the historical key: the forecast's learned history must not move.
+    #[test]
+    fn plain_launch_has_no_placement_token() {
+        assert_eq!(experts_token("off", "0"), "");
+        assert_eq!(experts_token("", ""), "");
+    }
+
+    /// A CPU-expert launch must never share a key with the plain one, and the cache size is part
+    /// of the footprint: 4 GiB and 16 GiB of expert cache are different rows.
+    #[test]
+    fn cpu_experts_get_their_own_namespace() {
+        assert_eq!(experts_token("on", "4096"), "|experts=cpu-cache:4096");
+        assert_eq!(experts_token("on", "16384"), "|experts=cpu-cache:16384");
+        assert_ne!(experts_token("on", "4096"), experts_token("on", "16384"));
+        assert_ne!(experts_token("on", "4096"), experts_token("off", "4096"));
     }
 }
