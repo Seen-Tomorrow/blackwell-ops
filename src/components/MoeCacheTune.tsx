@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  ensureTuneStatusSubscription,
+  getTuneStatus,
+  markTuneFinished,
+  markTuneStarted,
+  subscribeTuneStatus,
+} from "../lib/moeTuneStatus";
 import { invoke } from "@tauri-apps/api/core";
-import { useTauriListen } from "../hooks/useTauriListen";
 
 /** Shape returned by the Rust `moe_tune_run` command. */
 interface MoeTuneComponents {
@@ -51,13 +57,6 @@ function verdictLine(report: MoeTuneReport): string | null {
   return `${label} ${gain}${noise}`.trim();
 }
 
-interface TuneProgress {
-  index: number;
-  total: number;
-  status: "running" | "done";
-  tps?: number | null;
-}
-
 interface MoeCacheTuneProps {
   config: Record<string, any>;
   modelPath: string | null;
@@ -102,9 +101,10 @@ function vramLine(report: MoeTuneReport): string | null {
  * Results are STAGED - the knobs change only when the user applies them.
  */
 export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, updateParam }: MoeCacheTuneProps) {
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(0);
-  const [total, setTotal] = useState(0);
+  const [status, setStatus] = useState(getTuneStatus);
+  const running = status.running;
+  const done = status.done;
+  const total = status.total;
   const [report, setReport] = useState<MoeTuneReport | null>(null);
   const [staged, setStaged] = useState<{
     cpu_moe: boolean;
@@ -149,23 +149,22 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
     config.device,
   ]);
 
-  useTauriListen<TuneProgress>("moe-tune-progress", (evt) => {
-    if (!evt) return;
-    setTotal(evt.total);
-    setDone(evt.status === "done" ? evt.index + 1 : evt.index);
-  });
+  // The subscription is page-wide (see lib/moeTuneStatus): a remount re-reads the live status.
+  useEffect(() => {
+    ensureTuneStatusSubscription();
+    return subscribeTuneStatus(() => setStatus(getTuneStatus()));
+  }, []);
 
   const canRun = !running && modelIsMoe && !!modelPath;
 
   const run = useCallback(async () => {
     if (!modelPath || running) return;
-    setRunning(true);
+    markTuneStarted();
+    setStatus(getTuneStatus());
     setError(null);
     setReport(null);
     setStaged(null);
     setApplied(false);
-    setDone(0);
-    setTotal(0);
     try {
       const result = await invoke<MoeTuneReport>("moe_tune_run", {
         modelPath,
@@ -188,7 +187,8 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
     } catch (e) {
       setError(String(e));
     } finally {
-      setRunning(false);
+      markTuneFinished();
+      setStatus(getTuneStatus());
     }
   }, [config, modelPath, providerId, running]);
 

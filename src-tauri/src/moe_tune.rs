@@ -884,9 +884,18 @@ pub async fn moe_tune_run(
     ran += 1;
 
     // The plan is known only now: 1 baseline + 1 all-on-GPU + cache steps + 2 share points + pairs.
+    //
+    // The budget comes from the free VRAM *measured while the cache-off run was loaded*, not from
+    // the ledger estimate: that reading already includes the weights, KV, compute and the
+    // allocator/graph slack, and it is what the card actually had left. Falling back to the ledger
+    // (and then to the bare free figure) keeps the first run on an unpatched engine usable.
     let budget = match &explicit {
         Some(_) => start_free_mib,
-        None => compute_budget(start_free_mib, components),
+        None => points
+            .first()
+            .and_then(|p| p.vram_free_mib)
+            .map(|free| free.saturating_sub(RESERVE_MIB))
+            .unwrap_or_else(|| compute_budget(start_free_mib, components)),
     };
     let steps = match &explicit {
         Some(_) => Vec::new(),
@@ -896,19 +905,40 @@ pub async fn moe_tune_run(
     let total = 1 + 1 + steps.len() + share_points + CONFIRM_PAIRS * 2;
 
     // ── Phase 1: the plain all-on-GPU launch. It is the answer for a model that fits, and the
-    // number any cache has to beat.
+    // number any cache has to beat. A file larger than the free VRAM cannot fit, and launching it
+    // anyway pages for minutes and drags the card to 0 MiB free - the pressure this test must not
+    // create. Skip it and say why.
     let full_gpu = MoeTuneCandidate {
         cpu_moe: false,
         cache_mib: 0,
         cpu_share: 0.0,
     };
-    points.push(
-        measure_candidate(
-            &app, &binary, &profile, &gpu_mask, &model_path, ctx_size, &kv_quant, &split_mode,
-            tensor_split.as_deref(), batch, ubatch, target_device, &log_dir, &full_gpu, ran, total,
-        )
-        .await,
-    );
+    let weights_mib = model_size_bytes / (1024 * 1024);
+    if weights_mib.saturating_add(RESERVE_MIB) <= start_free_mib {
+        points.push(
+            measure_candidate(
+                &app, &binary, &profile, &gpu_mask, &model_path, ctx_size, &kv_quant, &split_mode,
+                tensor_split.as_deref(), batch, ubatch, target_device, &log_dir, &full_gpu, ran, total,
+            )
+            .await,
+        );
+    } else {
+        log::info!(
+            "[moe-tune] skipping the all-on-GPU launch: {weights_mib} MiB of weights vs {start_free_mib} MiB free"
+        );
+        points.push(MoeTunePoint {
+            cpu_moe: false,
+            cache_mib: 0,
+            cpu_share: 0.0,
+            tps: None,
+            error: Some(format!(
+                "skipped - {weights_mib} MiB of weights does not fit in {start_free_mib} MiB of free VRAM"
+            )),
+            vram_used_mib: None,
+            vram_free_mib: None,
+            components: None,
+        });
+    }
     ran += 1;
 
     // ── Phase 2: the granular cache sizes from the computed budget (or the caller's list).
