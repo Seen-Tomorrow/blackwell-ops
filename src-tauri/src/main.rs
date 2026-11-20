@@ -597,6 +597,7 @@ async fn main() {
             // FIT Scanner commands — the probe lives in fit_scanner with the rest of the domain
             fit_scanner::fit_scan_model,
             moe_tune::moe_tune_run,
+            moe_tune::moe_tune_history,
             vram_ballast_ctl::vram_ballast_start,
             vram_ballast_ctl::vram_ballast_stop,
             vram_ballast_ctl::vram_ballast_status,

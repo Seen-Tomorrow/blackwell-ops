@@ -1,14 +1,24 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriListen } from "../hooks/useTauriListen";
 
 /** Shape returned by the Rust `moe_tune_run` command. */
+interface MoeTuneComponents {
+  model_mib: number;
+  kv_mib: number;
+  compute_mib: number;
+  host_mib: number;
+}
+
 interface MoeTunePoint {
   cpu_moe: boolean;
   cache_mib: number;
   cpu_share: number;
   tps: number | null;
   error: string | null;
+  vram_used_mib: number | null;
+  vram_free_mib: number | null;
+  components: MoeTuneComponents | null;
 }
 
 interface MoeTuneReport {
@@ -20,6 +30,10 @@ interface MoeTuneReport {
   full_gpu_error: string | null;
   budget_mib: number;
   seconds: number;
+  measured_at: string;
+  driver_version: string | null;
+  engine_build: string | null;
+  start_free_mib: number;
 }
 
 interface TuneProgress {
@@ -41,6 +55,32 @@ function gilb(mib: number): string {
   return `${(mib / 1024).toFixed(1)} GiB`;
 }
 
+/** "3d ago", "12m ago" - enough to judge whether a stored run is still believable. */
+function relativeAge(iso: string): string {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return "?";
+  const secs = Math.max(0, (Date.now() - then) / 1000);
+  if (secs < 90) return "just now";
+  if (secs < 5400) return `${Math.round(secs / 60)}m ago`;
+  if (secs < 172800) return `${Math.round(secs / 3600)}h ago`;
+  return `${Math.round(secs / 86400)}d ago`;
+}
+
+/** The VRAM the winning configuration actually asked for, and what it was made of. */
+function vramLine(report: MoeTuneReport): string | null {
+  const best = report.best;
+  if (!best) return null;
+  const point = report.points.find(
+    (p) => p.cpu_moe === best.cpu_moe && p.cache_mib === best.cache_mib && p.cpu_share === best.cpu_share,
+  );
+  if (!point?.vram_used_mib) return null;
+  const c = point.components;
+  const parts = c
+    ? ` (model ${(c.model_mib / 1024).toFixed(1)} + kv ${(c.kv_mib / 1024).toFixed(1)} + compute ${(c.compute_mib / 1024).toFixed(1)}${best.cpu_moe ? ` + cache ${(best.cache_mib / 1024).toFixed(1)}` : ""})`
+    : "";
+  return `VRAM ${gilb(point.vram_used_mib)}${parts}`;
+}
+
 /**
  * Measures the expert cache instead of guessing it: three real launches (cache off, a quarter and
  * three quarters of the free VRAM, plus CPU compute for the misses) and reports the measured t/s.
@@ -58,6 +98,40 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
   } | null>(null);
   const [applied, setApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Last stored run for this exact model + placement, loaded on mount. */
+  const [history, setHistory] = useState<MoeTuneReport | null>(null);
+
+  useEffect(() => {
+    if (!modelPath) {
+      setHistory(null);
+      return;
+    }
+    let cancelled = false;
+    void invoke<MoeTuneReport | null>("moe_tune_history", {
+      modelPath,
+      ctxSize: Number(config.ctx) || 32768,
+      kvQuant: String(config.kv_quant ?? "f16"),
+      splitMode: String(config.split ?? "none"),
+      tensorSplit: config.tensor_split ? String(config.tensor_split) : null,
+      device: String(config.device ?? "GPU-0"),
+    })
+      .then((stored) => {
+        if (!cancelled) setHistory(stored);
+      })
+      .catch(() => {
+        if (!cancelled) setHistory(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    modelPath,
+    config.ctx,
+    config.kv_quant,
+    config.split,
+    config.tensor_split,
+    config.device,
+  ]);
 
   useTauriListen<TuneProgress>("moe-tune-progress", (evt) => {
     if (!evt) return;
@@ -139,6 +213,42 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
       >
         {label}
       </button>
+      {history?.best && !staged && !running && (
+        <>
+          <span
+            className="moe-tune__staged type-micro font-mono"
+            title={
+              [
+                `measured ${relativeAge(history.measured_at)}`,
+                history.engine_build ? `engine ${history.engine_build}` : null,
+                history.driver_version ? `driver ${history.driver_version}` : null,
+                `free at start ${history.start_free_mib} MiB`,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            }
+          >
+            stored:{" "}
+            {history.best.cpu_moe
+              ? `${gilb(history.best.cache_mib)} · share ${history.best.cpu_share.toFixed(2)}`
+              : "full GPU · no cache"}
+            {history.best_tps != null ? ` · ${history.best_tps.toFixed(1)} t/s` : ""}
+            {vramLine(history) ? ` · ${vramLine(history)}` : ""}
+            {` · ${relativeAge(history.measured_at)}`}
+          </span>
+          <button
+            type="button"
+            className="value-chip font-mono moe-tune__btn"
+            onClick={() => {
+              setStaged(history.best);
+              setReport(history);
+            }}
+            title="Stage the stored values again without re-running the calibration"
+          >
+            REUSE
+          </button>
+        </>
+      )}
       {staged && !running && (
         <>
           <span
@@ -175,6 +285,9 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
             DISCARD
           </button>
         </>
+      )}
+      {report && !staged && !running && !applied && vramLine(report) && (
+        <span className="moe-tune__staged type-micro font-mono">{vramLine(report)}</span>
       )}
       {applied && !staged && !running && (
         <span className="moe-tune__staged type-micro font-mono">applied</span>

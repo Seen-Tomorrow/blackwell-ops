@@ -33,16 +33,32 @@ pub struct MoeTuneCandidate {
     pub cpu_share: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// Where the measured VRAM went, from the engine's own ledger when the build carries it.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct MoeTuneComponents {
+    pub model_mib: u64,
+    pub kv_mib: u64,
+    pub compute_mib: u64,
+    pub host_mib: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoeTunePoint {
     pub cpu_moe: bool,
     pub cache_mib: u32,
     pub cpu_share: f64,
     pub tps: Option<f64>,
     pub error: Option<String>,
+    /// NVML `used` (process-attributed) while this configuration was loaded.
+    #[serde(default)]
+    pub vram_used_mib: Option<u64>,
+    #[serde(default)]
+    pub vram_free_mib: Option<u64>,
+    #[serde(default)]
+    pub components: Option<MoeTuneComponents>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoeTuneReport {
     pub points: Vec<MoeTunePoint>,
     /// Best measured configuration - `None` when every run failed.
@@ -57,6 +73,30 @@ pub struct MoeTuneReport {
     /// Usable VRAM the candidates were derived from, MiB (0 when the caller supplied its own).
     pub budget_mib: u64,
     pub seconds: f64,
+    // ── identity + evidence: what makes this result reusable later ──────────
+    #[serde(default)]
+    pub measured_at: String,
+    #[serde(default)]
+    pub model_path: String,
+    #[serde(default)]
+    pub model_size_bytes: u64,
+    #[serde(default)]
+    pub ctx_size: u64,
+    #[serde(default)]
+    pub kv_quant: String,
+    #[serde(default)]
+    pub split_mode: String,
+    #[serde(default)]
+    pub tensor_split: Option<String>,
+    #[serde(default)]
+    pub gpu_mask: String,
+    #[serde(default)]
+    pub engine_build: Option<String>,
+    #[serde(default)]
+    pub driver_version: Option<String>,
+    /// Free VRAM on the target cards when the run started (what the budget was derived from).
+    #[serde(default)]
+    pub start_free_mib: u64,
 }
 
 /// Round to the 256 MiB step the cache flag is tuned in.
@@ -238,7 +278,67 @@ fn log_tail(path: &std::path::Path) -> String {
     chars[start..].iter().collect()
 }
 
-/// One measured launch: spawn, wait for health, generate 512 tokens, read the timing, kill.
+/// What one measured launch produced: the speed plus the memory it actually used.
+#[derive(Debug, Clone, Default)]
+struct Measurement {
+    tps: f64,
+    vram_used_mib: Option<u64>,
+    vram_free_mib: Option<u64>,
+    components: Option<MoeTuneComponents>,
+}
+
+/// NVML `used`/`free` for one card. `used` is process-attributed, so an idle card reads 0.
+fn sample_vram(index: u32) -> (Option<u64>, Option<u64>) {
+    let Some(samples) = crate::nvml_metrics::scan() else {
+        return (None, None);
+    };
+    match samples.iter().find(|s| s.index == index) {
+        Some(s) => (Some(s.memory_used_mib), Some(s.memory_free_mib)),
+        None => (None, None),
+    }
+}
+
+/// Read the engine's own ledger (`/memory`, present only in a memory-patched build) and fold it into
+/// model / KV / compute / host. Missing endpoint or unpatched build simply yields `None`.
+async fn fetch_components(client: &reqwest::Client, base: &str) -> Option<MoeTuneComponents> {
+    let payload: serde_json::Value = client
+        .get(format!("{base}/memory"))
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    let ledger = payload.get("ledger")?.as_array()?;
+    if ledger.is_empty() {
+        return None;
+    }
+    let mut c = MoeTuneComponents::default();
+    for entry in ledger {
+        let mib = entry.get("mib").and_then(|m| m.as_u64()).unwrap_or(0);
+        let kind = entry.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+        let device = entry.get("device").and_then(|d| d.as_str()).unwrap_or("");
+        if device.eq_ignore_ascii_case("CUDA_Host") || device.eq_ignore_ascii_case("host") {
+            c.host_mib += mib;
+            continue;
+        }
+        match kind {
+            "model" => c.model_mib += mib,
+            "kv" | "rs" | "rotation" | "dsv4_state" => c.kv_mib += mib,
+            _ => c.compute_mib += mib,
+        }
+    }
+    if c.host_mib == 0 {
+        if let Some(host) = payload.get("host_self_mib").and_then(|h| h.as_u64()) {
+            c.host_mib = host;
+        }
+    }
+    Some(c)
+}
+
+/// One measured launch: spawn, wait for health, read the ledger, generate 512 tokens, read the
+/// timing and the VRAM it left in use, kill.
 async fn run_one(
     binary: &PathBuf,
     profile: &str,
@@ -246,7 +346,8 @@ async fn run_one(
     args: &[String],
     port: u16,
     log_path: &std::path::Path,
-) -> Result<f64, String> {
+    device_index: u32,
+) -> Result<Measurement, String> {
     if let Some(parent) = log_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -298,6 +399,8 @@ async fn run_one(
             _ => tokio::time::sleep(HEALTH_POLL).await,
         }
     }
+
+    let components = fetch_components(&client, &base).await;
 
     let body = serde_json::json!({
         "prompt": PROMPT,
@@ -353,7 +456,14 @@ async fn run_one(
         ));
     }
     let _ = std::io::stdout().flush();
-    Ok(tps)
+    // Sample after generation: the expert cache is warm and any prompt-path loan has been paid.
+    let (vram_used_mib, vram_free_mib) = sample_vram(device_index);
+    Ok(Measurement {
+        tps,
+        vram_used_mib,
+        vram_free_mib,
+        components,
+    })
 }
 
 /// Usable VRAM for the expert cache on the cards this launch may touch, MiB.
@@ -370,6 +480,96 @@ fn cache_budget_mib(gpu_mask: &str) -> u64 {
         .filter(|s| targets.is_empty() || targets.contains(&s.index))
         .map(|s| s.memory_free_mib)
         .sum()
+}
+
+/// FNV-1a over the identity string: a short, stable filename, no dependency.
+fn store_key(identity: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in identity.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Everything that makes a result reusable: change any of it and the numbers are not this config's.
+fn identity(
+    model_path: &str,
+    model_size_bytes: u64,
+    ctx_size: usize,
+    kv_quant: &str,
+    split_mode: &str,
+    tensor_split: Option<&str>,
+    gpu_mask: &str,
+) -> String {
+    let ts = tensor_split.unwrap_or("").trim();
+    format!(
+        "v1|{model_path}|{model_size_bytes}|ctx={ctx_size}|kv={}|split={}|ts={ts}|gpu={gpu_mask}",
+        kv_quant.to_lowercase(),
+        split_mode.to_lowercase()
+    )
+}
+
+fn store_path(key: &str) -> std::path::PathBuf {
+    crate::config::cache_dir()
+        .join("moe-tune")
+        .join(format!("{key}.json"))
+}
+
+fn save_report(report: &MoeTuneReport, key: &str) -> Result<(), String> {
+    let path = store_path(key);
+    let stored = StoredTune {
+        identity: format!(
+            "{}|ctx={}|kv={}|split={}|ts={}|gpu={}",
+            report.model_path,
+            report.ctx_size,
+            report.kv_quant,
+            report.split_mode,
+            report.tensor_split.clone().unwrap_or_default(),
+            report.gpu_mask
+        ),
+        report: report.clone(),
+    };
+    crate::fs_util::write_json_atomic(&path, &stored)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StoredTune {
+    /// Human-readable identity; the filename is its hash.
+    identity: String,
+    report: MoeTuneReport,
+}
+
+#[tauri::command]
+pub async fn moe_tune_history(
+    model_path: String,
+    ctx_size: usize,
+    kv_quant: String,
+    split_mode: String,
+    tensor_split: Option<String>,
+    device: String,
+    gpu_count: Option<usize>,
+) -> Result<Option<MoeTuneReport>, String> {
+    let size = std::fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0);
+    let gpus = gpu_count.unwrap_or_else(crate::telemetry::detect_gpu_count);
+    let mask = crate::engine_utils::compute_gpu_mask_from_params(&device, &split_mode, gpus, false);
+    let id = identity(
+        &model_path,
+        size,
+        ctx_size,
+        &kv_quant,
+        &split_mode,
+        tensor_split.as_deref(),
+        &mask,
+    );
+    let path = store_path(&store_key(&id));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let stored: StoredTune =
+        serde_json::from_str(&text).map_err(|e| format!("cannot parse {}: {e}", path.display()))?;
+    Ok(Some(stored.report))
 }
 
 #[tauri::command]
@@ -420,9 +620,25 @@ pub async fn moe_tune_run(
     let profile = crate::engine_utils::binary_profile_from_path(&binary)
         .unwrap_or_else(|| crate::config::DEFAULT_BINARY_PROFILE.to_string());
 
+    let model_size_bytes = std::fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0);
     let gpu_count = crate::telemetry::detect_gpu_count();
     let gpu_mask =
         crate::engine_utils::compute_gpu_mask_from_params(&device, &split_mode, gpu_count, false);
+    let identity = identity(
+        &model_path,
+        model_size_bytes,
+        ctx_size,
+        &kv_quant,
+        &split_mode,
+        tensor_split.as_deref(),
+        &gpu_mask,
+    );
+    let target_device: u32 = gpu_mask
+        .split(',')
+        .next()
+        .and_then(|p| p.trim().parse().ok())
+        .unwrap_or(0);
+    let start_free_mib = cache_budget_mib(&gpu_mask);
 
     // A calibration launch allocates real VRAM; refuse rather than fight an engine for the card.
     // DEV may proceed on an occupied card on purpose: that is how the VRAM ballast turns a 96 GB
@@ -443,7 +659,7 @@ pub async fn moe_tune_run(
         }
     }
 
-    let budget = cache_budget_mib(&gpu_mask);
+    let budget = start_free_mib;
     let candidates = candidates.unwrap_or_else(|| candidates_for_budget(budget));
     if candidates.is_empty() {
         return Err("no calibration candidates".to_string());
@@ -483,10 +699,17 @@ pub async fn moe_tune_run(
             }),
         );
 
-        let measured = run_one(&binary, &profile, &gpu_mask, &args, port, &log_path).await;
-        let (tps, error) = match measured {
-            Ok(tps) => (Some(tps), None),
-            Err(e) => (None, Some(e)),
+        let measured =
+            run_one(&binary, &profile, &gpu_mask, &args, port, &log_path, target_device).await;
+        let (tps, error, vram_used_mib, vram_free_mib, components) = match measured {
+            Ok(m) => (
+                Some(m.tps),
+                None,
+                m.vram_used_mib,
+                m.vram_free_mib,
+                m.components,
+            ),
+            Err(e) => (None, Some(e), None, None, None),
         };
         if let Some(e) = &error {
             log::warn!(
@@ -501,6 +724,9 @@ pub async fn moe_tune_run(
             cpu_share: cand.cpu_share,
             tps,
             error,
+            vram_used_mib,
+            vram_free_mib,
+            components,
         });
         let _ = app.emit(
             "moe-tune-progress",
@@ -524,7 +750,9 @@ pub async fn moe_tune_run(
     let full_gpu = points.iter().find(|p| !p.cpu_moe);
     let full_gpu_tps = full_gpu.and_then(|p| p.tps);
     let full_gpu_error = full_gpu.and_then(|p| p.error.clone());
-    Ok(MoeTuneReport {
+    let driver_version = crate::nvml_metrics::scan()
+        .and_then(|s| s.first().and_then(|g| g.driver_version.clone()));
+    let report = MoeTuneReport {
         best: best.map(|(c, _)| c),
         best_tps: best.map(|(_, t)| t),
         baseline_tps,
@@ -533,7 +761,23 @@ pub async fn moe_tune_run(
         budget_mib: budget,
         points,
         seconds: started.elapsed().as_secs_f64(),
-    })
+        measured_at: chrono::Utc::now().to_rfc3339(),
+        model_path: model_path.clone(),
+        model_size_bytes,
+        ctx_size: ctx_size as u64,
+        kv_quant: kv_quant.clone(),
+        split_mode: split_mode.clone(),
+        tensor_split: tensor_split.clone(),
+        gpu_mask: gpu_mask.clone(),
+        // The sidecar commit file sits next to the binary and needs no probe process.
+        engine_build: crate::engine_build_info::read_sidecar_commit(&binary),
+        driver_version,
+        start_free_mib,
+    };
+    if let Err(e) = save_report(&report, &store_key(&identity)) {
+        log::warn!("[moe-tune] could not store the report: {e}");
+    }
+    Ok(report)
 }
 
 #[cfg(test)]
@@ -547,6 +791,9 @@ mod tests {
             cpu_share,
             tps,
             error: None,
+            vram_used_mib: None,
+            vram_free_mib: None,
+            components: None,
         }
     }
 
@@ -587,6 +834,9 @@ mod tests {
             cpu_share: 0.0,
             tps: Some(80.0),
             error: None,
+            vram_used_mib: None,
+            vram_free_mib: None,
+            components: None,
         };
         let cache = point(24576, 0.0, Some(81.0)); // +1.25 % - inside the band
         let (best, _) = pick_best(&[gpu.clone(), cache]).expect("a winner");
