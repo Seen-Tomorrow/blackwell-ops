@@ -42,7 +42,9 @@ pub struct MoeOverdriveRecord {
 }
 
 impl MoeOverdriveRecord {
-    /// Gain of the cached run over the calibration run, when both were measured.
+    /// Gain of the cached run over the calibration run, when both were measured. The screen
+    /// computes it from the stored numbers; this stays as the one definition plus its test.
+    #[allow(dead_code)]
     pub fn gain_pct(&self) -> Option<f64> {
         match (self.tps_before, self.tps_after) {
             (Some(before), Some(after)) if before > 0.0 => Some((after / before - 1.0) * 100.0),
@@ -131,8 +133,13 @@ pub async fn moe_overdrive_record(
 
 #[tauri::command]
 pub async fn moe_overdrive_record_save(
-    record: MoeOverdriveRecord,
+    mut record: MoeOverdriveRecord,
 ) -> Result<OverdriveRecordView, String> {
+    // The caller does not have to know the file size: derive it from the path, so the record lands
+    // under the same identity the read path computes.
+    if let Ok(meta) = std::fs::metadata(&record.model_path) {
+        record.model_size_bytes = meta.len();
+    }
     let identity = record_identity(
         &record.model_path,
         record.model_size_bytes,
