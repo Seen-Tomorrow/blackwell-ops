@@ -96,6 +96,7 @@ export default function ExpertCachePanel({
                       onChange={(value) => onChange(def.key, value)}
                       step={def.step ?? 256}
                       values={values}
+                      fieldFormat="grouped"
                     />
                     <span className="cockpit-expert-unit type-micro font-mono">MiB</span>
                   </span>

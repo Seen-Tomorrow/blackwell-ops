@@ -55,6 +55,11 @@ export interface SliderParamSharedProps {
   forecastRibbonOnTrack?: boolean;
   /** Model's trained context window — labeled on the scale, never a tick/mark. */
   trainedCtx?: number | null;
+  /**
+   * How the value field prints the number: "compact" (default, CTX style: 7K) or "grouped"
+   * (plain MiB with thousands separators: 7,256). Ticks stay compact either way.
+   */
+  fieldFormat?: "compact" | "grouped";
 }
 
 export function parseSliderValues(values: (string | number)[]): number[] {
@@ -271,7 +276,11 @@ export function useSliderParamState({
   onChange,
   step = 1024,
   values = [],
-}: Pick<SliderParamSharedProps, "currentValue" | "onChange" | "step" | "values">) {
+  fieldFormat = "compact",
+}: Pick<
+  SliderParamSharedProps,
+  "currentValue" | "onChange" | "step" | "values" | "fieldFormat"
+>) {
   const numericValues = parseSliderValues(values);
   const min = numericValues.length > 0 ? Math.min(...numericValues) : 2048;
   const max = numericValues.length > 0 ? Math.max(...numericValues) : 524288;
@@ -284,7 +293,10 @@ export function useSliderParamState({
   const [editing, setEditing] = useState(false);
   const [draftStr, setDraftStr] = useState(String(safeValue));
 
-  const displayLabel = formatCtxChipLabel(safeValue);
+  const displayLabel =
+    fieldFormat === "grouped"
+      ? safeValue.toLocaleString("en-US")
+      : formatCtxChipLabel(safeValue);
 
   useLayoutEffect(() => {
     if (!editing) {
@@ -307,7 +319,8 @@ export function useSliderParamState({
   }, [safeValue]);
 
   const finishEdit = useCallback(() => {
-    const parsed = parseCtxTokenInput(draftStr);
+    // The grouped field prints "7,256"; commas are thousands separators, not syntax.
+    const parsed = parseCtxTokenInput(draftStr.replace(/,/g, ""));
     commitValue(parsed ?? safeValue);
     setEditing(false);
   }, [draftStr, safeValue, commitValue]);
