@@ -7,6 +7,11 @@ edition = "2021"
 name = "blackwell-ops"
 path = "src/main.rs"
 
+# DEV tool: hold raw VRAM so a card looks smaller. Not part of the app or its release.
+[[bin]]
+name = "vram-ballast"
+path = "src/bin/vram-ballast.rs"
+
 [features]
 default = []
 
