@@ -115,6 +115,12 @@ export default function MoeOverdrive({
     };
   }, [port, deviceIndex]);
 
+  const c = ledger?.components;
+  // With -cmoe the experts sit in host RAM (host_mib is tens of GiB, device model is small); a
+  // launch without it holds everything on the card, and then there is nothing for a cache to do.
+  const allOnGpu =
+    !!c && c.host_mib < 1024 && c.model_mib > 4096;
+
   const runProbe = useCallback(async () => {
     if (port == null) {
       setNote("no engine port - launch the engine first (the probe measures the real launch)");
@@ -129,7 +135,11 @@ export default function MoeOverdrive({
       });
       setProbe(result);
       if (result.recommended_mib < 1024) {
-        setNote(`only ${num(result.free_after_load_mib)} MiB left - nothing to cache`);
+        setNote(
+          allOnGpu
+            ? `the launch already holds ${gib(c?.model_mib ?? 0)} of weights on the GPU - there is nothing to cache. OVERDRIVE pays when the experts live in host RAM: enable CPU MOE, relaunch, then PROBE.`
+            : `only ${num(result.free_after_load_mib)} MiB left after the probe - no room for a cache on this shape`,
+        );
       } else {
         setStaged(result.recommended_mib);
       }
@@ -145,7 +155,6 @@ export default function MoeOverdrive({
     : 0;
   const ppTps = fusion?.prefillTpsSession ?? fusion?.prefillTpsInstant ?? 0;
 
-  const c = ledger?.components;
   const segments = useMemo(() => {
     const free = ledger?.free_mib ?? 0;
     const model = c?.model_mib ?? 0;
@@ -249,6 +258,16 @@ export default function MoeOverdrive({
                 ? `${Math.round(ctxTokens / 1024)}K · ${kvQuant ?? "f16"} · measured from the real launch`
                 : "measured from the real launch, not a model of it"}
           </span>
+        )}
+        {allOnGpu && (
+          <button
+            type="button"
+            className="moe-od__chip"
+            onClick={() => onApplyCache(0)}
+            title="cpu_moe=on with cache 0: experts go to host RAM, the next launch can be sized and cached"
+          >
+            ENABLE CPU MOE
+          </button>
         )}
         {staged != null && (
           <>
