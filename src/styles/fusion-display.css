@@ -6697,3 +6697,9 @@ html[data-industrial-bezel="brush"] {
   gap: 0.4rem;
   margin-top: 0.15rem;
 }
+
+.moe-od__learned {
+  font-size: var(--type-micro);
+  color: color-mix(in srgb, var(--theme-accent) 75%, transparent);
+  letter-spacing: 0.02em;
+}

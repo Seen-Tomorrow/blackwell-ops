@@ -2126,6 +2126,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }>("moe_cache_autosize", { deviceIndex });
   }, [config.device]);
 
+  /** RESET of the overdrive record also returns the launch to the plain path. */
+  const handleOverdriveReset = useCallback(() => {
+    updateParam("cpu_moe", "off");
+    updateParam("moe_cache_mib", 0);
+    updateParam("moe_cache_cpu_share", 0);
+  }, [updateParam]);
+
   const handleMoeApply = useCallback(
     (cacheMib: number) => {
       updateParam("cpu_moe", "on");
@@ -3160,9 +3167,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         showGpuAssign={Boolean(model && !modelIsDraftOnly && !modelIsAttachment && gpus.length > 0 && !fullAutoMode)}
         moeCacheMib={Number(config.moe_cache_mib ?? 0)}
         moeCpuExperts={String(config.cpu_moe ?? "off").toLowerCase() === "on"}
+        moeDraft={`${String(config.spec_type ?? "none")}:${String(
+          config[`${String(config.spec_type ?? "").toLowerCase()}_draft_model`] ?? "",
+        )}`}
+        moeDraftNMax={Number(
+          config.dflash_n_max ?? config.mtp_n_max ?? 0,
+        )}
         moeOptimizerAuto={fullAutoMode}
         onMoeOptimize={handleMoeOptimize}
         onMoeApply={handleMoeApply}
+        onOverdriveReset={handleOverdriveReset}
         gpus={gpus}
         deviceValue={config.device}
         splitValue={config.split}

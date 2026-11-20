@@ -144,9 +144,12 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onToggleMonitor,
     moeCacheMib = 0,
     moeCpuExperts = false,
+    moeDraft = "",
+    moeDraftNMax = 0,
     moeOptimizerAuto = false,
     onMoeOptimize,
     onMoeApply,
+    onOverdriveReset,
   } = props;
   const { theme } = useTheme();
 
@@ -535,9 +538,12 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               overdrivePort={overdrivePort}
               moeCacheMib={moeCacheMib}
               moeCpuExperts={moeCpuExperts}
+              moeDraft={moeDraft}
+              moeDraftNMax={moeDraftNMax}
               moeOptimizerAuto={moeOptimizerAuto}
               onMoeOptimize={onMoeOptimize}
               onMoeApply={onMoeApply}
+              onOverdriveReset={onOverdriveReset}
             />
             {/* Overlay veil — does not change VramBadge face law */}
             {harness.veilNode}
@@ -702,6 +708,8 @@ export interface EngineGpuForecastProps {
   moeCacheMib?: number;
   /** CPU MOE switch of the current config: the regime decides whether a cache can exist at all. */
   moeCpuExperts?: boolean;
+  moeDraft?: string;
+  moeDraftNMax?: number;
   moeOptimizerAuto?: boolean;
   onMoeOptimize?: () => Promise<{
     device: number;
@@ -712,4 +720,6 @@ export interface EngineGpuForecastProps {
     engine_loaded: boolean;
   }>;
   onMoeApply?: (cacheMib: number) => void;
+  /** RESET restores the plain launch path (cpu_moe off, cache 0), not just the record. */
+  onOverdriveReset?: () => void;
 }

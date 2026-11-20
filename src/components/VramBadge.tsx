@@ -56,11 +56,14 @@ interface VramBadgeProps {
   /** MOE optimizer: cache size, sizing result and how to write it. */
   moeCacheMib?: number;
   moeCpuExperts?: boolean;
+  moeDraft?: string;
+  moeDraftNMax?: number;
   /** Port of the running engine, even when no slot is selected (OVERDRIVE does not need fusion). */
   overdrivePort?: number | null;
   moeOptimizerAuto?: boolean;
   onMoeOptimize?: () => Promise<MoeCacheSizing>;
   onMoeApply?: (cacheMib: number) => void;
+  onOverdriveReset?: () => void;
   /** Bezel control: full-glass NVRAM snapshot log. */
   snapLogOpen?: boolean;
   onCloseSnapLog?: () => void;
@@ -197,10 +200,13 @@ export default function VramBadge({
   secondaryPane = null,
   moeCacheMib = 0,
   moeCpuExperts = false,
+  moeDraft = "",
+  moeDraftNMax = 0,
   overdrivePort = null,
   moeOptimizerAuto = false,
   onMoeOptimize,
   onMoeApply,
+  onOverdriveReset,
 }: VramBadgeProps) {
 
   // The plan arrives from EngineConfigPanel: the same object feeds the manifest's per-card
@@ -658,9 +664,15 @@ export default function VramBadge({
           deviceIndex={moeDeviceIndex}
           cacheMib={moeCacheMib}
           cpuMoe={moeCpuExperts}
+          modelPath={modelPath ?? ""}
+          splitMode={splitMode ?? "none"}
+          gpuMask={gpuMask}
+          draft={moeDraft}
+          draftNMax={moeDraftNMax}
           ctxTokens={ctxTokens}
           kvQuant={kvQuant}
           onApplyCache={(mib) => onMoeApply?.(mib)}
+          onReset={onOverdriveReset}
           onExit={() => setOverdriveActive(false)}
         />
       </div>

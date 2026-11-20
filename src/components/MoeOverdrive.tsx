@@ -27,6 +27,27 @@ interface OverdriveLedger {
   used_mib: number;
 }
 
+interface OverdriveRecord {
+  model_path: string;
+  model_size_bytes: number;
+  ctx_size: number;
+  kv_quant: string;
+  split_mode: string;
+  gpu_mask: string;
+  draft: string;
+  draft_n_max: number;
+  free_pp_mib: number;
+  free_tg_mib: number;
+  free_after_load_mib: number;
+  reserve_mib: number;
+  cache_mib: number;
+  tps_before: number | null;
+  tps_after: number | null;
+  engine_build: string | null;
+  driver_version: string | null;
+  measured_at: string;
+}
+
 interface OverdriveProbe {
   device: number;
   pp_free_mib: number;
@@ -47,6 +68,14 @@ export interface MoeOverdriveProps {
   cacheMib: number;
   /** Whether the current config keeps the experts in host RAM (cpu_moe=on). */
   cpuMoe?: boolean;
+  /** Identity inputs for the stored calibration. */
+  modelPath: string;
+  splitMode: string;
+  gpuMask: string;
+  draft?: string;
+  draftNMax?: number;
+  /** RESET: drop the record and put the launch back on the plain path. */
+  onReset?: () => void;
   /** Writes the cache knob (and the rest of the CPU-expert placement). */
   onApplyCache: (cacheMib: number) => void;
   /** Back to the forecast glass. */
@@ -61,6 +90,16 @@ function gib(mib: number): string {
   return `${(mib / 1024).toFixed(1)} GiB`;
 }
 
+function relativeAge(iso: string): string {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return "?";
+  const secs = Math.max(0, (Date.now() - then) / 1000);
+  if (secs < 90) return "just now";
+  if (secs < 5400) return `${Math.round(secs / 60)}m ago`;
+  if (secs < 172800) return `${Math.round(secs / 3600)}h ago`;
+  return `${Math.round(secs / 86400)}d ago`;
+}
+
 function num(mib: number): string {
   return mib.toLocaleString("en-US");
 }
@@ -71,6 +110,12 @@ export default function MoeOverdrive({
   deviceIndex,
   cacheMib,
   cpuMoe = false,
+  modelPath,
+  splitMode,
+  gpuMask,
+  draft = "",
+  draftNMax = 0,
+  onReset,
   onApplyCache,
   onExit,
   ctxTokens,
@@ -83,10 +128,92 @@ export default function MoeOverdrive({
   const [note, setNote] = useState<string | null>(null);
   const [staged, setStaged] = useState<number | null>(null);
   const [dialMib, setDialMib] = useState<number>(cacheMib);
+  const [record, setRecord] = useState<OverdriveRecord | null>(null);
 
   useEffect(() => {
     setDialMib(cacheMib);
   }, [cacheMib]);
+
+  const recordArgs = () => ({
+    modelPath,
+    ctxSize: Number(ctxTokens) || 32768,
+    kvQuant: kvQuant ?? "f16",
+    splitMode,
+    gpuMask,
+    draft,
+    draftNMax,
+  });
+
+  // A record from an earlier session: the dial starts at what was measured then, and the screen
+  // says when. Recalibration is explicit; nothing silently replaces it.
+  useEffect(() => {
+    if (!modelPath) {
+      setRecord(null);
+      return;
+    }
+    let cancelled = false;
+    void invoke<{ record: OverdriveRecord } | null>("moe_overdrive_record", recordArgs())
+      .then((stored) => {
+        if (cancelled) return;
+        setRecord(stored?.record ?? null);
+        if (stored?.record) setDialMib(stored.record.cache_mib);
+      })
+      .catch(() => {
+        if (!cancelled) setRecord(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelPath, ctxTokens, kvQuant, splitMode, gpuMask, draft, draftNMax]);
+
+  const resetRecord = useCallback(async () => {
+    try {
+      await invoke("moe_overdrive_record_clear", recordArgs());
+    } catch (e) {
+      setNote(String(e).split("\n")[0]);
+      return;
+    }
+    setRecord(null);
+    setProbe(null);
+    setStaged(null);
+    setDialMib(0);
+    onReset?.();
+    setNote("record cleared - the next launch is a plain one (CPU MOE off, cache 0)");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelPath, ctxTokens, kvQuant, splitMode, gpuMask, draft, draftNMax, onReset]);
+
+  const saveRecord = useCallback(
+    async (cacheMibValue: number, freePp: number, freeTg: number, freeAfter: number, reserve: number) => {
+      try {
+        await invoke("moe_overdrive_record_save", {
+          record: {
+            model_path: modelPath,
+            model_size_bytes: 0,
+            ctx_size: Number(ctxTokens) || 32768,
+            kv_quant: kvQuant ?? "f16",
+            split_mode: splitMode,
+            gpu_mask: gpuMask,
+            draft,
+            draft_n_max: draftNMax,
+            free_pp_mib: freePp,
+            free_tg_mib: freeTg,
+            free_after_load_mib: freeAfter,
+            reserve_mib: reserve,
+            cache_mib: cacheMibValue,
+            tps_before: null,
+            tps_after: null,
+            engine_build: null,
+            driver_version: null,
+            measured_at: new Date().toISOString(),
+          },
+        });
+      } catch (e) {
+        setNote(String(e).split("\n")[0]);
+      }
+    },
+    [modelPath, ctxTokens, kvQuant, splitMode, gpuMask, draft, draftNMax],
+  );
 
   const engineUp = port != null;
 
@@ -190,6 +317,17 @@ export default function MoeOverdrive({
         </span>
       </div>
 
+      {record && (
+        <div className="moe-od__learned">
+          stored: cache {num(record.cache_mib)} MiB · free {num(record.free_after_load_mib)} after load
+          {record.tps_after != null ? ` · ${record.tps_after.toFixed(1)} t/s` : ""}
+          {record.tps_before != null && record.tps_after != null && record.tps_before > 0
+            ? ` (${(((record.tps_after / record.tps_before) - 1) * 100).toFixed(0)}% vs cache 0)`
+            : ""}
+          {" · "}
+          {relativeAge(record.measured_at)}
+        </div>
+      )}
       {segments ? (
         <>
           <div className="moe-od__bar" role="img" aria-label="VRAM ledger of the loaded engine">
@@ -228,7 +366,18 @@ export default function MoeOverdrive({
         <button
           type="button"
           className="moe-od__chip"
-          onClick={() => onApplyCache(dialMib)}
+          onClick={() => {
+            onApplyCache(dialMib);
+            if (probe) {
+              void saveRecord(
+                dialMib,
+                probe.pp_free_mib,
+                probe.tg_free_mib,
+                probe.free_after_load_mib,
+                probe.reserve_mib,
+              );
+            }
+          }}
           title="Write cpu_moe=on, this cache and share 0 into the launch config"
         >
           WRITE
@@ -258,6 +407,16 @@ export default function MoeOverdrive({
                 ? `${Math.round(ctxTokens / 1024)}K · ${kvQuant ?? "f16"} · measured from the real launch`
                 : "measured from the real launch, not a model of it"}
           </span>
+        )}
+        {record && (
+          <button
+            type="button"
+            className="moe-od__chip"
+            onClick={() => void resetRecord()}
+            title="Forget the stored calibration and return the launch to the plain path (CPU MOE off, cache 0)"
+          >
+            RESET
+          </button>
         )}
         {!cpuMoe && (
           <button
