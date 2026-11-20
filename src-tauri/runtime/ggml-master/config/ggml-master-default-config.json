@@ -343,7 +343,7 @@
       ]
     },
     {
-      "default": "mmap",
+      "default": "dio",
       "dock": "",
       "flag": "--load-mode",
       "flag_pair": [],
@@ -359,7 +359,8 @@
       "values": [
         "mmap",
         "mlock",
-        "none"
+        "none",
+        "dio"
       ]
     },
     {
@@ -370,7 +371,6 @@
         8,
         14,
         16,
-        20,
         24
       ],
       "flag": "--spec-draft-n-max",
@@ -390,11 +390,11 @@
         3,
         4,
         6,
+        7,
         8,
         12,
         14,
         16,
-        20,
         24
       ]
     },
@@ -478,7 +478,7 @@
       ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_n_max",
       "label": "DRAFT-N-MAX",
       "note": "DFlash: maximum draft tokens per speculative step.",
@@ -494,6 +494,7 @@
         4,
         5,
         6,
+        7,
         8,
         12,
         16
@@ -508,7 +509,7 @@
       ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_n_min",
       "label": "DRAFT-N-MIN",
       "note": "DFlash: minimum draft tokens per speculative step.",
@@ -530,7 +531,7 @@
       "dock": "",
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_p_min",
       "label": "DRAFT-P-MIN",
       "note": "DFlash: minimum speculative decoding probability (greedy).",
@@ -550,7 +551,7 @@
       "dock": "",
       "flag": "--spec-draft-model",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_draft_model",
       "label": "DRAFT-MODEL",
       "note": "External DFlash draft GGUF path. Set via Boost Get/Change draft.",
@@ -569,7 +570,7 @@
       "dock": "",
       "flag": "--spec-draft-sampling",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_sampling",
       "label": "DRAFT-SAMPLING",
       "note": "DFlash2: greedy argmax or probabilistic draft sampling with target rejection (DFlash1 ignores probabilistic).",
@@ -661,7 +662,8 @@
         4,
         8,
         16,
-        32
+        32,
+        64
       ]
     },
     {
@@ -838,6 +840,6 @@
       "4"
     ]
   },
-  "templateVersion": 59,
+  "templateVersion": 63,
   "template_type": "ggml-llama"
 }
