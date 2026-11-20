@@ -739,6 +739,48 @@ async fn measure_candidate(
     }
 }
 
+/// Where the expert cache should be sized from a *running* engine: whatever NVML says is free on
+/// the card right now, minus the reserve.
+#[derive(Debug, Clone, Serialize)]
+pub struct MoeCacheSizing {
+    pub device: u32,
+    pub free_mib: u64,
+    pub used_mib: u64,
+    pub reserve_mib: u64,
+    /// `free - reserve`, floored at 0. The value to put in `--moe-cache-mib`.
+    pub recommended_mib: u64,
+    /// False when the card looks idle - launch the model (cache off) before sizing.
+    pub engine_loaded: bool,
+}
+
+/// Size the cache off a running launch, the way a manual search does it: load with no cache, look
+/// at what the card has left, keep a reserve. No extra launches, and the reading includes whatever
+/// the real launch carries (weights, KV, compute, MTP/draft, slots).
+#[tauri::command]
+pub async fn moe_cache_autosize(device_index: Option<u32>) -> Result<MoeCacheSizing, String> {
+    let device = device_index.unwrap_or(0);
+    let (used_mib, free_mib) = sample_vram(device);
+    let (used_mib, free_mib) = (used_mib.unwrap_or(0), free_mib.unwrap_or(0));
+    if free_mib == 0 && used_mib == 0 {
+        return Err(format!("NVML has no reading for GPU-{device}"));
+    }
+    // Under ~1 GiB in use the model is not loaded; sizing now would hand out the whole card.
+    let engine_loaded = used_mib >= 1024;
+    let recommended_mib = if engine_loaded {
+        free_mib.saturating_sub(RESERVE_MIB)
+    } else {
+        0
+    };
+    Ok(MoeCacheSizing {
+        device,
+        free_mib,
+        used_mib,
+        reserve_mib: RESERVE_MIB,
+        recommended_mib,
+        engine_loaded,
+    })
+}
+
 #[tauri::command]
 pub async fn moe_tune_history(
     model_path: String,

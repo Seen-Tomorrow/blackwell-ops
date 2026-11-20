@@ -599,6 +599,7 @@ async fn main() {
             moe_tune::moe_tune_run,
             moe_tune::moe_tune_history,
             moe_tune::moe_tune_stop,
+            moe_tune::moe_cache_autosize,
             vram_ballast_ctl::vram_ballast_start,
             vram_ballast_ctl::vram_ballast_stop,
             vram_ballast_ctl::vram_ballast_status,

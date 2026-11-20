@@ -57,6 +57,15 @@ function verdictLine(report: MoeTuneReport): string | null {
   return `${label} ${gain}${noise}`.trim();
 }
 
+interface MoeCacheSizing {
+  device: number;
+  free_mib: number;
+  used_mib: number;
+  reserve_mib: number;
+  recommended_mib: number;
+  engine_loaded: boolean;
+}
+
 interface MoeCacheTuneProps {
   config: Record<string, any>;
   modelPath: string | null;
@@ -114,6 +123,7 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
   const [applied, setApplied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
+  const [sizing, setSizing] = useState<string | null>(null);
   /** Last stored run for this exact model + placement, loaded on mount. */
   const [history, setHistory] = useState<MoeTuneReport | null>(null);
 
@@ -192,6 +202,37 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
     }
   }, [config, modelPath, providerId, running]);
 
+  /**
+   * The manual loop, one click: with the model already loaded and cache off, take what the card
+   * has left, keep a reserve, and stage that as the cache size. No calibration launches.
+   */
+  const sizeFromRunning = useCallback(async () => {
+    setSizing(null);
+    setError(null);
+    try {
+      const deviceIndex = Number(String(config.device ?? "GPU-0").replace(/^GPU-/, "")) || 0;
+      const sizingResult = await invoke<MoeCacheSizing>("moe_cache_autosize", { deviceIndex });
+      if (!sizingResult.engine_loaded) {
+        setError(
+          `GPU-${sizingResult.device} looks idle (${sizingResult.used_mib} MiB in use) - launch the model with MOE CACHE 0 first`,
+        );
+        return;
+      }
+      if (sizingResult.recommended_mib < 1024) {
+        setError(
+          `only ${sizingResult.free_mib} MiB free after the load - nothing worth caching`,
+        );
+        return;
+      }
+      setStaged({ cpu_moe: true, cache_mib: sizingResult.recommended_mib, cpu_share: 0 });
+      setSizing(
+        `free ${sizingResult.free_mib.toLocaleString("en-US")} - reserve ${sizingResult.reserve_mib} = ${sizingResult.recommended_mib.toLocaleString("en-US")} MiB`,
+      );
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [config.device]);
+
   const stop = useCallback(async () => {
     setStopping(true);
     try {
@@ -253,6 +294,17 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
       >
         {label}
       </button>
+      {!running && (
+        <button
+          type="button"
+          className="value-chip font-mono moe-tune__btn"
+          onClick={() => void sizeFromRunning()}
+          disabled={!modelIsMoe}
+          title="Size the cache from the loaded engine: free VRAM now, minus a reserve. Needs the model running with MOE CACHE 0."
+        >
+          SIZE
+        </button>
+      )}
       {history?.best && !staged && !running && (
         <>
           <span
@@ -305,6 +357,7 @@ export function MoeCacheTune({ config, modelPath, modelIsMoe, providerId, update
             {report?.best_tps != null ? ` · ${report.best_tps.toFixed(1)} t/s` : ""}
             {staged.cpu_moe && gain != null ? ` (+${(gain * 100).toFixed(0)}% vs CPU)` : ""}
             {report && verdictLine(report) ? ` | ${verdictLine(report)}` : ""}
+            {sizing ? ` | ${sizing}` : ""}
             {!staged.cpu_moe && gpuGain != null && gpuGain > 0
               ? ` (+${(gpuGain * 100).toFixed(0)}% vs best cache)`
               : ""}
