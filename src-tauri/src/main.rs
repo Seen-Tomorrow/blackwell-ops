@@ -29,6 +29,7 @@ mod nsys_profile_cmd;
 mod fit_adapters;
 mod fit_scanner;
 mod fit_low_vram;
+mod moe_tune;
 mod vram_learn;
 mod forecast_log;
 mod automation;
@@ -594,6 +595,7 @@ async fn main() {
             config::reorder_provider,
             // FIT Scanner commands — the probe lives in fit_scanner with the rest of the domain
             fit_scanner::fit_scan_model,
+            moe_tune::moe_tune_run,
             vram_learn::get_learned_vram,
             vram_learn::get_learned_vram_for_model,
             vram_learn::get_learned_vram_curve,

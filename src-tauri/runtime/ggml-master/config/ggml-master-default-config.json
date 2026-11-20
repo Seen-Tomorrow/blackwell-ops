@@ -10,6 +10,7 @@
     "SAMPLER",
     "DEV-WORKFLOW",
     "FEATURE-FLAGS",
+    "EXPERTS",
     "SPECULATIVE-MTP",
     "SPECULATIVE-DFLASH",
     "SYSTEM"
@@ -361,6 +362,103 @@
         "mlock",
         "none",
         "dio"
+      ]
+    },
+    {
+      "default": "off",
+      "dock": "",
+      "flag": "--cpu-moe",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "cpu_moe",
+      "label": "CPU MOE",
+      "note": "Keep all expert weights in host RAM and cache what fits in VRAM (-cmoe).",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "EXPERTS",
+      "values": [
+        "off",
+        "on"
+      ]
+    },
+    {
+      "default": 0,
+      "dock": "",
+      "flag": "-ncmoe",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "n_cpu_moe",
+      "label": "N-CPU-MOE",
+      "note": "Keep the experts of the first N layers in host RAM (dense FFN uses --n-cpu-ffn).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "EXPERTS",
+      "values": [
+        0,
+        1,
+        2,
+        4,
+        6,
+        8,
+        12,
+        16,
+        24,
+        32,
+        48
+      ]
+    },
+    {
+      "default": 0,
+      "dock": "",
+      "flag": "--moe-cache-mib",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "moe_cache_mib",
+      "label": "MOE CACHE",
+      "note": "VRAM cache for experts kept in host RAM, MiB; split across GPUs like -ts (0 = off).",
+      "pattern": "",
+      "ptype": "slider",
+      "step": 256.0,
+      "sub_params": null,
+      "ui_group": "EXPERTS",
+      "values": [
+        0,
+        4096,
+        8192,
+        12288,
+        16384,
+        24576,
+        32768,
+        49152,
+        65536
+      ]
+    },
+    {
+      "default": 0,
+      "dock": "",
+      "flag": "--moe-cache-cpu-share",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "moe_cache_cpu_share",
+      "label": "CPU SHARE",
+      "note": "Share of cache misses computed on the CPU instead of uploaded (0-1).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "EXPERTS",
+      "values": [
+        0,
+        0.25,
+        0.5,
+        0.75,
+        0.9,
+        0.95,
+        0.98
       ]
     },
     {
@@ -840,6 +938,6 @@
       "4"
     ]
   },
-  "templateVersion": 63,
+  "templateVersion": 64,
   "template_type": "ggml-llama"
 }
