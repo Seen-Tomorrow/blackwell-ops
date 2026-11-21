@@ -861,6 +861,10 @@ export function useScenarioEvaluator({
         vramTopo: vramTopo || null,
         parallel: Number(curConfig.parallel ?? 1),
         ubatch: Number(curConfig.ubatch ?? 0),
+        // Expert regime is part of the learned identity: a CPU-expert/cache launch records under
+        // its own key, so asking as a plain launch would paint the wrong footprint.
+        cpuMoe: String(curConfig.cpu_moe ?? "off"),
+        moeCacheMib: String(curConfig.moe_cache_mib ?? "0"),
         // A row recorded at another ctx must not masquerade as this one.
         strictCtx: true,
       }),

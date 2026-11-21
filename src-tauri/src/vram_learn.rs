@@ -2465,6 +2465,10 @@ pub fn get_learned_vram(
     vram_topo: Option<String>,
     ubatch: Option<u32>,
     parallel: Option<u32>,
+    // Expert regime: a CPU-expert/cache launch records its own key. The forecast must ask for
+    // that regime, or it paints the plain launch's footprint over a launch that does not have it.
+    cpu_moe: Option<String>,
+    moe_cache_mib: Option<String>,
     // Forecast only: a row recorded at ANOTHER ctx is not a measurement of this one, and
     // presenting it as such made every ctx look EXACT. Seats keep the any-device fallback
     // (they ask "what did this model cost anywhere"), the forecast never does.
@@ -2483,6 +2487,10 @@ pub fn get_learned_vram(
         .unwrap_or_else(|| "regular".to_string());
     let spec = spec_type.as_deref().unwrap_or("none");
     let cache = cache_ram.as_deref().unwrap_or("0");
+    let experts = experts_token(
+        cpu_moe.as_deref().unwrap_or(""),
+        moe_cache_mib.as_deref().unwrap_or("0"),
+    );
     let draft = draft_key_for_learn(spec, draft_model.as_deref().unwrap_or(""));
     // Only a topology tag may enter the key; a device index must not (same reason as above).
     let _ = &device;
@@ -2505,7 +2513,7 @@ pub fn get_learned_vram(
         &draft,
         &ubatch.map(|b| b.to_string()).unwrap_or_default(),
         parallel.unwrap_or(1),
-        "",
+        &experts,
     ) {
         Some(entry) => entry,
         None => {
