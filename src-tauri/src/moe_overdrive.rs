@@ -52,18 +52,6 @@ pub struct MoeOverdriveRecord {
     pub measured_at: String,
 }
 
-impl MoeOverdriveRecord {
-    /// Gain of the cached run over the calibration run, when both were measured. The screen
-    /// computes it from the stored numbers; this stays as the one definition plus its test.
-    #[allow(dead_code)]
-    pub fn gain_pct(&self) -> Option<f64> {
-        match (self.tps_before, self.tps_after) {
-            (Some(before), Some(after)) if before > 0.0 => Some((after / before - 1.0) * 100.0),
-            _ => None,
-        }
-    }
-}
-
 /// FNV-1a: a short stable filename without a hashing dependency.
 fn record_key(identity: &str) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -214,36 +202,5 @@ mod tests {
         assert_ne!(base, record_identity("m", 100, 32768, "q4_0", "none", "0", "dflash2", 12));
         // A different file size is different weights.
         assert_ne!(base, record_identity("m", 101, 32768, "q4_0", "none", "0", "", 0));
-    }
-
-    #[test]
-    fn gain_is_only_reported_when_both_runs_were_measured() {
-        let mut record = MoeOverdriveRecord {
-            model_path: "m".into(),
-            model_size_bytes: 1,
-            ctx_size: 32768,
-            kv_quant: "q4_0".into(),
-            split_mode: "none".into(),
-            gpu_mask: "0".into(),
-            draft: String::new(),
-            draft_n_max: 0,
-            free_pp_mib: 8000,
-            free_tg_mib: 7000,
-            free_after_load_mib: 7000,
-            reserve_mib: 512,
-            cache_mib: 6488,
-            tps_before: Some(105.0),
-            tps_after: Some(230.0),
-            device_mib_before: Some(30_000),
-            device_mib_after: Some(37_900),
-            host_mib_before: Some(26_800),
-            host_mib_after: Some(26_800),
-            engine_build: None,
-            driver_version: None,
-            measured_at: "now".into(),
-        };
-        assert!((record.gain_pct().unwrap() - 119.047).abs() < 0.1);
-        record.tps_after = None;
-        assert!(record.gain_pct().is_none());
     }
 }

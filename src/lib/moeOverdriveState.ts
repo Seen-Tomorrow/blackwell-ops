@@ -7,17 +7,13 @@ import { useEffect, useState } from "react";
 let active = false;
 const listeners = new Set<() => void>();
 
-export function isOverdriveActive(): boolean {
-  return active;
-}
-
 export function setOverdriveActive(next: boolean): void {
   if (active === next) return;
   active = next;
   for (const cb of listeners) cb();
 }
 
-export function subscribeOverdrive(cb: () => void): () => void {
+function subscribeOverdrive(cb: () => void): () => void {
   listeners.add(cb);
   return () => {
     listeners.delete(cb);

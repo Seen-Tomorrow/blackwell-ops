@@ -20,7 +20,7 @@ interface ExpertCachePanelProps {
  * EXPERT CACHE - where the expert working set lives and how much of it is cached in VRAM.
  *
  * A dense model has nothing to tune here, so the instrument hides itself instead of showing dead
- * knobs. TUNE measures; the two knobs stay staged until APPLY.
+ * knobs. The knobs write straight to the profile; sizing/relaunching is OVERDRIVE's job.
  */
 export default function ExpertCachePanel({
   defs,

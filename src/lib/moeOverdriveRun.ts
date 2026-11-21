@@ -35,14 +35,9 @@ export interface OverdriveKnobs {
 }
 
 export interface OverdriveProbe {
-  device: number;
   pp_free_mib: number;
   tg_free_mib: number;
   free_after_load_mib: number;
-  pp_tokens: number;
-  tg_tokens: number;
-  pp_tps: number | null;
-  tg_tps: number | null;
   reserve_mib: number;
   recommended_mib: number;
 }
@@ -55,7 +50,6 @@ export interface OverdriveComponents {
 }
 
 export interface OverdriveLedger {
-  available: boolean;
   components: OverdriveComponents;
   free_mib: number;
   used_mib: number;
@@ -231,7 +225,7 @@ export function launchGpuMask(
   return device || "0";
 }
 
-export function deviceIndexFor(identity: MoeOverdriveIdentity): number {
+function deviceIndexFor(identity: MoeOverdriveIdentity): number {
   const first = identity.gpuMask.split(",")[0]?.trim() ?? "";
   const index = Number(first);
   return Number.isFinite(index) && index >= 0 ? index : 0;
@@ -342,7 +336,7 @@ async function ensureSeatFree(identity: MoeOverdriveIdentity): Promise<void> {
   for (const entry of live) await stopSlot(entry.idx);
 }
 
-async function waitRunning(slotIdx: number): Promise<void> {
+async function waitRunning(slotIdx: number): Promise<StackEntry> {
   const deadline = Date.now() + LOAD_DEADLINE_MS;
   for (;;) {
     if (abortRequested) throw new Error("aborted");
@@ -360,7 +354,7 @@ async function waitRunning(slotIdx: number): Promise<void> {
         alias: entry.alias || snapshot.alias,
         gpuMask: entry.gpu || snapshot.gpuMask,
       });
-      return;
+      return entry;
     }
     if (entry.gpu) set({ gpuMask: entry.gpu });
     if (Date.now() > deadline) {
@@ -373,7 +367,7 @@ async function waitRunning(slotIdx: number): Promise<void> {
 async function launchWith(
   options: OverdriveStartOptions,
   knobs: OverdriveKnobs,
-): Promise<void> {
+): Promise<StackEntry> {
   options.applyKnobs(knobs);
   const config = options.buildConfig(knobs);
   if (!config) throw new Error("no launch config for the selected model");
@@ -386,7 +380,7 @@ async function launchWith(
     modelPath: options.identity.modelPath,
   });
   dispatchAppEvent(EVENTS.launchSuccess, { alias: launched.alias, port: launched.port });
-  await waitRunning(launched.idx);
+  return await waitRunning(launched.idx);
 }
 
 async function bench(port: number): Promise<{ tg: number | null; pp: number | null }> {
@@ -429,10 +423,24 @@ async function readMemory(port: number, deviceIndex: number): Promise<OverdriveM
   }
 }
 
+let driverCache: string | null | undefined;
+
+async function driverVersion(): Promise<string | null> {
+  if (driverCache !== undefined) return driverCache;
+  try {
+    driverCache = (await invoke<string | null>("get_nvidia_driver_version")) ?? null;
+  } catch {
+    driverCache = null;
+  }
+  return driverCache;
+}
+
 async function saveRecord(
   identity: MoeOverdriveIdentity,
   probe: OverdriveProbe,
   comparison: OverdriveComparison,
+  engineBuild: string | null,
+  driver: string | null,
 ): Promise<void> {
   await invoke("moe_overdrive_record_save", {
     record: {
@@ -455,8 +463,8 @@ async function saveRecord(
       device_mib_after: comparison.memoryAfter?.deviceMib ?? null,
       host_mib_before: comparison.memoryBefore?.hostMib ?? null,
       host_mib_after: comparison.memoryAfter?.hostMib ?? null,
-      engine_build: null,
-      driver_version: null,
+      engine_build: engineBuild,
+      driver_version: driver,
       measured_at: comparison.measuredAt ?? new Date().toISOString(),
     },
   });
@@ -508,7 +516,8 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
     cacheMib: 0,
     message: "calibration load — experts in host RAM, no cache",
   });
-  await launchWith(options, { cpuMoe: "on", cacheMib: 0, share: 0 });
+  const calibration = await launchWith(options, { cpuMoe: "on", cacheMib: 0, share: 0 });
+  const engineBuild = calibration.build_info?.version ?? null;
   const port = snapshot.port;
   if (port == null) throw new Error("the calibration engine has no port");
 
@@ -550,17 +559,24 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
   }
   // Keep the measurement before the tuned load: if that load fails, the next attempt can use the
   // cache this calibration justified instead of measuring the shape again.
+  const driver = await driverVersion();
   try {
-    await saveRecord(identity, probe, {
-      cacheMib,
-      tpsBefore: before.tg,
-      tpsAfter: null,
-      memoryBefore,
-      memoryAfter: null,
-      measuredAt: new Date().toISOString(),
-      fromRecord: false,
-      note: null,
-    });
+    await saveRecord(
+      identity,
+      probe,
+      {
+        cacheMib,
+        tpsBefore: before.tg,
+        tpsAfter: null,
+        memoryBefore,
+        memoryAfter: null,
+        measuredAt: new Date().toISOString(),
+        fromRecord: false,
+        note: null,
+      },
+      engineBuild,
+      driver,
+    );
   } catch {
     // The tuned run still replaces it; a record is useful, not a gate.
   }
@@ -596,7 +612,7 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
     note: null,
   };
   try {
-    await saveRecord(identity, probe, comparison);
+    await saveRecord(identity, probe, comparison, engineBuild, driver);
   } catch (err) {
     comparison.note = `tuned, but the record could not be saved: ${errorMessage(err)}`;
   }

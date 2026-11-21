@@ -43,7 +43,6 @@ impl OverdriveComponents {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct OverdriveLedger {
-    pub available: bool,
     pub components: OverdriveComponents,
     pub free_mib: u64,
     pub used_mib: u64,
@@ -109,29 +108,23 @@ pub async fn moe_overdrive_ledger(port: u16, device_index: Option<u32>) -> Resul
     let (used_mib, free_mib) = sample_vram(device);
     let components = ledger_from_port(port).await;
     Ok(OverdriveLedger {
-        available: components.is_some(),
         components: components.unwrap_or_default(),
         free_mib: free_mib.unwrap_or(0),
         used_mib: used_mib.unwrap_or(0),
     })
 }
 
-/// What the two short benchmark passes leave behind: the VRAM a real request needs on top of the
-/// loaded model. Prefill grows the graph for its batch, generation grows it for the draft/verify
-/// window - a cache sized on the idle reading alone spills on the first real request.
+/// What the two short passes leave behind: the VRAM a real request needs on top of the loaded
+/// model. Prefill grows the graph for its batch, generation grows it for the draft/verify window -
+/// a cache sized on the idle reading alone spills on the first real request.
 #[derive(Debug, Clone, Serialize)]
 pub struct OverdriveProbe {
-    pub device: u32,
     /// Free VRAM after the prefill pass (a long prompt, one token back).
     pub pp_free_mib: u64,
     /// Free VRAM after the generation pass (short prompt, a few dozen tokens).
     pub tg_free_mib: u64,
     /// The tighter of the two - what the cache must be sized against.
     pub free_after_load_mib: u64,
-    pub pp_tokens: u64,
-    pub tg_tokens: u64,
-    pub pp_tps: Option<f64>,
-    pub tg_tps: Option<f64>,
     pub reserve_mib: u64,
     /// `free_after_load - reserve`, floored at zero. The cache to write.
     pub recommended_mib: u64,
@@ -186,38 +179,25 @@ pub async fn moe_overdrive_probe(
             if !resp.status().is_success() {
                 return Err(format!("probe returned {}", resp.status()));
             }
-            let json: serde_json::Value = resp
-                .json()
-                .await
-                .map_err(|e| format!("probe response was not JSON: {e}"))?;
-            let timings = json.get("timings").cloned().unwrap_or_default();
-            Ok::<_, String>((timings, n_predict))
+            // The body is not read: the probe only needs the request to have run so the VRAM
+            // reading after it includes the graph that request built.
+            Ok::<(), String>(())
         }
     };
 
     // Prefill pass: a long prompt answered with one token.
-    let (pp_timings, _) = ask(probe_prompt(PROBE_PP_CHARS), 1).await?;
+    ask(probe_prompt(PROBE_PP_CHARS), 1).await?;
     let (_, pp_free) = sample_vram(device);
     let pp_free_mib = pp_free.unwrap_or(0);
-    let pp_tokens = pp_timings
-        .get("prompt_n")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let pp_tps = pp_timings.get("prompt_per_second").and_then(|v| v.as_f64());
 
     // Generation pass: small prompt, a few dozen tokens, so the draft/verify graphs grow.
-    let (tg_timings, _) = ask(
+    ask(
         "Write one short paragraph about a lighthouse.".to_string(),
         PROBE_TG_TOKENS,
     )
     .await?;
     let (_, tg_free) = sample_vram(device);
     let tg_free_mib = tg_free.unwrap_or(0);
-    let tg_tokens = tg_timings
-        .get("predicted_n")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let tg_tps = tg_timings.get("predicted_per_second").and_then(|v| v.as_f64());
 
     // A zero reading means the probe raced a stopped engine; treat it as "nothing measured".
     if pp_free_mib == 0 && tg_free_mib == 0 {
@@ -225,14 +205,9 @@ pub async fn moe_overdrive_probe(
     }
     let free_after_load_mib = tighter_free_mib(pp_free_mib, tg_free_mib);
     Ok(OverdriveProbe {
-        device,
         pp_free_mib,
         tg_free_mib,
         free_after_load_mib,
-        pp_tokens,
-        tg_tokens,
-        pp_tps,
-        tg_tps,
         reserve_mib: reserve,
         recommended_mib: cache_from_probe_free(free_after_load_mib, reserve),
     })
