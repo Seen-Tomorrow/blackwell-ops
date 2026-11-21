@@ -450,6 +450,13 @@ function writeManifestCache(key: string, manifest: VramManifest): void {
   }
 }
 
+/** The expert cache is VRAM the launch reserves; 0 whenever the experts are not on the host. */
+function moeCacheMibFor(config: Record<string, unknown>): number {
+  const on = String(config.cpu_moe ?? "off").trim().toLowerCase() === "on";
+  if (!on) return 0;
+  return Math.max(0, Number(config.moe_cache_mib ?? 0) || 0);
+}
+
 export function useScenarioEvaluator({
   model,
   config,
@@ -704,6 +711,8 @@ export function useScenarioEvaluator({
       fullAutoMode: fullAutoModeRef.current,
       gpuCalibration: gpuCalibrationRef.current,
       learnedVramMib: learnedVramRef.current ?? undefined,
+      moeCacheMib: moeCacheMibFor(curConfig),
+      moeCpuExperts: String(curConfig.cpu_moe ?? "off").trim().toLowerCase() === "on",
       learnedSpecIncluded: learnedSpecIncludedRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
       learnedHostModelMib: learnedHostModelRef.current ?? undefined,
@@ -1235,6 +1244,8 @@ export function useScenarioEvaluator({
         fullAutoMode: fullAutoModeRef.current,
         gpuCalibration: gpuCalibrationRef.current,
         learnedVramMib: learnedVramRef.current ?? undefined,
+        moeCacheMib: moeCacheMibFor(curConfig),
+        moeCpuExperts: String(curConfig.cpu_moe ?? "off").trim().toLowerCase() === "on",
         learnedSpecIncluded: learnedSpecIncludedRef.current ?? undefined,
         learnedHostMib: learnedHostRef.current ?? undefined,
         learnedHostModelMib: learnedHostModelRef.current ?? undefined,

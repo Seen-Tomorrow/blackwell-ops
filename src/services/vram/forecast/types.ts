@@ -41,6 +41,10 @@ export interface ForecastInput {
   layerSplitMib?: number[];
 
   learnedVramMib?: number;
+  /** VRAM reserved by `-cmoe`'s expert cache (`--moe-cache-mib`); 0 when the launch caches none. */
+  moeCacheMib?: number;
+  /** `-cmoe`: host model weights are the chosen expert placement, not a VRAM spill. */
+  moeCpuExperts?: boolean;
   /** Backend says whether `learnedVramMib` already includes the external draft. */
   learnedSpecIncluded?: boolean;
   learnedHostMib?: number;

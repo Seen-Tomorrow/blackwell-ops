@@ -68,6 +68,29 @@ describe("forecast resolver states", () => {
     expect(m?.vramTotalGb).toBeCloseTo(40.5, 1);
   });
 
+  it("the expert cache is part of the launch's VRAM need, not of host RAM", () => {
+    const base = evaluate(input({ learnedVramMib: 4 * GIB, learnedHostMib: 32 * GIB }));
+    const cached = evaluate(
+      input({ learnedVramMib: 4 * GIB, learnedHostMib: 32 * GIB, moeCacheMib: 16 * GIB }),
+    );
+    expect(cached!.vramTotalGb - base!.vramTotalGb).toBeCloseTo(16, 1);
+    expect(cached!.ramTotalGb).toBeCloseTo(base!.ramTotalGb, 1);
+  });
+
+  it("a deliberate CPU-expert launch is not discarded as a weight spill", () => {
+    const row = {
+      learnedVramMib: 4 * GIB,
+      learnedHostMib: 32 * GIB,
+      learnedHostModelMib: 32 * GIB,
+    };
+    const plain = evaluate(input(row));
+    const experts = evaluate(input({ ...row, moeCpuExperts: true, moeCacheMib: 16 * GIB }));
+    expect(plain?.memorySourceState).not.toBe("launch_exact");
+    expect(experts?.memorySourceState).toBe("launch_exact");
+    expect(experts?.vramTotalGb).toBeCloseTo(20.5, 1);
+    expect(experts?.ramTotalGb).toBeGreaterThan(31);
+  });
+
   it("a stale draft path with spec off adds nothing", () => {
     const m = evaluate(
       input({

@@ -206,8 +206,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const probeAtLive = probePoints.find((p) => p.ctx === liveCtx) ?? null;
 
   // Launch points: measured launches only, and never one that pushed weights to the host.
+  // `-cmoe` is the exception: host model weights are the chosen expert placement, so a row
+  // measured under it is the authority for the CPU-expert regime, not a spill to discard.
+  const expertsOnHost = input.moeCpuExperts === true;
   const launchPoints: ForecastPoint[] = sanitizeLearnedCurve(input.learnedCurve)
-    .filter((p) => !hostLooksSpilled(p.hostModelMib, p.hostMib, p.engramMib, true))
+    .filter(
+      (p) =>
+        expertsOnHost || !hostLooksSpilled(p.hostModelMib, p.hostMib, p.engramMib, true),
+    )
     .map((p) => ({
       ctx: p.ctx,
       gb: p.vramMib / 1024,
@@ -221,7 +227,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     input.learnedVramMib != null && input.learnedVramMib > 0
       ? input.learnedVramMib / 1024
       : null;
-  const entrySpilled = hostLooksSpilled(input.learnedHostModelMib, input.learnedHostMib);
+  const entrySpilled =
+    !expertsOnHost && hostLooksSpilled(input.learnedHostModelMib, input.learnedHostMib);
   if (entryGb != null && !entrySpilled) {
     const at = launchPoints.findIndex((p) => p.ctx === entryCtx);
     const entryPoint: ForecastPoint = {
@@ -444,6 +451,18 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     if (perGpuLoad[mmprojGpu] != null) {
       perGpuLoad[mmprojGpu] += visionAddonGb;
     }
+  }
+
+  // `-cmoe` reserves an expert cache in VRAM. The engine's own accounting puts it in
+  // "unaccounted", so a learned/fit row does not include it: add the configured cache to the
+  // launch's need, split across the cards the launch already touches.
+  const moeCacheGb = Math.max(0, input.moeCacheMib ?? 0) / 1024;
+  if (moeCacheGb > 0) {
+    const activeSum = perGpuLoad.reduce((sum, gb) => sum + Math.max(0, gb), 0);
+    perGpuLoad =
+      activeSum > 0.05
+        ? perGpuLoad.map((gb) => (gb > 0.1 ? gb + (moeCacheGb * gb) / activeSum : gb))
+        : perGpuLoad.map((gb, i) => (i === tgt ? gb + moeCacheGb : gb));
   }
 
   // What the card actually loses, not what the engine prints: every touched device also
