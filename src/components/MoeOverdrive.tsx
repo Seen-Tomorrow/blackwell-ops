@@ -251,16 +251,18 @@ export default function MoeOverdrive({
         </button>
       </div>
 
-      <div className="moe-od__hero">
-        <span className="moe-od__tps">{liveTps > 0 ? liveTps.toFixed(1) : "—"}</span>
-        <span className="moe-od__unit">tok/s</span>
-        <span className="moe-od__sub">
-          {ppTps > 0 ? `prefill ${ppTps.toFixed(0)} t/s · ` : ""}
-          {fusion ? `${fusion.ctxFillPct.toFixed(0)}% ctx` : port != null ? "engine ready" : "no engine"}
-        </span>
-      </div>
+      {!loadPhase && (
+        <div className="moe-od__hero">
+          <span className="moe-od__tps">{liveTps > 0 ? liveTps.toFixed(1) : "—"}</span>
+          <span className="moe-od__unit">tok/s</span>
+          <span className="moe-od__sub">
+            {ppTps > 0 ? `prefill ${ppTps.toFixed(0)} t/s · ` : ""}
+            {fusion ? `${fusion.ctxFillPct.toFixed(0)}% ctx` : port != null ? "engine ready" : "no engine"}
+          </span>
+        </div>
+      )}
 
-      {record && (
+      {!loadPhase && record && (
         <div className="moe-od__learned">
           stored: cache {num(record.cache_mib)} MiB · free {num(record.free_after_load_mib)} after
           load · {relativeAge(record.measured_at)}
