@@ -251,7 +251,7 @@ export default function MoeOverdrive({
         </button>
       </div>
 
-      {!loadPhase && (
+      {!loadPhase && !comparison && (
         <div className="moe-od__hero">
           <span className="moe-od__tps">{liveTps > 0 ? liveTps.toFixed(1) : "—"}</span>
           <span className="moe-od__unit">tok/s</span>
@@ -262,7 +262,7 @@ export default function MoeOverdrive({
         </div>
       )}
 
-      {!loadPhase && record && (
+      {!loadPhase && !comparison && record && (
         <div className="moe-od__learned">
           stored: cache {num(record.cache_mib)} MiB · free {num(record.free_after_load_mib)} after
           load · {relativeAge(record.measured_at)}
@@ -273,6 +273,7 @@ export default function MoeOverdrive({
         <div className="moe-od__boot">
           <div className="moe-od__boot-cap">{run.message}</div>
           <FusionBooter
+            key={`${run.phase}-${run.slotIdx}-${run.port}`}
             slotIdx={run.slotIdx as number}
             alias={run.alias ?? ""}
             port={run.port as number}

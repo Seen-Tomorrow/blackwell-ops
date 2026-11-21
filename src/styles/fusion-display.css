@@ -6491,8 +6491,8 @@ html[data-industrial-bezel="brush"] {
 .moe-od {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem;
   min-height: 0;
   overflow: auto;
   font-family: var(--font-mono, monospace);
@@ -6571,7 +6571,7 @@ html[data-industrial-bezel="brush"] {
 .moe-od__boot {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.3rem;
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -6580,6 +6580,17 @@ html[data-industrial-bezel="brush"] {
   font-size: var(--type-micro);
   letter-spacing: 0.06em;
   color: var(--theme-text-muted);
+}
+
+/* The glass is shorter than the fusion display; drop the raw stderr ticker here so the phase
+   ladder and the GPU/disk instruments keep their rows. */
+.moe-od__boot .fusion-boot-ticker {
+  display: none;
+}
+
+.moe-od__boot .fusion-boot {
+  gap: 4px;
+  padding: 4px 6px;
 }
 
 .moe-od__progress {
@@ -6616,9 +6627,9 @@ html[data-industrial-bezel="brush"] {
 .moe-od__cmp {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.25rem;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  padding: 0.5rem 0.6rem;
+  padding: 0.4rem 0.55rem;
 }
 
 .moe-od__cmp-head {
@@ -6639,7 +6650,7 @@ html[data-industrial-bezel="brush"] {
   display: grid;
   grid-template-columns: 3.4rem 4.4rem 1.1rem 4.6rem 2.6rem 3rem;
   align-items: baseline;
-  gap: 0.15rem 0.35rem;
+  gap: 0.05rem 0.35rem;
   font-variant-numeric: tabular-nums;
 }
 

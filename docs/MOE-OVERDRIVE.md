@@ -46,6 +46,11 @@ click OVERDRIVE
   VRAM is NVML used minus the pre-run reading, so another app's VRAM is not counted as the
   launch's (the engine's `/memory` ledger does not account for the expert cache — it lands in
   "unaccounted").
+- **The forecast runs the cache regime.** With `cpu_moe=on` the badge adds `moe_cache_mib` to the
+  launch's VRAM need (split across the cards the launch touches), keeps the host experts as the
+  RAM side instead of rejecting the row as a spill, and reads the `|experts=cpu-cache:<mib>` row.
+  The tuned footprint is therefore on the glass before the next launch; RESET (cache 0, cpu_moe
+  off) puts it back to the plain launch.
 - **Identity = the launch shape**: model path+size, ctx, KV quant, split, the launch's GPU set
   (from the panel's device/split config — never the selected slot), draft identity and n-max. The
   record survives stopping the engine that measured it.
@@ -56,7 +61,8 @@ click OVERDRIVE
 
 | piece | state |
 |---|---|
-| Learned-key namespace `|experts=cpu-cache:<mib>` | **done** — a cache launch records its own key, and the forecast now asks for the same regime (`get_learned_vram` takes cpu_moe/cache), so it stops painting the plain footprint over a CPU-expert launch |
+| Learned-key namespace `|experts=cpu-cache:<mib>` | **done** — a cache launch records its own key, the forecast asks for that regime (`get_learned_vram` takes cpu_moe/cache), adds the cache to the VRAM need and does not discard the host experts as a spill |
+| Runtime calibration | **done** — a `-cmoe` launch does not train the per-device CUDA/graph residual: its cache lands in "unaccounted" and once pushed the median to 20 GiB |
 | Record per shape (`config/cache/moe-overdrive/<hash>.json`) | **done** — free PP/TG, cache, reserve, before/after t/s, device/host memory, engine build, driver, age |
 | One-click cycle (calibrate → write → tuned relaunch → bench → compare) | **done** — `moeOverdriveRun.ts`; abort stops the load and restores the knobs |
 | Both loads use the real boot screen | **done** — `FusionBooter` inside the screen; STOP = abort |
