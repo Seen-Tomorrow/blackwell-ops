@@ -1330,9 +1330,9 @@ export function saveLogsAnsiEnabled(enabled: boolean): void {
 
 // ── Bench control chips (global — not per-port results/runtime) ─────────────
 
-export const BENCH_TG_PREDICT_OPTIONS = [512, 1024, 2048, 4096, 6144, 8192, 10000] as const;
+export const BENCH_TG_PREDICT_OPTIONS = [256, 512, 1024, 2048, 4096, 6144, 8192, 10000] as const;
 export const BENCH_TG_PARALLEL_OPTIONS = [1, 4, 8, 16, 32, 64, 128] as const;
-export const BENCH_PP_TOKEN_OPTIONS = [512, 2048, 8192, 16384, 32768, 65536, 100000] as const;
+export const BENCH_PP_TOKEN_OPTIONS = [256, 512, 2048, 8192, 16384, 32768, 65536, 100000] as const;
 
 type BenchPromptMode = "unique" | "code";
 

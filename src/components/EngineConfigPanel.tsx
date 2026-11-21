@@ -2432,6 +2432,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       void startOverdriveRun({
         identity: overdriveIdentity,
         forceCalibrate,
+        // MTP/DFlash/DSpark decode better with a code corpus; a plain model reads higher UNIQUE.
+        specOn: specBoostMethod !== "off",
         buildConfig: (knobs) => {
           const full = buildCurrentLaunchConfig();
           if (!full) return null;
@@ -2460,6 +2462,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       config.cpu_moe,
       config.moe_cache_mib,
       config.moe_cache_cpu_share,
+      specBoostMethod,
       buildCurrentLaunchConfig,
       pulseLaunchAck,
       updateParam,

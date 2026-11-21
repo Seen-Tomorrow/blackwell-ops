@@ -6632,21 +6632,15 @@ html[data-industrial-bezel="brush"] {
   padding: 0.4rem 0.55rem;
 }
 
-.moe-od__cmp-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: var(--type-micro);
-  letter-spacing: 0.08em;
-  color: var(--theme-text-muted);
-}
-
-.moe-od__cmp-age {
-  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-  letter-spacing: 0.02em;
-}
-
+/* Two columns so speed and memory sit side by side: the glass is wide, the height is the
+   constraint (120% app font must still fit without scrolling). */
 .moe-od__cmp-table {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.1rem 1.4rem;
+}
+
+.moe-od__cmp-col {
   display: grid;
   grid-template-columns: 3.4rem 4.4rem 1.1rem 4.6rem 2.6rem 3rem;
   align-items: baseline;
@@ -6661,7 +6655,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .moe-od__cmp-val {
-  font-size: var(--type-body);
+  font-size: var(--type-label);
   color: var(--theme-text);
   text-align: right;
 }
@@ -6693,6 +6687,40 @@ html[data-industrial-bezel="brush"] {
 .moe-od__cmp-note {
   font-size: var(--type-micro);
   color: var(--theme-warn);
+}
+
+/* The benchmark is a visible phase, not a silent wait: PP and TG report as they land. */
+.moe-od__bench {
+  display: flex;
+  align-items: baseline;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+
+.moe-od__bench-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}
+
+.moe-od__bench-row[data-active="1"] {
+  color: var(--theme-accent);
+}
+
+.moe-od__bench-lab {
+  letter-spacing: 0.08em;
+}
+
+.moe-od__bench-val {
+  font-size: var(--type-label);
+  color: var(--theme-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.moe-od__bench-row[data-active="1"] .moe-od__bench-val {
+  color: var(--theme-accent);
 }
 
 .moe-od__note {

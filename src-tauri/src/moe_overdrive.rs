@@ -38,6 +38,10 @@ pub struct MoeOverdriveRecord {
     #[serde(default)]
     pub tps_after: Option<f64>,
     #[serde(default)]
+    pub pp_tps_before: Option<f64>,
+    #[serde(default)]
+    pub pp_tps_after: Option<f64>,
+    #[serde(default)]
     pub device_mib_before: Option<u64>,
     #[serde(default)]
     pub device_mib_after: Option<u64>,

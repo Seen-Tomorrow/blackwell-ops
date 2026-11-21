@@ -77,6 +77,8 @@ export interface OverdriveRecord {
   cache_mib: number;
   tps_before: number | null;
   tps_after: number | null;
+  pp_tps_before?: number | null;
+  pp_tps_after?: number | null;
   device_mib_before?: number | null;
   device_mib_after?: number | null;
   host_mib_before?: number | null;
@@ -90,12 +92,22 @@ export interface OverdriveComparison {
   cacheMib: number;
   tpsBefore: number | null;
   tpsAfter: number | null;
+  /** Prefill t/s from the same 256-token request as the decode side. */
+  ppTpsBefore: number | null;
+  ppTpsAfter: number | null;
   memoryBefore: OverdriveMemory | null;
   memoryAfter: OverdriveMemory | null;
   measuredAt: string | null;
   /** True when the before side came from the stored record instead of a fresh calibration. */
   fromRecord: boolean;
   note: string | null;
+}
+
+/** What the benchmark is doing right now — the screen shows this instead of a silent wait. */
+export interface OverdriveBenchProgress {
+  kind: "pp" | "tg" | null;
+  ppTps: number | null;
+  tgTps: number | null;
 }
 
 export type OverdrivePhase =
@@ -122,6 +134,7 @@ export interface OverdriveSnapshot {
   gpuMask: string | null;
   cacheMib: number | null;
   comparison: OverdriveComparison | null;
+  bench: OverdriveBenchProgress | null;
   startedAt: number | null;
   aborting: boolean;
 }
@@ -134,6 +147,8 @@ export interface OverdriveStartOptions {
   applyKnobs: (knobs: OverdriveKnobs) => void;
   /** Put the pre-run knobs back after an abort or a failed tuned load. */
   restoreKnobs: () => void;
+  /** The launch carries a spec/draft head: benchmark with CODE prompts, otherwise UNIQUE. */
+  specOn?: boolean;
   /** Skip the stored record and calibrate again. */
   forceCalibrate?: boolean;
 }
@@ -149,6 +164,7 @@ const INITIAL: OverdriveSnapshot = {
   gpuMask: null,
   cacheMib: null,
   comparison: null,
+  bench: null,
   startedAt: null,
   aborting: false,
 };
@@ -157,9 +173,8 @@ const POLL_MS = 800;
 const LOAD_DEADLINE_MS = 30 * 60_000;
 const STOP_DEADLINE_MS = 60_000;
 const STOP_SETTLE_MS = 500;
-/** Same shape as the bench tray's default: a real decode window, not the 64-token probe. */
-const BENCH_N_PREDICT = 1024;
-const BENCH_PROMPT_MODE = "code";
+/** Both bench passes use the same short request length, so before/after are comparable. */
+export const OVERDRIVE_BENCH_LENGTH = 256;
 const MIN_CACHE_MIB = 512;
 
 const ACTIVE_STATUSES = new Set(["LOADING", "RUNNING"]);
@@ -258,6 +273,8 @@ export function comparisonFromRecord(record: OverdriveRecord): OverdriveComparis
     cacheMib: record.cache_mib,
     tpsBefore: record.tps_before,
     tpsAfter: record.tps_after,
+    ppTpsBefore: record.pp_tps_before ?? null,
+    ppTpsAfter: record.pp_tps_after ?? null,
     memoryBefore: hasBeforeMemory
       ? {
           deviceMib: record.device_mib_before ?? 0,
@@ -383,27 +400,56 @@ async function launchWith(
   return await waitRunning(launched.idx);
 }
 
-async function bench(port: number): Promise<{ tg: number | null; pp: number | null }> {
+/** SPEC ON (MTP/DFlash/DSpark) reads better with a code corpus; no spec reads higher UNIQUE. */
+function benchPromptMode(specOn: boolean): "unique" | "code" {
+  return specOn ? "code" : "unique";
+}
+
+async function benchTg(port: number, specOn: boolean): Promise<number | null> {
   try {
-    const result = await invoke<{
-      success: boolean;
-      gen_tps: number;
-      prompt_tps: number;
-      error?: string | null;
-    }>("cmd_burst_bench", {
+    const result = await invoke<{ success: boolean; gen_tps: number }>("cmd_burst_bench", {
       port,
-      nPredict: BENCH_N_PREDICT,
-      benchPromptMode: BENCH_PROMPT_MODE,
+      nPredict: OVERDRIVE_BENCH_LENGTH,
+      benchPromptMode: benchPromptMode(specOn),
       tgWarmupEnabled: false,
       parallelRequests: 1,
     });
-    return {
-      tg: result.success && result.gen_tps > 0 ? result.gen_tps : null,
-      pp: result.success && result.prompt_tps > 0 ? result.prompt_tps : null,
-    };
+    return result.success && result.gen_tps > 0 ? result.gen_tps : null;
   } catch {
-    return { tg: null, pp: null };
+    return null;
   }
+}
+
+async function benchPp(port: number, specOn: boolean): Promise<number | null> {
+  try {
+    const result = await invoke<{ success: boolean; bench_prefill_tps: number }>(
+      "cmd_bench_pp_burst",
+      {
+        port,
+        targetTokens: OVERDRIVE_BENCH_LENGTH,
+        benchPromptMode: benchPromptMode(specOn),
+        reps: 1,
+      },
+    );
+    return result.success && result.bench_prefill_tps > 0 ? result.bench_prefill_tps : null;
+  } catch {
+    return null;
+  }
+}
+
+/** PP then TG, both at the same 256-token request length; reports each result as it lands. */
+async function runBench(
+  port: number,
+  specOn: boolean,
+  onProgress: (bench: OverdriveBenchProgress) => void,
+): Promise<{ pp: number | null; tg: number | null }> {
+  onProgress({ kind: "pp", ppTps: null, tgTps: null });
+  const pp = await benchPp(port, specOn);
+  onProgress({ kind: "pp", ppTps: pp, tgTps: null });
+  onProgress({ kind: "tg", ppTps: pp, tgTps: null });
+  const tg = await benchTg(port, specOn);
+  onProgress({ kind: "tg", ppTps: pp, tgTps: tg });
+  return { pp, tg };
 }
 
 async function readMemory(
@@ -467,6 +513,8 @@ async function saveRecord(
       cache_mib: comparison.cacheMib,
       tps_before: comparison.tpsBefore,
       tps_after: comparison.tpsAfter,
+      pp_tps_before: comparison.ppTpsBefore,
+      pp_tps_after: comparison.ppTpsAfter,
       device_mib_before: comparison.memoryBefore?.deviceMib ?? null,
       device_mib_after: comparison.memoryAfter?.deviceMib ?? null,
       host_mib_before: comparison.memoryBefore?.hostMib ?? null,
@@ -494,13 +542,15 @@ async function runStored(
   await launchWith(options, { cpuMoe: "on", cacheMib: record.cache_mib, share: 0 });
   const port = snapshot.port;
   if (port == null) throw new Error("the tuned engine has no port");
-  set({ phase: "bench-after", message: "checking the tuned engine…" });
-  const after = await bench(port);
+  set({ phase: "bench-after", message: "tuned benchmark · PP + TG 256…" });
+  const after = await runBench(port, options.specOn === true, (bench) => set({ bench }));
   const memoryAfter = await readMemory(port, deviceIndex, gpu.usedMib);
   return {
     cacheMib: record.cache_mib,
     tpsBefore: record.tps_before,
     tpsAfter: after.tg,
+    ppTpsBefore: record.pp_tps_before ?? null,
+    ppTpsAfter: after.pp,
     memoryBefore:
       record.device_mib_before != null || record.host_mib_before != null
         ? {
@@ -541,8 +591,8 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
   set({ phase: "probing", message: "measuring what the calibration launch leaves free…" });
   const probe = await invoke<OverdriveProbe>("moe_overdrive_probe", { port, deviceIndex });
 
-  set({ phase: "bench-before", message: "baseline bench (cache 0)…" });
-  const before = await bench(port);
+  set({ phase: "bench-before", message: "baseline benchmark · PP + TG 256…" });
+  const before = await runBench(port, options.specOn === true, (bench) => set({ bench }));
   const memoryBefore = await readMemory(port, deviceIndex, gpu.usedMib);
 
   if (probe.recommended_mib < MIN_CACHE_MIB) {
@@ -550,6 +600,8 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
       cacheMib: 0,
       tpsBefore: before.tg,
       tpsAfter: null,
+      ppTpsBefore: before.pp,
+      ppTpsAfter: null,
       memoryBefore,
       memoryAfter: null,
       measuredAt: new Date().toISOString(),
@@ -567,6 +619,8 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
       cacheMib: 0,
       tpsBefore: before.tg,
       tpsAfter: null,
+      ppTpsBefore: before.pp,
+      ppTpsAfter: null,
       memoryBefore,
       memoryAfter: null,
       measuredAt: new Date().toISOString(),
@@ -584,6 +638,8 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
         cacheMib,
         tpsBefore: before.tg,
         tpsAfter: null,
+        ppTpsBefore: before.pp,
+        ppTpsAfter: null,
         memoryBefore,
         memoryAfter: null,
         measuredAt: new Date().toISOString(),
@@ -613,14 +669,16 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
   const tunedPort = snapshot.port;
   if (tunedPort == null) throw new Error("the tuned engine has no port");
 
-  set({ phase: "bench-after", message: "tuned bench…" });
-  const after = await bench(tunedPort);
+  set({ phase: "bench-after", message: "tuned benchmark · PP + TG 256…" });
+  const after = await runBench(tunedPort, options.specOn === true, (bench) => set({ bench }));
   const memoryAfter = await readMemory(tunedPort, deviceIndex, gpu.usedMib);
 
   const comparison: OverdriveComparison = {
     cacheMib,
     tpsBefore: before.tg,
     tpsAfter: after.tg,
+    ppTpsBefore: before.pp,
+    ppTpsAfter: after.pp,
     memoryBefore,
     memoryAfter,
     measuredAt: new Date().toISOString(),
@@ -651,6 +709,7 @@ export async function startOverdriveRun(options: OverdriveStartOptions): Promise
     alias: null,
     gpuMask: null,
     cacheMib: null,
+    bench: null,
     startedAt: Date.now(),
     aborting: false,
   });
@@ -661,7 +720,7 @@ export async function startOverdriveRun(options: OverdriveStartOptions): Promise
       stored && stored.cache_mib > 0
         ? await runStored(options, stored)
         : await runCalibration(options);
-    set({ phase: "done", comparison, message: null, error: null, aborting: false });
+    set({ phase: "done", comparison, message: null, error: null, aborting: false, bench: null });
   } catch (err) {
     const aborted = abortRequested;
     await safeStop();
@@ -672,6 +731,7 @@ export async function startOverdriveRun(options: OverdriveStartOptions): Promise
       message: aborted ? "run stopped — the launch config is back to what it was" : null,
       error: aborted ? null : message,
       aborting: false,
+      bench: null,
     });
     if (!aborted) dispatchAppEvent(EVENTS.launchError, { message });
   } finally {

@@ -20,6 +20,7 @@ import {
   readOverdriveRecord,
   resetOverdriveRun,
   useOverdriveRun,
+  OVERDRIVE_BENCH_LENGTH,
   type MoeOverdriveIdentity,
   type OverdriveComparison,
   type OverdriveRecord,
@@ -96,56 +97,77 @@ function gainPct(before: number | null, after: number | null): number | null {
   return (after / before - 1) * 100;
 }
 
+function CompareRow({
+  label,
+  before,
+  after,
+  unit,
+  gain = null,
+}: {
+  label: string;
+  before: string;
+  after: string;
+  unit: string;
+  gain?: number | null;
+}) {
+  return (
+    <>
+      <span className="moe-od__cmp-lab">{label}</span>
+      <span className="moe-od__cmp-val">{before}</span>
+      <span className="moe-od__cmp-arrow">→</span>
+      <span className="moe-od__cmp-val moe-od__cmp-val--after">{after}</span>
+      <span className="moe-od__cmp-unit">{unit}</span>
+      <span className={`moe-od__cmp-gain${gain != null && gain >= 0 ? " is-up" : ""}`}>
+        {gain != null ? `${gain >= 0 ? "+" : ""}${gain.toFixed(0)}%` : ""}
+      </span>
+    </>
+  );
+}
+
 function ComparisonCard({ comparison }: { comparison: OverdriveComparison }) {
-  const gain = gainPct(comparison.tpsBefore, comparison.tpsAfter);
+  const ppGain = gainPct(comparison.ppTpsBefore, comparison.ppTpsAfter);
+  const tgGain = gainPct(comparison.tpsBefore, comparison.tpsAfter);
   const beforeMemory = comparison.memoryBefore;
   const afterMemory = comparison.memoryAfter;
   return (
     <div className="moe-od__cmp">
-      <div className="moe-od__cmp-head">
-        <span>calibration → tuned</span>
-        <span className="moe-od__cmp-age">
-          {comparison.fromRecord ? `stored ${relativeAge(comparison.measuredAt)}` : "just measured"}
-        </span>
-      </div>
       <div className="moe-od__cmp-table">
-        <span className="moe-od__cmp-lab">TG</span>
-        <span className="moe-od__cmp-val">{tps(comparison.tpsBefore)}</span>
-        <span className="moe-od__cmp-arrow">→</span>
-        <span className="moe-od__cmp-val moe-od__cmp-val--after">{tps(comparison.tpsAfter)}</span>
-        <span className="moe-od__cmp-unit">t/s</span>
-        <span className={`moe-od__cmp-gain${gain != null && gain >= 0 ? " is-up" : ""}`}>
-          {gain != null ? `${gain >= 0 ? "+" : ""}${gain.toFixed(0)}%` : ""}
-        </span>
-
-        <span className="moe-od__cmp-lab">VRAM</span>
-        <span className="moe-od__cmp-val">
-          {beforeMemory ? gib(beforeMemory.deviceMib) : "—"}
-        </span>
-        <span className="moe-od__cmp-arrow">→</span>
-        <span className="moe-od__cmp-val moe-od__cmp-val--after">
-          {afterMemory ? gib(afterMemory.deviceMib) : "—"}
-        </span>
-        <span className="moe-od__cmp-unit">device</span>
-        <span className="moe-od__cmp-gain" />
-
-        <span className="moe-od__cmp-lab">RAM</span>
-        <span className="moe-od__cmp-val">
-          {beforeMemory ? gib(beforeMemory.hostMib) : "—"}
-        </span>
-        <span className="moe-od__cmp-arrow">→</span>
-        <span className="moe-od__cmp-val moe-od__cmp-val--after">
-          {afterMemory ? gib(afterMemory.hostMib) : "—"}
-        </span>
-        <span className="moe-od__cmp-unit">host</span>
-        <span className="moe-od__cmp-gain" />
-
-        <span className="moe-od__cmp-lab">CACHE</span>
-        <span className="moe-od__cmp-val">0</span>
-        <span className="moe-od__cmp-arrow">→</span>
-        <span className="moe-od__cmp-val moe-od__cmp-val--after">{num(comparison.cacheMib)}</span>
-        <span className="moe-od__cmp-unit">MiB</span>
-        <span className="moe-od__cmp-gain" />
+        <div className="moe-od__cmp-col">
+          <CompareRow
+            label="PP"
+            before={tps(comparison.ppTpsBefore)}
+            after={tps(comparison.ppTpsAfter)}
+            unit="t/s"
+            gain={ppGain}
+          />
+          <CompareRow
+            label="TG"
+            before={tps(comparison.tpsBefore)}
+            after={tps(comparison.tpsAfter)}
+            unit="t/s"
+            gain={tgGain}
+          />
+        </div>
+        <div className="moe-od__cmp-col">
+          <CompareRow
+            label="VRAM"
+            before={beforeMemory ? gib(beforeMemory.deviceMib) : "—"}
+            after={afterMemory ? gib(afterMemory.deviceMib) : "—"}
+            unit="device"
+          />
+          <CompareRow
+            label="RAM"
+            before={beforeMemory ? gib(beforeMemory.hostMib) : "—"}
+            after={afterMemory ? gib(afterMemory.hostMib) : "—"}
+            unit="host"
+          />
+          <CompareRow
+            label="CACHE"
+            before="0"
+            after={num(comparison.cacheMib)}
+            unit="MiB"
+          />
+        </div>
       </div>
       {comparison.note && <div className="moe-od__cmp-note">{comparison.note}</div>}
     </div>
@@ -212,6 +234,14 @@ export default function MoeOverdrive({
   }, [run.phase, recordArgs]);
 
   const comparison = run.comparison ?? (record ? comparisonFromRecord(record) : null);
+  // The age belongs to the table that is on screen; while a run is in flight the phase owns the
+  // head (a stale "stored 30m ago" next to BASELINE BENCH would be a lie).
+  const ageText =
+    !busy && comparison
+      ? comparison.fromRecord
+        ? `stored ${relativeAge(comparison.measuredAt)}`
+        : "just measured"
+      : null;
 
   const reset = async () => {
     try {
@@ -239,6 +269,7 @@ export default function MoeOverdrive({
         <span className="moe-od__title">MOE OVERDRIVE</span>
         <span className="moe-od__phase" data-phase={run.phase}>
           {PHASE_LABEL[run.phase] ?? run.phase.toUpperCase()}
+          {ageText ? ` · ${ageText}` : ""}
         </span>
         <button
           type="button"
@@ -290,6 +321,28 @@ export default function MoeOverdrive({
         <div className="moe-od__progress">
           <span className="moe-od__progress-label">{PHASE_LABEL[run.phase] ?? "WORKING"}</span>
           <span className="moe-od__progress-msg">{run.message}</span>
+          {run.bench && (
+            <div className="moe-od__bench">
+              <span
+                className="moe-od__bench-row"
+                data-active={run.bench.kind === "pp" ? "1" : undefined}
+              >
+                <span className="moe-od__bench-lab">PP {OVERDRIVE_BENCH_LENGTH}</span>
+                <span className="moe-od__bench-val">
+                  {run.bench.ppTps != null ? `${run.bench.ppTps.toFixed(0)} t/s` : "running…"}
+                </span>
+              </span>
+              <span
+                className="moe-od__bench-row"
+                data-active={run.bench.kind === "tg" ? "1" : undefined}
+              >
+                <span className="moe-od__bench-lab">TG {OVERDRIVE_BENCH_LENGTH}</span>
+                <span className="moe-od__bench-val">
+                  {run.bench.tgTps != null ? `${run.bench.tgTps.toFixed(1)} t/s` : "running…"}
+                </span>
+              </span>
+            </div>
+          )}
           {run.phase === "probing" && (
             <span className="moe-od__progress-hint">
               two short passes against the loaded engine; no second launch
