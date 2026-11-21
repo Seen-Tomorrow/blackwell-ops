@@ -933,7 +933,7 @@ interface VramFitResult {
 
 /** Scenario Factory types — single source of truth for VRAM evaluation */
 
-type Scenario = 'AUTO_FIT' | 'HW_LOCKED';
+type Scenario = 'AUTO_FIT' | 'HW_LOCKED' | 'CPU_EXPERTS';
 
 /** Scenario-driven UI template — copy/colors for the one ASSISTED forecast glass.
  *  Layout lives in VramBadge; do not revive a second FULL AUTO forecast UI. */

@@ -570,7 +570,17 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
           : "Fits with spill — RAM offload expected"
         : `Fits — ${gpuWord}`;
 
-  const heroText = launchSummary;
+  // The CPU-expert regime is a placement, not a spill: the host weights are where the user put
+  // them, and the cache is VRAM the launch reserves. Its layout (and copy) is its own scenario.
+  const cpuExperts = input.moeCpuExperts === true;
+  const cacheMib = Math.max(0, input.moeCacheMib ?? 0);
+  const cpuExpertsSummary = cpuExperts
+    ? `CPU experts${cacheMib > 0 ? ` + ${Math.round(cacheMib).toLocaleString("en-US")} MiB cache` : ""} — ${
+        fits ? "fits" : "over device free"
+      }`
+    : launchSummary;
+
+  const heroText = cpuExpertsSummary;
 
   const layerText =
     learnedGb != null
@@ -667,39 +677,40 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const spillWeightGb = hostSplit.weightGb;
 
   const base: VramManifest = {
-    scenario: "AUTO_FIT",
+    scenario: cpuExperts ? "CPU_EXPERTS" : "AUTO_FIT",
     style: {
       ...paintClasses,
-      icon: vramNeedTone === "ok" ? "*" : "o",
-      label: fitLabel,
-      launchPaint,
-      vramNeedTone,
-      ramNeedTone: ramHostUnknown ? "warn" : hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
+      icon: (cpuExperts ? fits : vramNeedTone === "ok") ? "*" : "o",
+      label: cpuExperts ? "CACHE" : fitLabel,
+      launchPaint: cpuExperts ? "fit" : launchPaint,
+      vramNeedTone: cpuExperts && fits ? "ok" : vramNeedTone,
+      ramNeedTone: cpuExperts ? "ok" : ramHostUnknown ? "warn" : hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
       needsLowVramReprobe: insets.needsReprobe,
       uiTemplate: {
         heroText,
-        launchSummary,
+        launchSummary: cpuExpertsSummary,
         gpuLayerText: layerText,
-        ramLayerText:
-          hostSplit.weightGb > 0.05
+        ramLayerText: cpuExperts
+          ? `${(hostMeasuredGb ?? ramNeedGb).toFixed(1)} GB expert pool in host RAM (by design)`
+          : hostSplit.weightGb > 0.05
             ? `${ramNeedGb.toFixed(1)} GB host (${hostSplit.bufferGb.toFixed(1)} buffer + ${hostSplit.weightGb.toFixed(1)} weight)`
             : ramNeedGb > 0.05
               ? `${ramNeedGb.toFixed(1)} GB host buffer (not layer offload)`
               : autoSplit
                 ? "VRAM spread across GPUs — offload decided at load"
                 : "engine might use some RAM at launch",
-        showRamBar: ramNeedGb > 0.05,
+        showRamBar: cpuExperts ? true : ramNeedGb > 0.05,
         moeRamBar: false,
-        kvSpillRiskText: insets.vramInset,
-        offloadWarningText: insets.ramInset,
+        kvSpillRiskText: cpuExperts ? undefined : insets.vramInset,
+        offloadWarningText: cpuExperts ? undefined : insets.ramInset,
       },
     },
     vramWeightsGb: round2(weightGb),
     vramTotalGb: round2(gpuProjectionGb),
-    ramSpillGb: round2(hostSplit.weightGb),
-    ramTotalGb: round2(ramNeedGb),
-    ramBufferGb: round2(hostSplit.bufferGb),
-    ramWeightGb: round2(spillWeightGb),
+    ramSpillGb: cpuExperts ? 0 : round2(hostSplit.weightGb),
+    ramTotalGb: cpuExperts && hostMeasuredGb != null ? round2(hostMeasuredGb) : round2(ramNeedGb),
+    ramBufferGb: cpuExperts ? 0 : round2(hostSplit.bufferGb),
+    ramWeightGb: cpuExperts ? 0 : round2(spillWeightGb),
     ramEngramGb: round2(hostEngramGb),
     ramManufacturedGb: input.ramManufacturedGb,
     ramAvailableGb: input.ramAvailableGb,

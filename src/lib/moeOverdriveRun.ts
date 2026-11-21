@@ -14,6 +14,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { dispatchAppEvent, EVENTS } from "./events";
 import type { EngineConfig, GpuInfo, StackEntry } from "./types";
+import {
+  activeEntries,
+  readStack,
+  sleep,
+  stopSlot,
+  waitForRunning,
+} from "./engineRun";
 
 /** Everything that changes what a calibration measured. The GPU set comes from the launch's
  *  device/split config, never from the selected slot: a record must survive stopping its engine. */
@@ -169,15 +176,11 @@ const INITIAL: OverdriveSnapshot = {
   aborting: false,
 };
 
-const POLL_MS = 800;
 const LOAD_DEADLINE_MS = 30 * 60_000;
-const STOP_DEADLINE_MS = 60_000;
 const STOP_SETTLE_MS = 500;
 /** Both bench passes use the same short request length, so before/after are comparable. */
 export const OVERDRIVE_BENCH_LENGTH = 256;
 const MIN_CACHE_MIB = 512;
-
-const ACTIVE_STATUSES = new Set(["LOADING", "RUNNING"]);
 
 let snapshot: OverdriveSnapshot = INITIAL;
 let running = false;
@@ -206,10 +209,6 @@ export function isOverdriveBusy(phase: OverdrivePhase): boolean {
   return phase !== "idle" && phase !== "done" && phase !== "error" && phase !== "aborted";
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err.split("\n")[0];
@@ -218,14 +217,6 @@ function errorMessage(err: unknown): string {
 
 function normalizePath(path: string | null | undefined): string {
   return (path ?? "").replace(/\\/g, "/").toLowerCase();
-}
-
-async function readStack(): Promise<StackEntry[]> {
-  return invoke<StackEntry[]>("get_stack_status");
-}
-
-function activeEntries(entries: StackEntry[]): StackEntry[] {
-  return entries.filter((entry) => ACTIVE_STATUSES.has(entry.status));
 }
 
 /** The GPU set the launch will use: all cards for a split, otherwise the configured device. */
@@ -312,20 +303,6 @@ export function resetOverdriveRun(): void {
   for (const listener of listeners) listener();
 }
 
-async function waitIdle(slotIdx: number): Promise<void> {
-  const deadline = Date.now() + STOP_DEADLINE_MS;
-  while (Date.now() < deadline) {
-    const entry = (await readStack()).find((item) => item.idx === slotIdx);
-    if (!entry || !ACTIVE_STATUSES.has(entry.status)) return;
-    await sleep(300);
-  }
-}
-
-async function stopSlot(slotIdx: number): Promise<void> {
-  await invoke("stop_engine_slot", { slotIdx }).catch(() => {});
-  await waitIdle(slotIdx);
-}
-
 async function stopCurrent(): Promise<void> {
   const slot = snapshot.slotIdx;
   if (slot == null) return;
@@ -354,31 +331,16 @@ async function ensureSeatFree(identity: MoeOverdriveIdentity): Promise<void> {
 }
 
 async function waitRunning(slotIdx: number): Promise<StackEntry> {
-  const deadline = Date.now() + LOAD_DEADLINE_MS;
-  for (;;) {
-    if (abortRequested) throw new Error("aborted");
-    const entry = (await readStack()).find((item) => item.idx === slotIdx);
-    if (!entry) throw new Error("the launched engine vanished before it finished loading");
-    if (entry.status === "ERROR") {
-      throw new Error("the engine reported ERROR while loading — see the engine log");
-    }
-    if (!ACTIVE_STATUSES.has(entry.status)) {
-      throw new Error(`the engine stopped while loading (${entry.status})`);
-    }
-    if (entry.status === "RUNNING") {
-      set({
-        port: entry.port || snapshot.port,
-        alias: entry.alias || snapshot.alias,
-        gpuMask: entry.gpu || snapshot.gpuMask,
-      });
-      return entry;
-    }
-    if (entry.gpu) set({ gpuMask: entry.gpu });
-    if (Date.now() > deadline) {
-      throw new Error("the engine did not reach RUNNING within 30 minutes");
-    }
-    await sleep(POLL_MS);
-  }
+  const entry = await waitForRunning(slotIdx, {
+    timeoutMs: LOAD_DEADLINE_MS,
+    isAborted: () => abortRequested,
+  });
+  set({
+    port: entry.port || snapshot.port,
+    alias: entry.alias || snapshot.alias,
+    gpuMask: entry.gpu || snapshot.gpuMask,
+  });
+  return entry;
 }
 
 async function launchWith(

@@ -95,6 +95,8 @@ export const KEYS = {
   dflashHfCandidates: `${STORAGE_PREFIX}dflash-hf-candidates`,
   paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
+  /** Forecast: after a fresh launch, add a second CTX point automatically (2 extra loads). */
+  forecastTwoPoint: `${STORAGE_PREFIX}forecast-two-point`,
   /** Harness: launch pi console elevated via gsudo ("1" = on). */
   piCodeElevated: `${STORAGE_PREFIX}pi-code-elevated`,
 
@@ -1436,4 +1438,13 @@ export function resolveGroupOrder(
     ...normalizedCustom.filter((g) => seen.has(g)),
     ...derivedOrder.filter((g) => !normalizedCustom.includes(g)),
   ];
+}
+
+/** Forecast two-point calibration: power-user opt-in, off by default. */
+export function loadForecastTwoPoint(): boolean {
+  return readStorage(KEYS.forecastTwoPoint) === "1";
+}
+
+export function saveForecastTwoPoint(on: boolean): void {
+  writeStorage(KEYS.forecastTwoPoint, on ? "1" : "0");
 }

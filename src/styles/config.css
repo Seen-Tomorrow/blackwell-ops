@@ -2089,3 +2089,26 @@ select option {
 .config-launch-overdrive:hover:not(:disabled) {
   background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
 }
+/* Expert launch nudge: a plain MoE launch would spill, while -cmoe + cache fits. The right
+   half pulses and the plain half recedes; the forecast prints the same prompt on the glass. */
+@keyframes expert-nudge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  }
+}
+
+.config-launch-split[data-expert-nudge="1"] > .config-launch-btn:first-child {
+  opacity: 0.45;
+  filter: saturate(0.4);
+}
+
+.config-launch-overdrive[data-expert-nudge="1"] {
+  border-color: var(--theme-accent);
+  color: var(--theme-accent-bright);
+  background: color-mix(in srgb, var(--theme-accent) 22%, transparent);
+  animation: expert-nudge-pulse 1.8s ease-in-out infinite;
+}

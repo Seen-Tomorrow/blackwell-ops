@@ -59,6 +59,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     onLaunchClick,
   onLaunchOverdrive,
   overdriveDisabled,
+  overdriveNudge = false,
   overdriveTitle,
   overdriveHint,
     launchAck,
@@ -194,7 +195,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           </div>
         </div>
       )}
-      <div className={`config-launch-split${onLaunchOverdrive ? " config-launch-split--armed" : ""}`}>
+      <div className={`config-launch-split${onLaunchOverdrive ? " config-launch-split--armed" : ""}`} data-expert-nudge={overdriveNudge ? "1" : undefined}>
       <button
         onClick={onLaunchClick}
         disabled={launchDisabled}
@@ -239,6 +240,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           onClick={onLaunchOverdrive}
           disabled={overdriveDisabled ?? launchDisabled}
           className="config-launch-overdrive ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          data-expert-nudge={overdriveNudge ? "1" : undefined}
           title={
             overdriveTitle ??
             "MOE OVERDRIVE: launch with the experts in host RAM and the measured cache, then size it on the dedicated screen"
@@ -389,6 +391,8 @@ export interface EngineLaunchDockProps {
   onLaunchOverdrive?: () => void;
   /** OVERDRIVE does not inherit the plain-launch fit gate: it measures the real load. */
   overdriveDisabled?: boolean;
+  /** Plain MoE launch spills and the host can hold the experts: make the expert half the choice. */
+  overdriveNudge?: boolean;
   overdriveTitle?: string;
   overdriveHint?: string;
   launchAck: boolean;

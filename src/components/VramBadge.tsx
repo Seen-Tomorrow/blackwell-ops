@@ -24,8 +24,15 @@ import type { FusionDualOrient } from "../lib/storage";
 import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import { memoryLabelForKvQuant } from "../lib/multiAgentBooster";
 import MoeOverdrive from "./MoeOverdrive";
+import CpuExpertsScenario from "./CpuExpertsScenario";
 import { setOverdriveActive, useOverdriveActive } from "../lib/moeOverdriveState";
-import type { MoeOverdriveIdentity } from "../lib/moeOverdriveRun";
+import { loadForecastTwoPoint, saveForecastTwoPoint } from "../lib/storage";
+import { isCurveRunBusy, useForecastCurveRun } from "../lib/forecastCurveRun";
+import {
+  readOverdriveRecord,
+  type MoeOverdriveIdentity,
+  type OverdriveRecord,
+} from "../lib/moeOverdriveRun";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -52,6 +59,10 @@ interface VramBadgeProps {
   onSplitEq?: () => void;
   /** MOE OVERDRIVE: the launch shape the stored calibration is keyed by, and the run entry. */
   overdriveIdentity?: MoeOverdriveIdentity | null;
+  /** The config's cache, for the CPU EXPERTS scenario before a record exists. */
+  overdriveCacheMib?: number;
+  /** Plain MoE launch spills but the host can hold the experts: steer to OVERDRIVE. */
+  expertNudge?: boolean;
   canStartOverdrive?: boolean;
   onStartOverdrive?: (forceCalibrate: boolean) => void;
   /** Port of the running engine, even when no slot is selected (OVERDRIVE does not need fusion). */
@@ -110,9 +121,9 @@ interface VramBadgeProps {
 
 /** Pre-manifest EVALUATING radar — no uiTemplate exists yet. */
 const EVALUATING_COPY = {
-  title: "EVALUATING",
-  sub: "footprint · learned · fit probe",
-  aria: "Evaluating VRAM footprint",
+  title: "NO MEASUREMENT YET",
+  sub: "probe this CTX or launch once · 2-PT adds the curve",
+  aria: "No VRAM measurement yet for this model",
 } as const;
 
 const DRAFT_FACE_COPY = {
@@ -192,6 +203,8 @@ export default function VramBadge({
   dualOrient = "side",
   secondaryPane = null,
   overdriveIdentity = null,
+  overdriveCacheMib = 0,
+  expertNudge = false,
   canStartOverdrive = false,
   onStartOverdrive,
   overdrivePort = null,
@@ -202,6 +215,23 @@ export default function VramBadge({
   // split, so what the bars paint and what this glass prints cannot disagree.
 
   const overdriveActive = useOverdriveActive();
+  const [twoPoint, setTwoPoint] = useState(loadForecastTwoPoint);
+  const curveRun = useForecastCurveRun();
+  const curveBusy = isCurveRunBusy(curveRun.phase);
+  const [overdriveRecord, setOverdriveRecord] = useState<OverdriveRecord | null>(null);
+  useEffect(() => {
+    if (!overdriveIdentity || manifest?.scenario !== "CPU_EXPERTS") {
+      setOverdriveRecord(null);
+      return;
+    }
+    let cancelled = false;
+    void readOverdriveRecord(overdriveIdentity).then((stored) => {
+      if (!cancelled) setOverdriveRecord(stored);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [overdriveIdentity, manifest?.scenario]);
 
   // Publish what this glass shows, so an agent can read it instead of asking for a
   // screenshot. DEV builds write config/automation/ui/vram-badge.json.
@@ -511,7 +541,7 @@ export default function VramBadge({
                 className="vram-fc-source__reprobe vram-fc-skeleton__probe"
                 onClick={() => onValidate("full")}
                 disabled={isValidating}
-                title="Run FIT at this CTX — two CTXs are measured when no launch curve exists"
+                title="Run the normal full-need FIT probe at this CTX"
               >
                 {isValidating ? "PROBING…" : "PROBE THIS CTX"}
               </button>
@@ -649,13 +679,13 @@ export default function VramBadge({
         >
           {launchSummary}
         </p>
+        {/* Normal full-need probe stays (fresh model / lock this CTX). The free-aware
+            RE-PROBE LOW VRAM variant is parked: the low_vram flags are deliberately not passed. */}
         {memorySource && !hideFitProbe ? (
           <MemorySourceReprobe
             memorySource={memorySource}
             isValidating={isValidating}
             onValidate={onValidate}
-            needsLowVramReprobe={!!s.needsLowVramReprobe}
-            overFreeReprobe={s.launchPaint === "offload" || s.launchPaint === "nofit"}
           />
         ) : null}
         {/* One entry, one screen: OVERDRIVE is not a mode the forecast can toggle into. */}
@@ -706,8 +736,37 @@ export default function VramBadge({
             </button>
           ) : null}
         </div>
+        {/* Power-user opt-in: after a fresh launch, add a second CTX point so the curve exists. */}
+        <button
+          type="button"
+          className="vram-fc-two-point"
+          data-on={twoPoint ? "1" : undefined}
+          data-busy={curveBusy ? "1" : undefined}
+          onClick={() => {
+            const next = !twoPoint;
+            setTwoPoint(next);
+            saveForecastTwoPoint(next);
+          }}
+          title={
+            curveBusy
+              ? (curveRun.message ?? "two-point calibration running")
+              : twoPoint
+                ? "2-PT on: a fresh launch gets a second CTX point automatically (2 extra loads)"
+                : "2-PT off: enable the automatic second-CTX calibration"
+          }
+        >
+          {curveBusy ? "2-PT…" : "2-PT"}
+        </button>
       </div>
 
+      {manifest.scenario === "CPU_EXPERTS" ? (
+        <CpuExpertsScenario
+          manifest={manifest}
+          cacheMib={overdriveCacheMib}
+          record={overdriveRecord}
+          onRecalibrate={onStartOverdrive ? () => onStartOverdrive(true) : undefined}
+        />
+      ) : (
       <div className="vram-badge-body vram-fc__body vram-fc__body--assisted relative min-h-0 overflow-hidden">
         <div className="vram-fc-measure relative">
           <div className="vram-fc-measure__main">
@@ -921,6 +980,18 @@ export default function VramBadge({
           </div>
         </div>
 
+        {expertNudge && onStartOverdrive ? (
+          <button
+            type="button"
+            className="vram-fc-expert-nudge"
+            onClick={() => onStartOverdrive(false)}
+            title="The plain launch spills; OVERDRIVE puts the experts in host RAM and caches them in VRAM"
+          >
+            <span>EXPERTS FIT IN RAM · CACHE THEM IN VRAM</span>
+            <span className="vram-fc-expert-nudge__cta">OVERDRIVE →</span>
+          </button>
+        ) : null}
+
         {manifest.gpuAllocations.length > 0 && (
           <div
             className="vram-fc__topo vram-fc__topo--compact"
@@ -939,6 +1010,7 @@ export default function VramBadge({
           </div>
         )}
       </div>
+      )}
       <NvramSnapshotOverlay open={snapLogOpen} onClose={() => onCloseSnapLog?.()} />
     </div>
   );

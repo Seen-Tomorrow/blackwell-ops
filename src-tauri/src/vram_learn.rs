@@ -673,6 +673,16 @@ fn experts_token_from_config(config: &EngineConfig) -> String {
     )
 }
 
+/// The learned key carries the expert regime as a suffix. A plain entry has no token; a cache
+/// entry must end with the exact token (the cache size is part of the footprint).
+fn key_matches_experts(key: &str, experts: &str) -> bool {
+    if experts.is_empty() {
+        !key.contains("|experts=")
+    } else {
+        key.ends_with(experts)
+    }
+}
+
 fn memory_mode_from_config(config: &EngineConfig) -> String {
     config
         .extra_params
@@ -3008,11 +3018,21 @@ pub fn get_learned_vram_curve(
     batch: Option<u32>,
     ubatch: Option<u32>,
     parallel: Option<u32>,
+    cpu_moe: Option<String>,
+    moe_cache_mib: Option<String>,
 ) -> Vec<LearnedVramCurvePoint> {
     let Some(_guard) = STORE_MUTEX.lock().ok() else {
         return Vec::new();
     };
     let store = load_store();
+    // One curve per expert regime: a cache launch and a plain launch are not two points of the
+    // same line. Keep only the rows whose key carries the requested placement token.
+    let experts = experts_token(
+        cpu_moe.as_deref().unwrap_or(""),
+        moe_cache_mib.as_deref().unwrap_or("0"),
+    );
+    let mut entries = store.entries.clone();
+    entries.retain(|key, _| key_matches_experts(key, &experts));
     let path_norm = normalize_model_path_for_key(&model_path);
     let kv_n = kv_quant.trim().to_lowercase();
     let wanted_spec = spec_key_for_learn(
@@ -3025,7 +3045,7 @@ pub fn get_learned_vram_curve(
     let wanted_parallel = parallel.unwrap_or(1);
     let wanted_pair = batch_pair(wanted_batch, wanted_ubatch);
     let global_delta = find_batch_delta(
-        &store.entries,
+        &entries,
         &path_norm,
         &provider_id,
         &kv_n,
@@ -3034,7 +3054,7 @@ pub fn get_learned_vram_curve(
         &wanted_pair,
     );
     let spec_points = find_spec_delta_points(
-        &store.entries,
+        &entries,
         &path_norm,
         &provider_id,
         &kv_n,
@@ -3043,7 +3063,7 @@ pub fn get_learned_vram_curve(
         &wanted_spec,
     );
     let joint_points = find_joint_delta_points(
-        &store.entries,
+        &entries,
         &path_norm,
         &provider_id,
         &kv_n,
@@ -3054,7 +3074,7 @@ pub fn get_learned_vram_curve(
     );
     let mut best: std::collections::HashMap<usize, (String, LearnedVramCurvePoint)> =
         std::collections::HashMap::new();
-    for (k, entry) in &store.entries {
+    for (k, entry) in &entries {
         if !entry_matches_curve_hard_knobs(k, &path_norm, &provider_id, &kv_n) {
             continue;
         }
@@ -3404,7 +3424,7 @@ mod compute_model_tests {
 
 #[cfg(test)]
 mod experts_placement_tests {
-    use super::experts_token;
+    use super::{experts_token, key_matches_experts};
 
     /// A plain launch keeps the historical key: the forecast's learned history must not move.
     #[test]
@@ -3421,5 +3441,15 @@ mod experts_placement_tests {
         assert_eq!(experts_token("on", "16384"), "|experts=cpu-cache:16384");
         assert_ne!(experts_token("on", "4096"), experts_token("on", "16384"));
         assert_ne!(experts_token("on", "4096"), experts_token("off", "4096"));
+    }
+
+    /// A curve is one regime: a cache row and a plain row are not two points of the same line.
+    #[test]
+    fn curve_rows_do_not_mix_expert_regimes() {
+        assert!(key_matches_experts("m|ctx=32768|experts=cpu-cache:4096", "|experts=cpu-cache:4096"));
+        assert!(!key_matches_experts("m|ctx=32768|experts=cpu-cache:4096", "|experts=cpu-cache:8192"));
+        assert!(!key_matches_experts("m|ctx=32768|experts=cpu-cache:4096", ""));
+        assert!(key_matches_experts("m|ctx=32768", ""));
+        assert!(!key_matches_experts("m|ctx=32768", "|experts=cpu-cache:4096"));
     }
 }

@@ -143,6 +143,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onToggleMonitor,
     onOverdriveReset,
     overdriveIdentity = null,
+    overdriveCacheMib = 0,
+    expertNudge = false,
     canStartOverdrive = false,
     onStartOverdrive,
   } = props;
@@ -530,6 +532,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               secondaryPane={secondaryPane}
               overdrivePort={overdrivePort}
               overdriveIdentity={overdriveIdentity}
+              overdriveCacheMib={overdriveCacheMib}
+              expertNudge={expertNudge}
               canStartOverdrive={canStartOverdrive}
               onStartOverdrive={onStartOverdrive}
               onOverdriveReset={onOverdriveReset}
@@ -622,6 +626,7 @@ export interface EngineGpuForecastProps {
   /** Highlighted GPU indices from the forecast — pass empty to hide. */
   selectedGpuIndices: number[];
   isValidating: boolean;
+  /** Normal full-need FIT probe (the low-VRAM free-aware variant is parked). */
   onValidate: (mode?: "full" | "low_vram") => void;
   /** Automatic placement owns this launch: the app writes `-ts` and turns fit off. */
   placementActive?: boolean;
@@ -693,6 +698,8 @@ export interface EngineGpuForecastProps {
 
   /** MOE OVERDRIVE screen: the stored-calibration identity, and the run entry. */
   overdriveIdentity?: MoeOverdriveIdentity | null;
+  overdriveCacheMib?: number;
+  expertNudge?: boolean;
   canStartOverdrive?: boolean;
   onStartOverdrive?: (forceCalibrate: boolean) => void;
   /** RESET restores the plain launch path (cpu_moe off, cache 0), not just the record. */

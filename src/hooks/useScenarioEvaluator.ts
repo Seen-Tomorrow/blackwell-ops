@@ -22,6 +22,14 @@ import {
 } from "../lib/specDraft";
 import { normalizeDraftPath } from "../lib/spec/adapters";
 import { useTauriListen } from "./useTauriListen";
+
+/**
+ * PARKED: the free-aware low-VRAM FIT probe (`low_vram`, fit off, multi-scenario) no longer runs.
+ * The normal full-need FIT probe (`full`, fit on) stays: it is what measures a fresh model and
+ * what the header's RE-PROBE runs. The low_vram code stays in the repo for revival.
+ */
+const LOW_VRAM_PROBE_PARKED = true;
+
 type ProbeSession = {
   modelPath: string;
   /** Hard knobs only — ctx slider does not drop the probe. */
@@ -887,6 +895,8 @@ export function useScenarioEvaluator({
         vramTopo: vramTopo || null,
         parallel: Number(curConfig.parallel ?? 1),
         ubatch: Number(curConfig.ubatch ?? 0),
+        cpuMoe: String(curConfig.cpu_moe ?? "off"),
+        moeCacheMib: String(curConfig.moe_cache_mib ?? "0"),
       }).catch(() => []),
     ])
       .then(([entry, curve]) => {
@@ -923,11 +933,17 @@ export function useScenarioEvaluator({
         learnedMeasuredAtRef.current = entry?.measured_at;
         learnedMtpContextRef.current = snap?.mtp_context_mib;
         learnedAnchorCtxRef.current = learnedVramRef.current ? queryCtx : undefined;
-        learnedSpilledRef.current = learnedLaunchSpilled(
-          learnedHostModelRef.current,
-          learnedHostRef.current,
-          learnedEngramRef.current ?? ggufEngramMib(model),
-        );
+        const cpuExpertsOn =
+          String(curConfig.cpu_moe ?? "off").trim().toLowerCase() === "on";
+        // Under -cmoe the host model weights are the chosen expert placement, not a spill: the
+        // row stays usable history, and the curve keeps its points.
+        learnedSpilledRef.current =
+          !cpuExpertsOn &&
+          learnedLaunchSpilled(
+            learnedHostModelRef.current,
+            learnedHostRef.current,
+            learnedEngramRef.current ?? ggufEngramMib(model),
+          );
         const cleanCurve = sanitizeLearnedCurve(
           (curve ?? []).map((p) => ({
             ctx: p.ctx,
@@ -937,14 +953,16 @@ export function useScenarioEvaluator({
             engramMib: p.engram_mib,
             hostModelMib: p.host_model_mib,
           })),
-        ).filter((p) =>
-          // Host *model* weights decide spill; host compute is a legitimate buffer and used to
-          // drop every big-ubatch point from the curve while its exact row still answered.
-          !learnedLaunchSpilled(
-            p.hostModelMib,
-            p.hostMib,
-            p.engramMib ?? ggufEngramMib(model),
-          ),
+        ).filter(
+          (p) =>
+            // Host *model* weights decide spill; host compute is a legitimate buffer and used to
+            // drop every big-ubatch point from the curve while its exact row still answered.
+            cpuExpertsOn ||
+            !learnedLaunchSpilled(
+              p.hostModelMib,
+              p.hostMib,
+              p.engramMib ?? ggufEngramMib(model),
+            ),
         );
         learnedCurveRef.current = cleanCurve;
         setLearnedCurveCtxs(cleanCurve.map((p) => p.ctx));
@@ -1127,9 +1145,11 @@ export function useScenarioEvaluator({
     try {
       // Auto / default RE-PROBE is always full-need (ngl 999).
       // low_vram only when the button is flashing and the user clicks it.
-      const probeMode: FitProbeMode =
-        requestedMode
-        ?? (manifestRef.current?.style?.needsLowVramReprobe ? "low_vram" : "full");
+      // PARKED: never the free-aware low-VRAM hunt. The normal full-need probe is the only one.
+      const probeMode: FitProbeMode = LOW_VRAM_PROBE_PARKED
+        ? "full"
+        : requestedMode
+          ?? (manifestRef.current?.style?.needsLowVramReprobe ? "low_vram" : "full");
 
       const runningSlots = committedSlotsFromStack(stackRef.current);
       const gpuAvail = computeGpuAvailableList(gpusRef.current, runningSlots);
