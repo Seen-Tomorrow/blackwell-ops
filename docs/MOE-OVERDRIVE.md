@@ -27,11 +27,11 @@ click OVERDRIVE
   │                                         no
   ├─ load cache 0 (-cmoe)        [ real boot screen, STOP = abort ]
   ├─ probe PP/TG               → free after the real launch
-  ├─ baseline TG bench         → tps before · card + host memory before
+  ├─ baseline TG bench         → tps before · device + host memory before
   ├─ cache = min(free − 512, host expert pool)
   ├─ save the calibration       (so a failed tuned load is not a lost measurement)
   ├─ stop · load with the cache  [ real boot screen, STOP = abort ]
-  ├─ tuned TG bench            → tps after · card + host memory after
+  ├─ tuned TG bench            → tps after · device + host memory after
   ├─ save the full record
   └─ print BEFORE → AFTER and stay until ← FORECAST
 ```
@@ -42,9 +42,10 @@ click OVERDRIVE
   (phases, GPU VRAM, NVMe read, STOP). STOP aborts the run and restores the knobs it started with.
 - **The cache is capped by the expert pool**, not just by free VRAM: caching more MiB than the
   host-resident experts is impossible and only eats the reserve.
-- **Comparison**: TG t/s, card VRAM used, host RAM and the cache setting, before vs after. Card
-  VRAM is NVML used (the engine's `/memory` ledger does not account for the expert cache — it lands
-  in "unaccounted"). Both sides include any other app on the card, so the delta is the run's.
+- **Comparison**: TG t/s, device VRAM, host RAM and the cache setting, before vs after. Device
+  VRAM is NVML used minus the pre-run reading, so another app's VRAM is not counted as the
+  launch's (the engine's `/memory` ledger does not account for the expert cache — it lands in
+  "unaccounted").
 - **Identity = the launch shape**: model path+size, ctx, KV quant, split, the launch's GPU set
   (from the panel's device/split config — never the selected slot), draft identity and n-max. The
   record survives stopping the engine that measured it.
@@ -56,7 +57,7 @@ click OVERDRIVE
 | piece | state |
 |---|---|
 | Learned-key namespace `|experts=cpu-cache:<mib>` | **done** — a cache launch records its own key, and the forecast now asks for the same regime (`get_learned_vram` takes cpu_moe/cache), so it stops painting the plain footprint over a CPU-expert launch |
-| Record per shape (`config/cache/moe-overdrive/<hash>.json`) | **done** — free PP/TG, cache, reserve, before/after t/s, card/host memory, engine, driver, age |
+| Record per shape (`config/cache/moe-overdrive/<hash>.json`) | **done** — free PP/TG, cache, reserve, before/after t/s, device/host memory, engine build, driver, age |
 | One-click cycle (calibrate → write → tuned relaunch → bench → compare) | **done** — `moeOverdriveRun.ts`; abort stops the load and restores the knobs |
 | Both loads use the real boot screen | **done** — `FusionBooter` inside the screen; STOP = abort |
 | Forecast badge entry | **done** — one `MOE OVERDRIVE →` button opens the screen; no FORECAST/OVERDRIVE toggle and no badge SIZE/optimizer block |
@@ -82,8 +83,8 @@ click OVERDRIVE
 
 - The run is driven from the page: closing the app mid-run leaves the loading engine to the engine
   rail (STOP still works); the knobs are not restored automatically in that case.
-- The cache fills lazily; the "after" card VRAM is what the bench actually touched, while the cache
-  row is the cap the launch was given.
+- The cache fills lazily; the "after" device VRAM is what the bench actually touched, while the
+  cache row is the cap the launch was given.
 - The bench is `cmd_burst_bench` at 1024 generated tokens, no warmup, code prompt — the same
   primitive the bench tray uses.
 
@@ -92,6 +93,6 @@ click OVERDRIVE
 1. Pick a MoE model, ASSISTED. Click `OVERDRIVE` on the launch button.
 2. Watch the calibration load on the real boot screen (cache 0). STOP aborts and restores.
 3. `PROBING`, `BASELINE BENCH`; then the tuned load (cache from the probe) on the boot screen.
-4. `TUNED BENCH` → the screen prints `calibration → tuned`: TG t/s, card VRAM, host RAM, cache.
+4. `TUNED BENCH` → the screen prints `calibration → tuned`: TG t/s, device VRAM, host RAM, cache.
 5. Leave with `← FORECAST`. The tuned engine keeps running; later `RUN (STORED CACHE)` is one load.
 6. `RECALIBRATE` measures again; `RESET` clears the record and returns the next launch to plain.

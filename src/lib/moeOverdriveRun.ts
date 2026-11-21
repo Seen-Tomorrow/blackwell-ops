@@ -13,7 +13,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { dispatchAppEvent, EVENTS } from "./events";
-import type { EngineConfig, StackEntry } from "./types";
+import type { EngineConfig, GpuInfo, StackEntry } from "./types";
 
 /** Everything that changes what a calibration measured. The GPU set comes from the launch's
  *  device/split config, never from the selected slot: a record must survive stopping its engine. */
@@ -406,15 +406,19 @@ async function bench(port: number): Promise<{ tg: number | null; pp: number | nu
   }
 }
 
-async function readMemory(port: number, deviceIndex: number): Promise<OverdriveMemory> {
+async function readMemory(
+  port: number,
+  deviceIndex: number,
+  baselineUsedMib: number,
+): Promise<OverdriveMemory> {
   try {
     const ledger = await invoke<OverdriveLedger>("moe_overdrive_ledger", { port, deviceIndex });
     const components = ledger.components;
     return {
       // NVML used, not the ledger component sum: the engine's `/memory` does not account for the
       // expert cache (it lands in "unaccounted"), so the sum would hide half the tuned footprint.
-      // It includes other apps on the card; both sides of the comparison do, so the delta is the run.
-      deviceMib: ledger.used_mib,
+      // The pre-run reading is subtracted so another app's VRAM does not become "the launch's".
+      deviceMib: Math.max(0, ledger.used_mib - baselineUsedMib),
       hostMib: components.host_mib,
       freeMib: ledger.free_mib,
     };
@@ -423,16 +427,20 @@ async function readMemory(port: number, deviceIndex: number): Promise<OverdriveM
   }
 }
 
-let driverCache: string | null | undefined;
-
-async function driverVersion(): Promise<string | null> {
-  if (driverCache !== undefined) return driverCache;
+/** NVML used + driver, before the run: the baseline other apps occupy on the measured card. */
+async function gpuAt(
+  deviceIndex: number,
+): Promise<{ usedMib: number; driver: string | null }> {
   try {
-    driverCache = (await invoke<string | null>("get_nvidia_driver_version")) ?? null;
+    const gpus = await invoke<GpuInfo[]>("scan_gpus");
+    const gpu = gpus.find((item) => item.index === deviceIndex);
+    return {
+      usedMib: gpu?.memory_used ?? 0,
+      driver: gpu?.driver_version ?? null,
+    };
   } catch {
-    driverCache = null;
+    return { usedMib: 0, driver: null };
   }
-  return driverCache;
 }
 
 async function saveRecord(
@@ -477,6 +485,7 @@ async function runStored(
 ): Promise<OverdriveComparison> {
   const identity = options.identity;
   const deviceIndex = deviceIndexFor(identity);
+  const gpu = await gpuAt(deviceIndex);
   set({
     phase: "loading-tuned",
     cacheMib: record.cache_mib,
@@ -487,7 +496,7 @@ async function runStored(
   if (port == null) throw new Error("the tuned engine has no port");
   set({ phase: "bench-after", message: "checking the tuned engine…" });
   const after = await bench(port);
-  const memoryAfter = await readMemory(port, deviceIndex);
+  const memoryAfter = await readMemory(port, deviceIndex, gpu.usedMib);
   return {
     cacheMib: record.cache_mib,
     tpsBefore: record.tps_before,
@@ -510,6 +519,9 @@ async function runStored(
 async function runCalibration(options: OverdriveStartOptions): Promise<OverdriveComparison> {
   const identity = options.identity;
   const deviceIndex = deviceIndexFor(identity);
+  // Read the card before this run's engine exists: whatever is already there belongs to other
+  // apps and must not be counted as the launch's footprint.
+  const gpu = await gpuAt(deviceIndex);
 
   set({
     phase: "loading-calibration",
@@ -517,7 +529,12 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
     message: "calibration load — experts in host RAM, no cache",
   });
   const calibration = await launchWith(options, { cpuMoe: "on", cacheMib: 0, share: 0 });
-  const engineBuild = calibration.build_info?.version ?? null;
+  // The stack's `build_info.version` is the catalog label ("catalog"), not the engine build; the
+  // profile + build date is what actually identifies the binary that measured this shape.
+  const engineBuild =
+    [calibration.binaryProfile, calibration.build_info?.buildDate]
+      .filter((part): part is string => Boolean(part))
+      .join(" · ") || null;
   const port = snapshot.port;
   if (port == null) throw new Error("the calibration engine has no port");
 
@@ -526,7 +543,7 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
 
   set({ phase: "bench-before", message: "baseline bench (cache 0)…" });
   const before = await bench(port);
-  const memoryBefore = await readMemory(port, deviceIndex);
+  const memoryBefore = await readMemory(port, deviceIndex, gpu.usedMib);
 
   if (probe.recommended_mib < MIN_CACHE_MIB) {
     return {
@@ -559,7 +576,6 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
   }
   // Keep the measurement before the tuned load: if that load fails, the next attempt can use the
   // cache this calibration justified instead of measuring the shape again.
-  const driver = await driverVersion();
   try {
     await saveRecord(
       identity,
@@ -575,7 +591,7 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
         note: null,
       },
       engineBuild,
-      driver,
+      gpu.driver,
     );
   } catch {
     // The tuned run still replaces it; a record is useful, not a gate.
@@ -599,7 +615,7 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
 
   set({ phase: "bench-after", message: "tuned bench…" });
   const after = await bench(tunedPort);
-  const memoryAfter = await readMemory(tunedPort, deviceIndex);
+  const memoryAfter = await readMemory(tunedPort, deviceIndex, gpu.usedMib);
 
   const comparison: OverdriveComparison = {
     cacheMib,
@@ -612,7 +628,7 @@ async function runCalibration(options: OverdriveStartOptions): Promise<Overdrive
     note: null,
   };
   try {
-    await saveRecord(identity, probe, comparison, engineBuild, driver);
+    await saveRecord(identity, probe, comparison, engineBuild, gpu.driver);
   } catch (err) {
     comparison.note = `tuned, but the record could not be saved: ${errorMessage(err)}`;
   }

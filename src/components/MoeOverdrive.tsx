@@ -126,7 +126,7 @@ function ComparisonCard({ comparison }: { comparison: OverdriveComparison }) {
         <span className="moe-od__cmp-val moe-od__cmp-val--after">
           {afterMemory ? gib(afterMemory.deviceMib) : "—"}
         </span>
-        <span className="moe-od__cmp-unit">card</span>
+        <span className="moe-od__cmp-unit">device</span>
         <span className="moe-od__cmp-gain" />
 
         <span className="moe-od__cmp-lab">RAM</span>
