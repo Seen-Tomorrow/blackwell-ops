@@ -956,14 +956,20 @@ impl LogHub {
         let host_mib = snapshot.host_mib;
         let gpu_breakdown = Some(snapshot.gpu_breakdown_mib.clone());
         let profile = snapshot.reference_profile.clone();
+        // A `-cmoe` cache launch parks the expert cache in "unaccounted": `used - buffers` is the
+        // cache, not CUDA context/graph slack. Sampling it once pushed the per-device residual
+        // median to 20 GiB. The runtime overhead is a device property; a plain launch trains it.
+        let cache_launch = learn_snapshot.learn_key.contains("|experts=cpu-cache:");
         // Sample the per-device runtime cost while the allocation is fresh (see gpu_calibration).
-        if let Err(e) = crate::gpu_calibration::capture(&learn_snapshot.model_path, slot_idx, &snapshot) {
-            log::debug!("[gpu_calibration] capture skipped: {}", e);
+        if !cache_launch {
+            if let Err(e) = crate::gpu_calibration::capture(&learn_snapshot.model_path, slot_idx, &snapshot) {
+                log::debug!("[gpu_calibration] capture skipped: {}", e);
+            }
         }
         // Second sample once the engine has settled: the first is taken as the buffers are
         // parsed, before CUDA graph pools and allocator slack appear, so it under-reads what
         // the card loses (the median picks up the steady state).
-        {
+        if !cache_launch {
             let model_path = learn_snapshot.model_path.clone();
             let settled = snapshot.clone();
             tauri::async_runtime::spawn(async move {
