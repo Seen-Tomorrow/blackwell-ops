@@ -10,6 +10,7 @@ import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
 import type { LayerPlan } from "../lib/vramLayerPlan";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import { useOverdriveActive } from "../lib/moeOverdriveState";
+import type { MoeOverdriveIdentity } from "../lib/moeOverdriveRun";
 import type { DisplayCardsPerRow, FusionDualOrient } from "../lib/storage";
 import {
   loadDisplayGpuPerRow,
@@ -142,12 +143,10 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onPinSecondary,
     monitorFocus = false,
     onToggleMonitor,
-    moeCacheMib = 0,
-    moeCpuExperts = false,
-    moeDraft = "",
-    moeDraftNMax = 0,
-    onMoeApply,
     onOverdriveReset,
+    overdriveIdentity = null,
+    canStartOverdrive = false,
+    onStartOverdrive,
   } = props;
   const { theme } = useTheme();
 
@@ -534,11 +533,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               dualOrient={dualOrient}
               secondaryPane={secondaryPane}
               overdrivePort={overdrivePort}
-              moeCacheMib={moeCacheMib}
-              moeCpuExperts={moeCpuExperts}
-              moeDraft={moeDraft}
-              moeDraftNMax={moeDraftNMax}
-              onMoeApply={onMoeApply}
+              overdriveIdentity={overdriveIdentity}
+              canStartOverdrive={canStartOverdrive}
+              onStartOverdrive={onStartOverdrive}
               onOverdriveReset={onOverdriveReset}
             />
             {/* Overlay veil — does not change VramBadge face law */}
@@ -700,13 +697,10 @@ export interface EngineGpuForecastProps {
   monitorFocus?: boolean;
   onToggleMonitor?: () => void;
 
-  /** MOE OVERDRIVE screen: the config's cache, the CPU-expert regime and the draft identity. */
-  moeCacheMib?: number;
-  /** CPU MOE switch of the current config: the regime decides whether a cache can exist at all. */
-  moeCpuExperts?: boolean;
-  moeDraft?: string;
-  moeDraftNMax?: number;
-  onMoeApply?: (cacheMib: number) => void;
+  /** MOE OVERDRIVE screen: the stored-calibration identity, and the run entry. */
+  overdriveIdentity?: MoeOverdriveIdentity | null;
+  canStartOverdrive?: boolean;
+  onStartOverdrive?: (forceCalibrate: boolean) => void;
   /** RESET restores the plain launch path (cpu_moe off, cache 0), not just the record. */
   onOverdriveReset?: () => void;
 }

@@ -26,6 +26,7 @@ import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import { memoryLabelForKvQuant } from "../lib/multiAgentBooster";
 import MoeOverdrive from "./MoeOverdrive";
 import { setOverdriveActive, useOverdriveActive } from "../lib/moeOverdriveState";
+import type { MoeOverdriveIdentity } from "../lib/moeOverdriveRun";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -52,14 +53,12 @@ interface VramBadgeProps {
   placementActive?: boolean;
   /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
   onSplitEq?: () => void;
-  /** MOE OVERDRIVE screen: cache, CPU-expert regime, draft identity and the knob writer. */
-  moeCacheMib?: number;
-  moeCpuExperts?: boolean;
-  moeDraft?: string;
-  moeDraftNMax?: number;
+  /** MOE OVERDRIVE: the launch shape the stored calibration is keyed by, and the run entry. */
+  overdriveIdentity?: MoeOverdriveIdentity | null;
+  canStartOverdrive?: boolean;
+  onStartOverdrive?: (forceCalibrate: boolean) => void;
   /** Port of the running engine, even when no slot is selected (OVERDRIVE does not need fusion). */
   overdrivePort?: number | null;
-  onMoeApply?: (cacheMib: number) => void;
   onOverdriveReset?: () => void;
   /** Bezel control: full-glass NVRAM snapshot log. */
   snapLogOpen?: boolean;
@@ -195,12 +194,10 @@ export default function VramBadge({
   dualActive = false,
   dualOrient = "side",
   secondaryPane = null,
-  moeCacheMib = 0,
-  moeCpuExperts = false,
-  moeDraft = "",
-  moeDraftNMax = 0,
+  overdriveIdentity = null,
+  canStartOverdrive = false,
+  onStartOverdrive,
   overdrivePort = null,
-  onMoeApply,
   onOverdriveReset,
 }: VramBadgeProps) {
 
@@ -208,7 +205,6 @@ export default function VramBadge({
   // split, so what the bars paint and what this glass prints cannot disagree.
 
   const overdriveActive = useOverdriveActive();
-  const moeDeviceIndex = Number(selectedGpuIndices?.[0] ?? 0);
 
   // Publish what this glass shows, so an agent can read it instead of asking for a
   // screenshot. DEV builds write config/automation/ui/vram-badge.json.
@@ -616,27 +612,26 @@ export default function VramBadge({
       ` · ${layerPlan.deviceLayers.join("/")} layers`
     : "No layer table for this model yet - the engine's own fit chooses placement";
 
-  if (overdriveActive) {
+  if (overdriveActive && overdriveIdentity) {
     return (
       <div
         className={`vram-badge-forecast vram-fc vram-fc--overdrive relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
         data-forecast-mode="overdrive"
       >
         <MoeOverdrive
-          slotIdx={selectedSlotIdx ?? null}
-          port={activeEnginePort ?? overdrivePort ?? null}
-          deviceIndex={moeDeviceIndex}
-          cacheMib={moeCacheMib}
-          cpuMoe={moeCpuExperts}
-          modelPath={modelPath ?? ""}
-          splitMode={splitMode ?? "none"}
-          gpuMask={gpuMask}
-          draft={moeDraft}
-          draftNMax={moeDraftNMax}
-          ctxTokens={ctxTokens}
-          kvQuant={kvQuant}
-          onApplyCache={(mib) => onMoeApply?.(mib)}
-          onReset={onOverdriveReset}
+          identity={overdriveIdentity}
+          gpus={gpus}
+          booter={{
+            gpuMask,
+            vramTargetMib,
+            modelLayerTotal,
+            gpuLoadTargetsMib,
+          }}
+          selectedSlotIdx={selectedSlotIdx ?? null}
+          activePort={activeEnginePort ?? overdrivePort ?? null}
+          canStart={canStartOverdrive}
+          onStart={(forceCalibrate) => onStartOverdrive?.(forceCalibrate)}
+          onReset={() => onOverdriveReset?.()}
           onExit={() => setOverdriveActive(false)}
         />
       </div>
@@ -672,11 +667,11 @@ export default function VramBadge({
             type="button"
             className="vram-fc-overdrive-entry__btn"
             onClick={() => setOverdriveActive(true)}
-            disabled={!modelMeta || (modelMeta.n_expert ?? 0) <= 1}
+            disabled={!canStartOverdrive}
             title={
-              (modelMeta?.n_expert ?? 0) > 1
+              canStartOverdrive
                 ? "MOE OVERDRIVE: run this MoE model as fast as this rig allows (measured, not projected)"
-                : "Dense model - OVERDRIVE is for mixture-of-experts models"
+                : "OVERDRIVE runs MoE models in ASSISTED mode"
             }
           >
             MOE OVERDRIVE →

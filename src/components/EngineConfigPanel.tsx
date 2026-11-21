@@ -102,6 +102,11 @@ import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
 import { CockpitInstruments } from "./CockpitInstruments";
 import { setOverdriveActive } from "../lib/moeOverdriveState";
+import {
+  launchGpuMask,
+  startOverdriveRun,
+  type MoeOverdriveIdentity,
+} from "../lib/moeOverdriveRun";
 import BatchRangeSlider from "./BatchRangeSlider";
 import {
   COMPAT_KEYS,
@@ -1885,6 +1890,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     vramCalc.manifest?.gpuAllocations,
   ]);
 
+  /**
+   * OVERDRIVE identity = the launch shape the panel will send, with the GPU set resolved from
+   * device/split. Deliberately not `booterProps.gpuMask`: that one follows the selected slot, and
+   * the calibration engine is stopped before the record is read again.
+   */
+  const overdriveIdentity = useMemo<MoeOverdriveIdentity | null>(() => {
+    if (!model?.path) return null;
+    const specType = String(config.spec_type ?? "none");
+    return {
+      modelPath: model.path,
+      ctxSize: Number(config.ctx) || 32768,
+      kvQuant: String(config.kv_quant ?? "f16"),
+      splitMode: String(config.split ?? "none"),
+      gpuMask: launchGpuMask(gpus, config),
+      draft: `${specType}:${String(config[`${specType.toLowerCase()}_draft_model`] ?? "")}`,
+      draftNMax: Number(config.dflash_n_max ?? config.mtp_n_max ?? 0),
+    };
+  }, [model?.path, config, gpus]);
+
+  const modelIsMoe = Number(model?.metadata?.n_expert ?? 0) > 1;
+  const canStartOverdrive = modelIsMoe && !fullAutoMode;
+
   const shareHwTopo = useMemo(
     () => formatShareHwTopo(gpus, booterProps.gpuMask),
     [gpus, booterProps.gpuMask],
@@ -2118,15 +2145,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     updateParam("moe_cache_mib", 0);
     updateParam("moe_cache_cpu_share", 0);
   }, [updateParam]);
-
-  const handleMoeApply = useCallback(
-    (cacheMib: number) => {
-      updateParam("cpu_moe", "on");
-      updateParam("moe_cache_mib", cacheMib);
-      updateParam("moe_cache_cpu_share", 0);
-    },
-    [updateParam],
-  );
 
   const paramGroupsCtx = useMemo<ParamGroupsCtx>(() => ({
     config,
@@ -2393,66 +2411,60 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   ]);
 
   /**
-   * MOE OVERDRIVE launch: the same engine path as LAUNCH, with the experts forced into host RAM.
+   * MOE OVERDRIVE: one action owns the whole cycle — calibrate with the experts in host RAM and no
+   * cache, size the cache from what the real launch leaves free, write it, reload tuned and bench
+   * both. `forceCalibrate` ignores a stored calibration; without it a known shape is one tuned
+   * load. An abort restores the knobs the run started with.
    *
-   * The three knobs are *written*, not just patched into this one payload: CPU MOE reads ON in the
-   * panel (and in the next launch), the screen measures the regime it is about to show, and the
-   * learned key records the launch as a CPU-cache launch. The cache is the stored calibration for
-   * this shape, or 0 when there is none — never a stale number from a different launch.
+   * The identity is the launch shape (config), not the selected slot: stopping the calibration
+   * engine must not orphan the record.
    */
-  const performOverdriveLaunch = useCallback(() => {
-    if (!model) return;
-    setOverdriveActive(true);
-    pulseLaunchAck();
-
-    const launch = (cacheMib: number) => {
-      updateParam("cpu_moe", "on");
-      updateParam("moe_cache_mib", cacheMib);
-      updateParam("moe_cache_cpu_share", 0);
-      const fullConfig = buildCurrentLaunchConfig();
-      if (!fullConfig) return;
-      const params = (fullConfig.extra_params ??= {});
-      params.cpu_moe = "on";
-      params.moe_cache_mib = cacheMib;
-      params.moe_cache_cpu_share = 0;
-      void onLaunch(fullConfig)
-        .then((result) => {
-          if (result?.port) {
-            dispatchAppEvent(EVENTS.launchSuccess, {
-              alias: result?.alias ?? fullConfig.alias,
-              port: result.port,
-            });
-          }
-        })
-        .catch((err: unknown) => {
-          dispatchAppEvent(EVENTS.launchError, { message: errorMessage(err) });
-        });
-    };
-
-    // Same identity the screen reads the record with, so a stored calibration is found here too.
-    const specType = String(config.spec_type ?? "none");
-    void invoke<{ record: { cache_mib: number } } | null>("moe_overdrive_record", {
-      modelPath: model.path,
-      ctxSize: Number(config.ctx) || 32768,
-      kvQuant: String(config.kv_quant ?? "f16"),
-      splitMode: String(config.split ?? "none"),
-      gpuMask: booterProps.gpuMask,
-      draft: `${specType}:${String(config[`${specType.toLowerCase()}_draft_model`] ?? "")}`,
-      draftNMax: Number(config.dflash_n_max ?? config.mtp_n_max ?? 0),
-    })
-      .then((stored) => launch(Math.max(0, Number(stored?.record?.cache_mib) || 0)))
-      .catch(() => launch(0));
-  }, [
-    model,
-    config,
-    booterProps.gpuMask,
-    buildCurrentLaunchConfig,
-    onLaunch,
-    pulseLaunchAck,
-    updateParam,
-  ]);
-
-  const modelIsMoe = Number(model?.metadata?.n_expert ?? 0) > 1;
+  const performOverdriveLaunch = useCallback(
+    (forceCalibrate = false) => {
+      if (!model || !overdriveIdentity || !canStartOverdrive) return;
+      const previous = {
+        cpuMoe: String(config.cpu_moe ?? "off"),
+        cacheMib: Number(config.moe_cache_mib ?? 0) || 0,
+        share: Number(config.moe_cache_cpu_share ?? 0) || 0,
+      };
+      setOverdriveActive(true);
+      pulseLaunchAck();
+      void startOverdriveRun({
+        identity: overdriveIdentity,
+        forceCalibrate,
+        buildConfig: (knobs) => {
+          const full = buildCurrentLaunchConfig();
+          if (!full) return null;
+          const params = (full.extra_params ??= {});
+          params.cpu_moe = knobs.cpuMoe;
+          params.moe_cache_mib = knobs.cacheMib;
+          params.moe_cache_cpu_share = knobs.share;
+          return full;
+        },
+        applyKnobs: (knobs) => {
+          updateParam("cpu_moe", knobs.cpuMoe);
+          updateParam("moe_cache_mib", knobs.cacheMib);
+          updateParam("moe_cache_cpu_share", knobs.share);
+        },
+        restoreKnobs: () => {
+          updateParam("cpu_moe", previous.cpuMoe);
+          updateParam("moe_cache_mib", previous.cacheMib);
+          updateParam("moe_cache_cpu_share", previous.share);
+        },
+      });
+    },
+    [
+      model,
+      overdriveIdentity,
+      canStartOverdrive,
+      config.cpu_moe,
+      config.moe_cache_mib,
+      config.moe_cache_cpu_share,
+      buildCurrentLaunchConfig,
+      pulseLaunchAck,
+      updateParam,
+    ],
+  );
 
   /** Manual nudge: re-read free VRAM and make the layer split the active placement. */
   const handleSplitEq = useCallback(() => {
@@ -3025,6 +3037,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )
     );
 
+  // OVERDRIVE is the path for exactly the launches the forecast says do not fit: it must not
+  // inherit the fit gate. The engine is loaded and measured, not projected.
+  const launchOverdriveDisabled =
+    !model
+    || modelIsDraftOnly
+    || modelIsAttachment
+    || (specNeedsExternalDraft && !draftPathValid)
+    || selectedProfileIsBuilding;
+
   // Keyboard launch — Ctrl+Enter triggers ignite (must track handleAddToStack for fresh manifest)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -3183,15 +3204,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }}
         showFitOrDeviceChrome={!modelIsDraftOnly && !modelIsAttachment && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
         showGpuAssign={Boolean(model && !modelIsDraftOnly && !modelIsAttachment && gpus.length > 0 && !fullAutoMode)}
-        moeCacheMib={Number(config.moe_cache_mib ?? 0)}
-        moeCpuExperts={String(config.cpu_moe ?? "off").toLowerCase() === "on"}
-        moeDraft={`${String(config.spec_type ?? "none")}:${String(
-          config[`${String(config.spec_type ?? "").toLowerCase()}_draft_model`] ?? "",
-        )}`}
-        moeDraftNMax={Number(
-          config.dflash_n_max ?? config.mtp_n_max ?? 0,
-        )}
-        onMoeApply={handleMoeApply}
+        overdriveIdentity={overdriveIdentity}
+        canStartOverdrive={canStartOverdrive}
+        onStartOverdrive={performOverdriveLaunch}
         onOverdriveReset={handleOverdriveReset}
         gpus={gpus}
         deviceValue={config.device}
@@ -3604,7 +3619,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
           acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
           onLaunchClick={handleAddToStack}
-          onLaunchOverdrive={modelIsMoe && !fullAutoMode ? performOverdriveLaunch : undefined}
+          onLaunchOverdrive={canStartOverdrive ? () => performOverdriveLaunch(false) : undefined}
+          overdriveDisabled={launchOverdriveDisabled}
           overdriveHint={
             String(config.cpu_moe ?? "off").toLowerCase() === "on" ? "cpu experts" : "MOE cache"
           }
@@ -3710,7 +3726,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
                 acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
                 onLaunchClick={handleAddToStack}
-          onLaunchOverdrive={modelIsMoe && !fullAutoMode ? performOverdriveLaunch : undefined}
+          onLaunchOverdrive={canStartOverdrive ? () => performOverdriveLaunch(false) : undefined}
+          overdriveDisabled={launchOverdriveDisabled}
           overdriveHint={
             String(config.cpu_moe ?? "off").toLowerCase() === "on" ? "cpu experts" : "MOE cache"
           }

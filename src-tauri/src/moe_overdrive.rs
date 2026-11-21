@@ -16,6 +16,8 @@ pub struct MoeOverdriveRecord {
     pub ctx_size: u64,
     pub kv_quant: String,
     pub split_mode: String,
+    /// The launch's GPU set, resolved from the panel's device/split config — never the selected
+    /// slot. A record must survive stopping the engine that measured it.
     pub gpu_mask: String,
     /// Spec/draft identity and its verify window: both move the footprint (n-max costs ~0.5 GiB
     /// between 6 and 12 on the measured model).
@@ -29,11 +31,20 @@ pub struct MoeOverdriveRecord {
     pub free_after_load_mib: u64,
     pub reserve_mib: u64,
     pub cache_mib: u64,
-    /// Decode speed measured with cache 0 and with the chosen cache.
+    /// Decode speed and memory footprint measured on the calibration launch (cache 0) and on the
+    /// tuned launch (this cache). The screen prints the pair; `None` when that run was not measured.
     #[serde(default)]
     pub tps_before: Option<f64>,
     #[serde(default)]
     pub tps_after: Option<f64>,
+    #[serde(default)]
+    pub device_mib_before: Option<u64>,
+    #[serde(default)]
+    pub device_mib_after: Option<u64>,
+    #[serde(default)]
+    pub host_mib_before: Option<u64>,
+    #[serde(default)]
+    pub host_mib_after: Option<u64>,
     #[serde(default)]
     pub engine_build: Option<String>,
     #[serde(default)]
@@ -223,6 +234,10 @@ mod tests {
             cache_mib: 6488,
             tps_before: Some(105.0),
             tps_after: Some(230.0),
+            device_mib_before: Some(30_000),
+            device_mib_after: Some(37_900),
+            host_mib_before: Some(26_800),
+            host_mib_after: Some(26_800),
             engine_build: None,
             driver_version: None,
             measured_at: "now".into(),

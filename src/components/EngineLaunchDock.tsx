@@ -58,6 +58,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     acknowledgeReplaceLaunch,
     onLaunchClick,
   onLaunchOverdrive,
+  overdriveDisabled,
   overdriveTitle,
   overdriveHint,
     launchAck,
@@ -236,7 +237,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
         <button
           type="button"
           onClick={onLaunchOverdrive}
-          disabled={launchDisabled}
+          disabled={overdriveDisabled ?? launchDisabled}
           className="config-launch-overdrive ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
           title={
             overdriveTitle ??
@@ -386,6 +387,8 @@ export interface EngineLaunchDockProps {
   onLaunchClick: () => void;
   /** MOE OVERDRIVE half of the launch button; absent hides it (dense models, autopilot). */
   onLaunchOverdrive?: () => void;
+  /** OVERDRIVE does not inherit the plain-launch fit gate: it measures the real load. */
+  overdriveDisabled?: boolean;
   overdriveTitle?: string;
   overdriveHint?: string;
   launchAck: boolean;
