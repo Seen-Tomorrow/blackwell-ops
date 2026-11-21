@@ -4,7 +4,6 @@ import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
 import FusionPane from "./FusionPane";
 import FusionDualStage, { type FusionPaneIdentity } from "./FusionDualStage";
-import MoeBadge from "./MoeBadge";
 import NvramSnapshotOverlay from "./NvramSnapshotOverlay";
 import { formatTensorSplit, type LayerPlan } from "../lib/vramLayerPlan";
 
@@ -46,8 +45,6 @@ interface VramBadgeProps {
   modelLayerTotal?: number;
   gpuLoadTargetsMib?: Record<number, number>;
   offloadMode?: string;
-  onMoeSuggestionClick?: () => void;
-  hideMoeBadge?: boolean;
   hideFitProbe?: boolean;
   /** Automatic placement owns this launch: the app writes `-ts` and turns fit off. */
   placementActive?: boolean;
@@ -173,7 +170,7 @@ type AttachmentKind = keyof typeof ATTACHMENT_FACE_COPY;
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
-  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
+  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode,
   hideFitProbe = false, draftOnly = false, attachmentKind = null, incomplete = null, onRestage, restageStatus = null, className,
   placementActive = false, onSplitEq,
   snapLogOpen = false,
@@ -713,17 +710,6 @@ export default function VramBadge({
 
       <div className="vram-badge-body vram-fc__body vram-fc__body--assisted relative min-h-0 overflow-hidden">
         <div className="vram-fc-measure relative">
-          {!hideMoeBadge && modelMeta != null && modelMeta.n_expert > 0 && (
-            <div className="absolute right-0 -top-5 flex items-center z-10">
-              <MoeBadge
-                offloadMode={offloadMode}
-                shouldHighlight={manifest.moeSuggestion?.shouldHighlight}
-                onMoeSuggestionClick={onMoeSuggestionClick}
-                suggestionText={manifest.moeSuggestion?.suggestionText}
-              />
-            </div>
-          )}
-
           <div className="vram-fc-measure__main">
             {memorySource ? (
               <div className="vram-fc-measure__source">

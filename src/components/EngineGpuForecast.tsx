@@ -110,8 +110,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     engineStatus,
     booterProps,
     offloadMode,
-    onMoeSuggestionClick,
-    hideMoeBadge,
     draftOnly = false,
     incomplete = null,
     onRestage,
@@ -511,8 +509,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               modelLayerTotal={booterProps.modelLayerTotal}
               gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
               offloadMode={offloadMode}
-              onMoeSuggestionClick={onMoeSuggestionClick}
-              hideMoeBadge={hideMoeBadge}
               draftOnly={draftOnly}
               incomplete={incomplete}
               onRestage={onRestage}
@@ -651,8 +647,6 @@ export interface EngineGpuForecastProps {
   engineStatus?: string;
   booterProps: EngineGpuBooterProps;
   offloadMode?: string;
-  onMoeSuggestionClick: () => void;
-  hideMoeBadge: boolean;
   /** External draft pack — full-face draft explanation, no FIT. */
   draftOnly?: boolean;
   /** Finish an interrupted set from its Hub pairing. */

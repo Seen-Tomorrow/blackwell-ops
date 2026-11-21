@@ -3255,10 +3255,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         engineStatus={selectedSlotIdx != null && selectedSlotIdx >= 0 ? stack.find((s) => s.idx === selectedSlotIdx)?.status : undefined}
         booterProps={booterProps}
         offloadMode={config["offload_mode"]}
-        onMoeSuggestionClick={() => {
-          updateParam("offload_mode", config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal");
-        }}
-        hideMoeBadge
         draftOnly={modelIsDraftOnly}
         attachmentKind={modelAttachmentKind}
         incomplete={modelIncomplete}

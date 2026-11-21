@@ -189,7 +189,7 @@ Cache: `config/cache/fit_scan_full.json` partitioned by `fit_adapter`. No prune/
 
 ## Still open
 
-- **`moe_optimal`** — peel off; factory JSON / MoeBadge leftovers.
+- **`moe_optimal`** — still a factory offload mode (fit off, KV q4_0); the old MoeBadge/suggestion chip plumbing is gone.
 - Tensor library tax — wait for llama fit-print multi-GPU; until then LEARNED or +2G.
 - Learned write key still includes device; path-keyed (content-hash deferred).
 - Auto-probe costs ~1–2 GB on one GPU (`split: none`); skip if best free &lt; 2.5 GB.

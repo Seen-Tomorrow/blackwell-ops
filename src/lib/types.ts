@@ -935,27 +935,6 @@ interface VramFitResult {
 
 type Scenario = 'AUTO_FIT' | 'HW_LOCKED';
 
-/** @soon-remove moe_optimal — leftover suggestion chip; not a scenario. */
-interface MoeSuggestion {
-  /** Whether MOE_OPTIMAL would fit (on GPU or with less RAM offload) */
-  wouldFit: boolean;
-  
-  /** VRAM savings compared to current scenario (in GB) */
-  vramSavedGb?: number;
-  
-  /** true if MOE_OPTIMAL eliminates RAM layer spill entirely */
-  avoidsSpill?: boolean;
-  
-  /** Speed impact estimate (<10%, minimal, etc.) */
-  speedImpact: string;
-  
-  /** Whether to highlight/animate the badge (true when conditions are met) */
-  shouldHighlight?: boolean;
-  
-  /** Full tooltip text for user-facing display */
-  suggestionText: string;
-}
-
 /** Scenario-driven UI template — copy/colors for the one ASSISTED forecast glass.
  *  Layout lives in VramBadge; do not revive a second FULL AUTO forecast UI. */
 interface UiTemplate {
@@ -1144,8 +1123,6 @@ export interface VramManifest {
     ctx_mib: number;
     compute_mib: number;
   }[];
-  /** Optional MOE_OPTIMAL alternative suggestion (computed but not shown as scenario) */
-  moeSuggestion?: MoeSuggestion | null;
   /** AUTO_FIT: engine will launch with --split-mode layer across GPUs. */
   autoLayerSplit?: boolean;
   /** Active memory estimation path — drives SOURCE panel and GB accent color. */
