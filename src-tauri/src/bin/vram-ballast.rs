@@ -7,7 +7,7 @@
 //! which is what the app's glass and occupancy guard read.
 //!
 //! It runs outside the app on purpose: the memory must belong to another process for the engine to
-//! feel it.
+//! feel it. One process drives one card; the app starts one per selected GPU.
 //!
 //! ```text
 //! vram-ballast --target-free 16384 --device 0      # leave 16 GiB free on GPU-0
@@ -15,7 +15,10 @@
 //! ```
 //!
 //! Allocations are touched with `cuMemsetD8` on a timer: an untouched allocation can be demoted to
-//! shared memory under WDDM pressure, which would silently give the free VRAM back.
+//! shared memory under WDDM pressure, which would silently give the free VRAM back. The amount is
+//! fixed after start and never topped up: under an engine that overcommits, demoted pages make NVML
+//! report more free for a moment, and allocating on that reading leaves the card permanently below
+//! the target.
 
 use std::ffi::c_void;
 use std::process::Command;
@@ -24,12 +27,14 @@ use std::time::{Duration, Instant};
 /// MiB the ballast never takes. The app drives the display from the iGPU, so these cards carry no
 /// compositor; this is driver/allocation room, not a desktop share.
 const DEFAULT_HEADROOM_MIB: u64 = 512;
-/// Largest single step; chunks shrink as the target approaches.
-const MAX_CHUNK_MIB: u64 = 1024;
 /// Below this the win is smaller than the NVML resolution.
 const MIN_CHUNK_MIB: u64 = 4;
+/// Small slack so allocation rounding cannot push NVML free below the target.
+const ROUNDING_RESERVE_MIB: u64 = 16;
 /// Keep pages resident.
 const TOUCH_INTERVAL: Duration = Duration::from_secs(3);
+/// Warn (once) when the card reads this much more free than the target after the hold settled.
+const ABOVE_TARGET_WARN_MIB: u64 = 512;
 
 type CuResult = i32;
 type CuDevice = i32;
@@ -145,6 +150,90 @@ impl CudaApi {
     }
 }
 
+/// `nvmlMemory_t`: total/free/used in bytes.
+#[repr(C)]
+#[derive(Default)]
+struct NvmlMemory {
+    total: u64,
+    free: u64,
+    used: u64,
+}
+
+/// NVML, loaded in-process. Spawning `nvidia-smi` per step costs ~200 ms on Windows, which was
+/// the whole cost of the fill loop; the library answers in microseconds.
+struct NvmlApi {
+    _module: *mut c_void,
+    init: unsafe extern "system" fn() -> i32,
+    get_handle_by_index: unsafe extern "system" fn(u32, *mut *mut c_void) -> i32,
+    get_memory_info: unsafe extern "system" fn(*mut c_void, *mut NvmlMemory) -> i32,
+}
+
+impl NvmlApi {
+    fn load() -> Option<Self> {
+        unsafe {
+            let module = LoadLibraryW(wide("nvml.dll").as_ptr());
+            if module.is_null() {
+                return None;
+            }
+            let sym = |name: &str| GetProcAddress(module, narrow(name).as_ptr());
+            let init = sym("nvmlInit_v2");
+            let get_handle_by_index = sym("nvmlDeviceGetHandleByIndex_v2");
+            let get_memory_info = sym("nvmlDeviceGetMemoryInfo");
+            if init.is_null() || get_handle_by_index.is_null() || get_memory_info.is_null() {
+                return None;
+            }
+            let api = NvmlApi {
+                _module: module,
+                init: std::mem::transmute(init),
+                get_handle_by_index: std::mem::transmute(get_handle_by_index),
+                get_memory_info: std::mem::transmute(get_memory_info),
+            };
+            if (api.init)() != 0 {
+                return None;
+            }
+            Some(api)
+        }
+    }
+
+    unsafe fn mem_info_mib(&self, index: u32) -> Option<(u64, u64)> {
+        let mut handle: *mut c_void = std::ptr::null_mut();
+        if (self.get_handle_by_index)(index, &mut handle) != 0 || handle.is_null() {
+            return None;
+        }
+        let mut mem = NvmlMemory::default();
+        if (self.get_memory_info)(handle, &mut mem) != 0 {
+            return None;
+        }
+        Some((mem.free / 1048576, mem.total / 1048576))
+    }
+}
+
+/// NVML free/total for one card, with an `nvidia-smi` fallback.
+///
+/// NVML is the reference because it is what the app's glass and occupancy guard read.
+struct VramReader {
+    device: u32,
+    nvml: Option<NvmlApi>,
+}
+
+impl VramReader {
+    fn new(device: u32) -> Self {
+        Self {
+            device,
+            nvml: NvmlApi::load(),
+        }
+    }
+
+    fn free_mib(&self) -> Result<(u64, u64), String> {
+        if let Some(nvml) = self.nvml.as_ref() {
+            if let Some((free, total)) = unsafe { nvml.mem_info_mib(self.device) } {
+                return Ok((total, free));
+            }
+        }
+        nvidia_smi_free_mib(self.device)
+    }
+}
+
 fn nvidia_smi_free_mib(index: u32) -> Result<(u64, u64), String> {
     let out = Command::new("nvidia-smi")
         .args([
@@ -172,6 +261,27 @@ fn nvidia_smi_free_mib(index: u32) -> Result<(u64, u64), String> {
     Ok((total, free))
 }
 
+/// Read NVML until two consecutive samples agree within 64 MiB.
+///
+/// NVML books a new CUDA context and freshly allocated chunks with up to ~1 s of lag. Planning
+/// against a number that is still moving is what put the hold a few hundred MiB off the target
+/// (the context alone is ~480 MiB), so sample until it stands still instead of trusting one read.
+fn settled_free(reader: &VramReader, timeout: Duration) -> Result<(u64, u64), String> {
+    let deadline = Instant::now() + timeout;
+    let mut last = reader.free_mib()?;
+    loop {
+        if Instant::now() >= deadline {
+            return Ok(last);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        let next = reader.free_mib()?;
+        if last.1.abs_diff(next.1) <= 64 {
+            return Ok(next);
+        }
+        last = next;
+    }
+}
+
 fn parse_mib(value: &str) -> Option<u64> {
     let v = value.trim().to_lowercase();
     if let Some(gb) = v.strip_suffix("gb") {
@@ -186,14 +296,6 @@ fn parse_mib(value: &str) -> Option<u64> {
     v.parse::<u64>().ok()
 }
 
-/// Next allocation step: shrink towards the target so the last MiB are not overshot.
-fn next_chunk_mib(free_mib: u64, target_mib: u64) -> u64 {
-    if free_mib <= target_mib {
-        return 0;
-    }
-    ((free_mib - target_mib) / 8).min(MAX_CHUNK_MIB)
-}
-
 struct Allocations {
     api: CudaApi,
     ptrs: Vec<CuDeviceptr>,
@@ -204,6 +306,20 @@ struct Allocations {
 impl Allocations {
     fn allocated_mib(&self) -> u64 {
         (self.sizes.iter().sum::<usize>() as u64) / 1048576
+    }
+
+    /// Take one chunk and make its pages resident. Returns the CUDA result on failure.
+    fn try_allocate(&mut self, mib: u64) -> Result<(), i32> {
+        let bytes = (mib as usize) * 1048576;
+        let mut dptr: CuDeviceptr = 0;
+        let rc = unsafe { (self.api.cu_mem_alloc)(&mut dptr, bytes) };
+        if rc != 0 {
+            return Err(rc);
+        }
+        unsafe { (self.api.cu_memset_d8)(dptr, 1, bytes) };
+        self.ptrs.push(dptr);
+        self.sizes.push(bytes);
+        Ok(())
     }
 
     /// Touch the first page of every 64 MiB: enough to keep the physical pages attached.
@@ -239,8 +355,8 @@ fn usage() {
          --device        CUDA device index (default 0)\n\
          --seconds       stop automatically after N seconds (default: run until Ctrl+C)\n\
          \n\
-         The allocation is raw device memory (no model); it is touched every 3 s so WDDM\n\
-         cannot demote it to shared RAM. It refuses to leave less than {DEFAULT_HEADROOM_MIB} MiB free (--headroom)."
+         One process per card. The allocation is raw device memory (no model); it is touched\n\
+         every 3 s so WDDM cannot demote it. It refuses to leave less than {DEFAULT_HEADROOM_MIB} MiB free (--headroom)."
     );
 }
 
@@ -303,8 +419,10 @@ fn main() {
         i += 1;
     }
 
+    let reader = VramReader::new(device);
+
     if status {
-        match nvidia_smi_free_mib(device) {
+        match reader.free_mib() {
             Ok((total, free)) => {
                 println!(
                     "GPU-{device}: total {total} MiB, free {free} MiB, used+reserved {} MiB",
@@ -331,24 +449,6 @@ fn main() {
         std::process::exit(2);
     };
 
-    let (total, free_now) = match nvidia_smi_free_mib(device) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{e}");
-            std::process::exit(1);
-        }
-    };
-    if target.saturating_add(headroom_mib) > total {
-        eprintln!(
-            "target {target} MiB leaves less than {headroom_mib} MiB on a {total} MiB card - refusing"
-        );
-        std::process::exit(2);
-    }
-    println!(
-        "GPU-{device}: total {total} MiB, free {free_now} MiB - target free {target} MiB (will hold ~{} MiB)",
-        free_now.saturating_sub(target)
-    );
-
     let api = match CudaApi::load() {
         Ok(api) => api,
         Err(e) => {
@@ -363,6 +463,31 @@ fn main() {
         }
     }
 
+    // The context itself takes a little VRAM and NVML books it a moment later. Plan against the
+    // settled number, otherwise the ballast overshoots by the context size.
+    let (total, free_now) = match settled_free(&reader, Duration::from_secs(2)) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
+    if target.saturating_add(headroom_mib) > total {
+        eprintln!(
+            "target {target} MiB leaves less than {headroom_mib} MiB on a {total} MiB card - refusing"
+        );
+        std::process::exit(2);
+    }
+    if free_now <= target {
+        eprintln!(
+            "the card already shows {free_now} MiB free, at or below the target {target} - another process holds it, holding nothing"
+        );
+    }
+    println!(
+        "GPU-{device}: total {total} MiB, free {free_now} MiB - target free {target} MiB (will hold ~{} MiB)",
+        free_now.saturating_sub(target)
+    );
+
     let mut held = Allocations {
         api,
         ptrs: Vec::new(),
@@ -371,65 +496,50 @@ fn main() {
     };
     let started = Instant::now();
 
-    // Two phases, because the slow part was never the memory: each step paid an `nvidia-smi`
-    // process plus a 200 ms nap. First take the bulk in one allocation (free - target - 1 GiB),
-    // then converge with a handful of small steps.
-    let coarse_gap = free_now.saturating_sub(target).saturating_sub(1024);
-    if coarse_gap >= 1024 {
-        let bytes = (coarse_gap as usize) * 1048576;
-        let mut dptr: CuDeviceptr = 0;
-        let rc = unsafe { (held.api.cu_mem_alloc)(&mut dptr, bytes) };
-        if rc == 0 {
-            unsafe { (held.api.cu_memset_d8)(dptr, 1, bytes) };
-            held.ptrs.push(dptr);
-            held.sizes.push(bytes);
-            println!("+{coarse_gap:>5} MiB  held {:>5} MiB  (bulk)", held.allocated_mib());
-        } else {
-            eprintln!("bulk allocation of {coarse_gap} MiB failed (CUresult {rc}) - converging in steps");
+    // Plan from local accounting, never from a fresh NVML read between steps: NVML counts a new
+    // allocation about a second late, and a loop that trusts it overshoots by gigabytes (measured:
+    // 4 GiB over the target). One read at the start, subtract every allocation here, verify once.
+    let want = free_now.saturating_sub(target).saturating_sub(ROUNDING_RESERVE_MIB);
+    let mut chunk = want;
+    while held.allocated_mib() < want {
+        let step = (want - held.allocated_mib()).min(chunk);
+        if step < MIN_CHUNK_MIB {
+            break;
+        }
+        match held.try_allocate(step) {
+            Ok(()) => println!("+{step:>5} MiB  held {:>5} MiB", held.allocated_mib()),
+            Err(rc) => {
+                if step <= MIN_CHUNK_MIB {
+                    eprintln!(
+                        "allocation of {step} MiB failed (CUresult {rc}) - holding {} MiB",
+                        held.allocated_mib()
+                    );
+                    break;
+                }
+                chunk = (step / 2).max(MIN_CHUNK_MIB);
+                eprintln!(
+                    "allocation of {step} MiB failed (CUresult {rc}) - retrying in {chunk} MiB steps"
+                );
+            }
         }
     }
 
-    loop {
-        if let Some(limit) = seconds {
-            if started.elapsed() >= Duration::from_secs(limit) {
-                break;
-            }
-        }
-        if !parent_alive(parent_pid) {
-            println!("parent process exited - releasing");
-            break;
-        }
-        let free = match nvidia_smi_free_mib(device) {
-            Ok((_, free)) => free,
-            Err(e) => {
-                eprintln!("{e}");
-                break;
-            }
-        };
-        let chunk = next_chunk_mib(free, target);
-        if chunk < MIN_CHUNK_MIB {
-            break;
-        }
-        let bytes = (chunk as usize) * 1048576;
-        let mut dptr: CuDeviceptr = 0;
-        let rc = unsafe { (held.api.cu_mem_alloc)(&mut dptr, bytes) };
-        if rc != 0 {
-            eprintln!("allocation of {chunk} MiB failed (CUresult {rc}) - holding what fits");
-            break;
-        }
-        unsafe { (held.api.cu_memset_d8)(dptr, 1, bytes) };
-        held.ptrs.push(dptr);
-        held.sizes.push(bytes);
-        println!(
-            "+{chunk:>5} MiB  held {:>5} MiB  NVML free {:>5} MiB",
-            held.allocated_mib(),
-            free.saturating_sub(chunk)
-        );
-        // 50 ms is enough for NVML to reflect the allocation; the old 200 ms dominated the run.
+    // NVML books a fresh allocation up to ~1 s late, and the printed numbers (plus the app's glass)
+    // read NVML, not our bookkeeping. Wait for it to catch up before reporting.
+    let expected_free = free_now.saturating_sub(held.allocated_mib());
+    let settle_deadline = Instant::now() + Duration::from_secs(3);
+    let mut free = reader.free_mib().map(|(_, f)| f).unwrap_or(0);
+    while free > expected_free + 32 && Instant::now() < settle_deadline {
         std::thread::sleep(Duration::from_millis(50));
+        free = reader.free_mib().map(|(_, f)| f).unwrap_or(free);
+    }
+    if free > expected_free + 128 {
+        eprintln!(
+            "NVML still reports {free} MiB free (expected ~{expected_free}) - it may lag; the hold stays fixed"
+        );
     }
 
-    let (total_now, free_after) = nvidia_smi_free_mib(device).unwrap_or((total, 0));
+    let (total_now, free_after) = reader.free_mib().unwrap_or((total, free));
     let (cuda_free, _) = unsafe { held.api.mem_info_mib() };
     let delta = free_after as i64 - target as i64;
     println!(
@@ -438,6 +548,7 @@ fn main() {
     );
 
     // Hold. Ctrl+C or --seconds ends it; process exit releases the memory either way.
+    let mut warned_above = false;
     loop {
         if let Some(limit) = seconds {
             if started.elapsed() >= Duration::from_secs(limit) {
@@ -451,9 +562,20 @@ fn main() {
         }
         if held.last_touch.elapsed() >= TOUCH_INTERVAL {
             held.re_touch();
-            let free = nvidia_smi_free_mib(device).map(|(_, f)| f).unwrap_or(0);
-            if free > target + 512 {
-                println!("free crept up to {free} MiB - the driver demoted pages, re-touching");
+            // Report only: the hold is fixed on purpose. An engine that overcommits makes the
+            // driver demote ballast pages, so NVML free rises; re_touch pulls the same pages back
+            // and free returns to the target once that engine exits. Adding memory on top of the
+            // stale high reading is what left cards ~0.4 GiB below target, permanently.
+            let free = reader.free_mib().map(|(_, f)| f).unwrap_or(0);
+            if free > target + ABOVE_TARGET_WARN_MIB {
+                if !warned_above {
+                    warned_above = true;
+                    println!(
+                        "NVML free {free} MiB is above target {target} (pages demoted, or another process released memory) - hold stays fixed; RELEASE/HOLD to re-plan"
+                    );
+                }
+            } else {
+                warned_above = false;
             }
         }
         if held.allocated_mib() == 0 {

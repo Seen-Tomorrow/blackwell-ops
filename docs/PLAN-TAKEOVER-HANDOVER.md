@@ -161,10 +161,13 @@ Shipped this session, all pushed (`8ea9d4ae9` … `0c510f737`):
   APPLY is always explicit: DEV runs stage and wait (ASSISTED rule); FULL AUTO can take the numbers later.
 - **VRAM ballast** (`src-tauri/src/bin/vram-ballast.rs`, separate bin, DEV only): holds raw device
   memory via the CUDA driver API — no gguf, no toolkit — and closes on the **NVML** free number (the
-  one the glass, the guard and the tune read). Measured: target 61,440 MiB free → 61,470 MiB
-  (+30 MiB, 0.05 %). Touches pages every 3 s so WDDM cannot demote them; `--parent-pid` makes it
-  release if the app dies. Driven from **GPU TOPO (DEV) → VRAM BALLAST** with presets
-  8/12/16/24/32/48/72 GB; `--status` still works from a shell.
+  one the glass, the guard and the tune read). Measured: target 24,576 MiB free → 24,592 MiB
+  (+16 MiB, 0.07 %), reached in ~1 s. One process per card, so several cards can be held at once
+  with a different free size each (GPU TOPO (DEV) → VRAM BALLAST: arm cards, pick 8-72 GB per card,
+  HOLD). The hold is **fixed after start**: it never allocates again, only re-touches its pages every
+  3 s while the driver demotes them for an engine that overcommits — free returns to the target when
+  that engine exits, and RELEASE/HOLD re-plans. `--parent-pid` makes it release if the app dies;
+  `--status` still works from a shell.
 - **DEV gating:** ballast commands reject in release, the UI block only exists in DEV tools, and the
   tune's "card is busy" refusal stays in REL. In DEV an occupied card is allowed and the free
   remainder becomes the tuning budget — that is how the ballast turns a 96 GB card into a 16 GB one
@@ -193,6 +196,11 @@ Shipped this session, all pushed (`8ea9d4ae9` … `0c510f737`):
 - On WDDM a ballast does **not** force a hard OOM: CUDA may overcommit into shared memory, so the
   engine pages instead of failing. That is fine for comparing speed, but it cannot manufacture
   "does not fit".
+- **Ballast top-up trap.** NVML free *rises* when the driver demotes ballast pages for an engine that
+  overcommits, and the reading stays high for ~1 s after the pages are faulted back. Treating that as
+  "the card has spare memory" and allocating on top leaves the card permanently below target: one
+  split run left 16,384→15,999 and 24,576→24,121 MiB free, with no give-back path to recover. The
+  hold must stay fixed after start; the re-touch is what returns free to the target.
 
 ## Landmines
 

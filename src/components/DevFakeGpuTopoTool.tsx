@@ -3,7 +3,7 @@
  * Session only. Forecast / assign / split see the merged list as real units.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { createPortal } from "react-dom";
 import { useTelemetry } from "../context/TelemetryContext";
@@ -22,13 +22,19 @@ import {
 
 /** Presets the ballast can leave free on a card. */
 const BALLAST_TARGETS_GB = [8, 12, 16, 24, 32, 48, 72] as const;
+/** Free size a card gets when it is armed without picking a number. */
+const BALLAST_DEFAULT_MIB = 24 * 1024;
+
+interface BallastDeviceStatus {
+  device: number;
+  targetMib: number;
+  nvmlFreeMib: number;
+  alive: boolean;
+}
 
 interface BallastStatus {
   running: boolean;
-  supported: boolean;
-  device: number;
-  target_mib: number;
-  nvml_free_mib: number;
+  devices: BallastDeviceStatus[];
   note: string;
 }
 
@@ -53,11 +59,13 @@ export default function DevFakeGpuTopoTool() {
   const { gpus } = useTelemetry();
   const [open, setOpen] = useState(false);
   const [ballast, setBallast] = useState<BallastStatus | null>(null);
-  const [ballastDevice, setBallastDevice] = useState(0);
+  /** Armed cards: device index -> MiB that must stay free. One entry per ballasted card. */
+  const [armed, setArmed] = useState<Record<number, number>>({});
   const [ballastBusy, setBallastBusy] = useState(false);
   const [ballastError, setBallastError] = useState<string | null>(null);
   const [applied, setApplied] = useState<Draft>(snap);
   const [draft, setDraft] = useState<Draft>(snap);
+  const ballastSeeded = useRef(false);
   const nvmlCount = Math.max(getDevLastRealGpuCount(), 1);
   const extraN = extraTotal(applied.extras);
   const realCapped = applied.realLimit != null;
@@ -69,7 +77,11 @@ export default function DevFakeGpuTopoTool() {
   }, []);
 
   useEffect(() => {
-    if (open) setDraft(snap());
+    if (open) {
+      setDraft(snap());
+      // The first status read of a fresh open may reveal a ballast started earlier or from a shell.
+      ballastSeeded.current = false;
+    }
   }, [open]);
 
   // The ballast lives in another process; poll its status while the modal is open.
@@ -78,11 +90,15 @@ export default function DevFakeGpuTopoTool() {
     let cancelled = false;
     const tick = async () => {
       try {
-        const next = await invoke<BallastStatus>("vram_ballast_status", {
-          deviceIndex: ballastDevice,
-        });
-        // Explicitly typed above; the catch below only clears the readout.
-        if (!cancelled) setBallast(next);
+        const next = await invoke<BallastStatus>("vram_ballast_status");
+        if (cancelled) return;
+        setBallast(next);
+        if (!ballastSeeded.current) {
+          ballastSeeded.current = true;
+          if (next.running && next.devices.length > 0) {
+            setArmed(Object.fromEntries(next.devices.map((d) => [d.device, d.targetMib])));
+          }
+        }
       } catch {
         if (!cancelled) setBallast(null);
       }
@@ -90,31 +106,44 @@ export default function DevFakeGpuTopoTool() {
     void tick();
     const timer = window.setInterval((): void => {
       void tick();
-    }, 1500);
+    }, 1000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [open, ballastDevice]);
+  }, [open]);
 
-  const startBallast = useCallback(
-    async (targetFreeMib: number) => {
-      setBallastBusy(true);
-      setBallastError(null);
-      try {
-        const next = await invoke<BallastStatus>("vram_ballast_start", {
-          targetFreeMib,
-          deviceIndex: ballastDevice,
-        });
-        setBallast(next);
-      } catch (e) {
-        setBallastError(String(e));
-      } finally {
-        setBallastBusy(false);
+  const armDevice = useCallback((device: number, targetMib?: number) => {
+    setArmed((prev) => {
+      const next = { ...prev };
+      if (targetMib != null) {
+        next[device] = targetMib;
+      } else if (next[device] != null) {
+        delete next[device];
+      } else {
+        next[device] = BALLAST_DEFAULT_MIB;
       }
-    },
-    [ballastDevice],
-  );
+      return next;
+    });
+  }, []);
+
+  const holdBallast = useCallback(async () => {
+    const devices = Object.keys(armed)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map((device) => ({ device, targetMib: armed[device] }));
+    if (devices.length === 0) return;
+    setBallastBusy(true);
+    setBallastError(null);
+    try {
+      const next = await invoke<BallastStatus>("vram_ballast_start", { devices });
+      setBallast(next);
+    } catch (e) {
+      setBallastError(String(e));
+    } finally {
+      setBallastBusy(false);
+    }
+  }, [armed]);
 
   const stopBallast = useCallback(async () => {
     setBallastBusy(true);
@@ -166,6 +195,27 @@ export default function DevFakeGpuTopoTool() {
     : realCapped
       ? `${applied.realLimit}R${extraN > 0 ? `+${extraN}` : ""}`
       : `+${extraN}G`;
+
+  const armedDevices = Object.keys(armed)
+    .map(Number)
+    .sort((a, b) => a - b);
+  const ballastDevices = ballast?.devices ?? [];
+  const ballastHoldLabel =
+    armedDevices.length === 0
+      ? "HOLD"
+      : armedDevices.length === 1
+        ? `HOLD GPU-${armedDevices[0]}`
+        : `HOLD ${armedDevices.length} GPUs`;
+  const ballastStatusLine = ballastBusy
+    ? "working…"
+    : ballast?.running
+      ? ballastDevices
+          .map((d) => {
+            const delta = d.nvmlFreeMib - d.targetMib;
+            return `GPU-${d.device} free ${d.nvmlFreeMib} / ${d.targetMib} MiB (${delta >= 0 ? "+" : ""}${delta})`;
+          })
+          .join("  ·  ")
+      : (ballast?.note ?? "idle");
 
   const modal = open
     ? createPortal(
@@ -260,45 +310,67 @@ export default function DevFakeGpuTopoTool() {
             <div className="dev-fake-gpu-modal__card" style={{ marginTop: "0.45rem" }}>
               <div className="dev-fake-gpu-modal__card-name">VRAM BALLAST (DEV)</div>
               <div className="dev-fake-gpu-modal__card-meta">
-                Holds raw VRAM in a separate process, leaving the chosen FREE size on a real card.
-                Not a model; the tune then measures against that remainder.
+                Holds raw VRAM in a separate process, leaving the chosen FREE size on each real card.
+                Arm the cards, pick one free size per card, then HOLD. Not a model.
               </div>
-              <div className="dev-fake-gpu-modal__presets" style={{ marginTop: "0.35rem" }}>
-                <span className="dev-fake-gpu-modal__presets-label">GPU</span>
-                {Array.from({ length: Math.max(nvmlCount, 1) }, (_, i) => (
-                  <button
+              {Array.from({ length: nvmlCount }, (_, i) => {
+                const target = armed[i];
+                const live = ballastDevices.find((d) => d.device === i && d.alive);
+                return (
+                  <div
                     key={`ballast-gpu-${i}`}
-                    type="button"
-                    className={`dev-fake-gpu-modal__preset${
-                      ballastDevice === i ? " dev-fake-gpu-modal__preset--active" : ""
-                    }`}
-                    onClick={() => setBallastDevice(i)}
-                    disabled={ballastBusy || !!ballast?.running}
+                    className="dev-fake-gpu-modal__presets dev-fake-gpu-modal__presets--tight"
                   >
-                    GPU-{i}
-                  </button>
-                ))}
-              </div>
-              <div className="dev-fake-gpu-modal__presets">
-                <span className="dev-fake-gpu-modal__presets-label">FREE</span>
-                {BALLAST_TARGETS_GB.map((gb) => {
-                  const active = !!ballast?.running && ballast.device === ballastDevice
-                    && ballast.target_mib === gb * 1024;
-                  return (
                     <button
-                      key={`ballast-${gb}`}
                       type="button"
-                      className={`dev-fake-gpu-modal__preset${
-                        active ? " dev-fake-gpu-modal__preset--active" : ""
+                      className={`dev-fake-gpu-modal__preset dev-fake-gpu-modal__ballast-gpu${
+                        target != null ? " dev-fake-gpu-modal__preset--armed" : ""
                       }`}
-                      onClick={() => void startBallast(gb * 1024)}
+                      onClick={() => armDevice(i)}
                       disabled={ballastBusy}
-                      title={`Leave ${gb} GB free on GPU-${ballastDevice}`}
+                      title={
+                        target != null
+                          ? `GPU-${i} armed (${Math.round(target / 1024)} GB free) - click to drop it`
+                          : `Arm GPU-${i} for the ballast`
+                      }
                     >
-                      {gb} GB
+                      GPU-{i}
                     </button>
-                  );
-                })}
+                    {BALLAST_TARGETS_GB.map((gb) => {
+                      const isArmed = target === gb * 1024;
+                      const isHeld = live != null && live.targetMib === gb * 1024;
+                      return (
+                        <button
+                          key={`ballast-${i}-${gb}`}
+                          type="button"
+                          className={`dev-fake-gpu-modal__preset${
+                            isHeld
+                              ? " dev-fake-gpu-modal__preset--active"
+                              : isArmed
+                                ? " dev-fake-gpu-modal__preset--armed"
+                                : ""
+                          }`}
+                          onClick={() => armDevice(i, gb * 1024)}
+                          disabled={ballastBusy}
+                          title={`Leave ${gb} GB free on GPU-${i}`}
+                        >
+                          {gb}G
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              <div className="dev-fake-gpu-modal__presets">
+                <button
+                  type="button"
+                  className="dev-fake-gpu-modal__btn dev-fake-gpu-modal__btn--primary"
+                  onClick={() => void holdBallast()}
+                  disabled={ballastBusy || armedDevices.length === 0}
+                  title="Start (or restart) the ballast on every armed card"
+                >
+                  {ballastHoldLabel}
+                </button>
                 {ballast?.running && (
                   <button
                     type="button"
@@ -310,13 +382,7 @@ export default function DevFakeGpuTopoTool() {
                   </button>
                 )}
               </div>
-              <div className="dev-fake-gpu-modal__card-meta">
-                {ballastBusy
-                  ? "working…"
-                  : ballast?.note
-                    ? ballast.note
-                    : "idle"}
-              </div>
+              <div className="dev-fake-gpu-modal__card-meta">{ballastStatusLine}</div>
               {ballastError && (
                 <div className="dev-fake-gpu-modal__card-meta cfg-warn">{ballastError}</div>
               )}

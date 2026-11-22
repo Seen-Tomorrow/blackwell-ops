@@ -1089,6 +1089,22 @@
   background: color-mix(in srgb, var(--fixed-cyan-400) 12%, transparent);
 }
 
+/* Armed but not holding yet: outline only, so the filled state always means "running". */
+.dev-fake-gpu-modal__preset--armed {
+  border-color: var(--fixed-cyan-400-a45);
+  color: var(--fixed-cyan-200);
+}
+
+/* Ballast rows: one card per row, the chip is the multi-select switch. */
+.dev-fake-gpu-modal__presets--tight {
+  margin-top: 0.3rem;
+}
+
+.dev-fake-gpu-modal__ballast-gpu {
+  min-width: 3.15rem;
+  text-align: left;
+}
+
 .dev-fake-gpu-modal__foot {
   display: flex;
   align-items: center;
