@@ -13,7 +13,7 @@ import type {
 } from "./types";
 import { buildLaunchConfigFromUi, type LayerPlacement } from "./buildLaunchConfig";
 import type { SpecBoostMethod } from "./specProfiles";
-import type { RunningSlotInfo } from "../services/vram/scenarios/scenarios_factory";
+import type { RunningSlotInfo } from "../services/vram/shared";
 
 export type BuildLaunchFullConfigInput = {
   model: ModelEntry;

@@ -102,12 +102,6 @@ import ConfigBelowGroups from "./ConfigBelowGroups";
 import { useConfigColumns } from "../hooks/useConfigColumns";
 import PreflightStrip from "./PreflightStrip";
 import { CockpitInstruments } from "./CockpitInstruments";
-import { setOverdriveActive } from "../lib/moeOverdriveState";
-import {
-  launchGpuMask,
-  startOverdriveRun,
-  type MoeOverdriveIdentity,
-} from "../lib/moeOverdriveRun";
 import { startForecastCurveRun } from "../lib/forecastCurveRun";
 import BatchRangeSlider from "./BatchRangeSlider";
 import {
@@ -203,7 +197,7 @@ import { useFoundry } from "../hooks/useFoundry";
 import { isDevBuild } from "../lib/build";
 import { buildLaunchFullConfig } from "../lib/buildLaunchFullConfig";
 import { resolveLaunchChromePolicy } from "../lib/launchChromePolicy";
-import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
+import { committedSlotsFromStack } from "../services/vram/shared";
 import { useGpuIdleBaseline } from "../hooks/useGpuIdleBaseline";
 import { useGpuCalibration } from "../hooks/useGpuCalibration";
 import { useLayerPlan } from "../hooks/useLayerPlan";
@@ -1010,6 +1004,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     specCapabilities,
   ]);
 
+
+
+  const modelIsMoe = Number(model?.metadata?.n_expert ?? 0) > 1;
+  const autoOverdriveActive = useMemo(() => {
+    if (!fullAutoMode || !modelIsMoe || !model) return false;
+    const weightsGb = (model.metadata?.file_size_bytes ?? 0) / 1024 ** 3;
+    if (!(weightsGb > 0)) return false;
+    const totalGpuFreeGb = gpus.reduce((sum, g) => sum + Math.max(0, g.memory_free) / 1024, 0);
+    const hostFreeGb = Math.max(0, (systemInfo?.available_memory_mib ?? 0) / 1024);
+    // Leave ~1.5 GB headroom for KV/compute + ~1 GB OS margin when deciding if weights spill GPU into host.
+    return weightsGb > Math.max(0, totalGpuFreeGb - 1.5) && weightsGb <= Math.max(0, hostFreeGb - 1);
+  }, [fullAutoMode, modelIsMoe, model, gpus, systemInfo?.available_memory_mib]);
+
   // VRAM forecast must see Boost method as CLI spec_type (template row is only set at launch).
   const scenarioConfig = useMemo(() => {
     const autoSpec = fullAutoFixed ? (autoDecision?.plan.specType ?? "none") : null;
@@ -1030,9 +1037,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         : boostSpec
           ? { spec_type: boostSpec, __boost_spec_type: boostSpec }
           : {}),
-      ...(fullAutoMode ? { split: "none", offload_mode: "regular" } : {}),
+      ...(autoOverdriveActive
+        ? {
+            cpu_moe: "on",
+            moe_cache_auto: "on",
+            split: gpus.length > 1 ? "layer" : "none",
+            offload_mode: "regular",
+          }
+        : fullAutoMode
+          ? { cpu_moe: "off", offload_mode: "regular" }
+          : {}),
     };
-  }, [autoDecision?.plan.specType, config, effectiveBackendType, fullAutoFixed, fullAutoMode, speedBoost]);
+  }, [autoDecision?.plan.specType, autoOverdriveActive, config, effectiveBackendType, fullAutoFixed, fullAutoMode, gpus.length, speedBoost]);
 
   // One plan for the glass, the bars and the launch: computing it here (instead of inside
   // VramBadge) lets the manifest take its per-card split from the same numbers the plan
@@ -1827,27 +1843,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     vramCalc.manifest?.gpuAllocations,
   ]);
 
-  /**
-   * OVERDRIVE identity = the launch shape the panel will send, with the GPU set resolved from
-   * device/split. Deliberately not `booterProps.gpuMask`: that one follows the selected slot, and
-   * the calibration engine is stopped before the record is read again.
-   */
-  const overdriveIdentity = useMemo<MoeOverdriveIdentity | null>(() => {
-    if (!model?.path) return null;
-    const specType = String(config.spec_type ?? "none");
-    return {
-      modelPath: model.path,
-      ctxSize: Number(config.ctx) || 32768,
-      kvQuant: String(config.kv_quant ?? "f16"),
-      splitMode: String(config.split ?? "none"),
-      gpuMask: launchGpuMask(gpus, config),
-      draft: `${specType}:${String(config[`${specType.toLowerCase()}_draft_model`] ?? "")}`,
-      draftNMax: Number(config.dflash_n_max ?? config.mtp_n_max ?? 0),
-    };
-  }, [model?.path, config, gpus]);
-
-  const modelIsMoe = Number(model?.metadata?.n_expert ?? 0) > 1;
-  const canStartOverdrive = modelIsMoe && !fullAutoMode;
 
   /**
    * The plain MoE launch spills but the host can hold the experts: that is exactly the OVERDRIVE
@@ -2095,8 +2090,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
 
-  /** RESET of the overdrive record also returns the launch to the plain path. */
-  const handleOverdriveReset = useCallback(() => {
+  const handleEnableOverdrive = useCallback(() => {
+    updateParam("cpu_moe", "on");
+    updateParam("moe_cache_auto", "on");
+  }, [updateParam]);
+
+  const handleDisableOverdrive = useCallback(() => {
     updateParam("cpu_moe", "off");
     updateParam("moe_cache_mib", 0);
     updateParam("moe_cache_cpu_share", 0);
@@ -2202,8 +2201,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         ? { tensorSplit: formatTensorSplit(layerPlan.applyTs) }
         : undefined;
 
-    // Smart = factory batch (policy.batch); no max-batch push until a real algo exists.
-    return buildLaunchFullConfig({
+    const built = buildLaunchFullConfig({
       model,
       finalAlias,
       config,
@@ -2224,6 +2222,20 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       placement,
       smartBatchPush: false,
     });
+    if (built) {
+      const effectiveCpuMoe =
+        autoOverdriveActive || String(config.cpu_moe ?? "off").trim().toLowerCase() === "on";
+      if (effectiveCpuMoe) {
+        const params = (built.extra_params ??= {});
+        params.cpu_moe = "on";
+        params.moe_cache_mib =
+          vramCalc.manifest?.moeOverdrive?.cacheMib ?? (Number(config.moe_cache_mib ?? 0) || 0);
+        if (autoOverdriveActive && gpus.length > 1) {
+          params.split = "layer";
+        }
+      }
+    }
+    return built;
   }, [
     model,
     aliasFocused,
@@ -2248,6 +2260,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     testFlagsMode,
     placementOwned,
     layerPlan,
+    autoOverdriveActive,
   ]);
 
   /** HS button hint: panel model / CTX / parallel differ from the live engine. */
@@ -2336,6 +2349,53 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       );
     }
 
+    // 2-PT: when enabled and fewer than 2 points will exist after this launch, run calibration first
+    // (safe low CTX -> target CTX) so it's 2 loads total instead of 3.
+    const ctxValues = (() => {
+      const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
+      return ctxDef
+        ? visibleParamValuesOf(ctxDef)
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0)
+        : [];
+    })();
+    const originalCtx = Number(config.ctx) || 32768;
+    const existingCtxs = vramCalc.learnedCurveCtxs ?? [];
+    const projectedCount = existingCtxs.includes(originalCtx)
+      ? existingCtxs.length
+      : existingCtxs.length + 1;
+    const autoCalEnabled = fullAutoMode || loadForecastTwoPoint();
+    const shouldTwoPoint =
+      autoCalEnabled &&
+      projectedCount < 2 &&
+      ctxValues.length >= 2;
+    if (shouldTwoPoint) {
+      void startForecastCurveRun({
+        modelPath: model.path,
+        originalCtx,
+        ctxOptions: ctxValues,
+        buildConfig: (ctx) => {
+          const next = buildCurrentLaunchConfig();
+          if (!next) return null;
+          const params = (next.extra_params ??= {});
+          params.ctx = ctx;
+          if (ctx !== originalCtx && params.cpu_moe === "on") {
+            params.moe_cache_mib = 0;
+          }
+          return next;
+        },
+        applyCtx: (ctx) => updateParam("ctx", ctx),
+        onTargetLaunched: () => {
+          if (persistAliasAtLaunch) {
+            persistAliasForModel(model.path, aliasToPersist);
+            setAliasIsUserSet(true);
+            setAliasInput(aliasToPersist);
+          }
+        },
+      });
+      return;
+    }
+
     void onLaunch(fullConfig)
       .then((result) => {
         const resolvedAlias = result?.alias ?? fullConfig.alias;
@@ -2346,36 +2406,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           persistAliasForModel(model.path, aliasToPersist);
           setAliasIsUserSet(true);
           setAliasInput(aliasToPersist);
-        }
-        // 2-PT: a fresh identity gets a second CTX point while the load is already paid for.
-        const ctxValues = (() => {
-          const ctxDef = allParamsResolved.find((param) => param.key === "ctx");
-          return ctxDef
-            ? visibleParamValuesOf(ctxDef)
-                .map((value) => Number(value))
-                .filter((value) => Number.isFinite(value) && value > 0)
-            : [];
-        })();
-        const originalCtx = Number(config.ctx) || 32768;
-        const shouldTwoPoint =
-          loadForecastTwoPoint() &&
-          (vramCalc.learnedCurveCtxs?.length ?? 0) < 2 &&
-          ctxValues.length >= 2;
-        if (shouldTwoPoint && typeof result?.idx === "number") {
-          void startForecastCurveRun({
-            modelPath: model.path,
-            slotIdx: result.idx,
-            originalCtx,
-            ctxOptions: ctxValues,
-            buildConfig: (ctx) => {
-              const next = buildCurrentLaunchConfig();
-              if (!next) return null;
-              const params = (next.extra_params ??= {});
-              params.ctx = ctx;
-              return next;
-            },
-            applyCtx: (ctx) => updateParam("ctx", ctx),
-          });
         }
       })
       .catch((err: unknown) => {
@@ -2397,66 +2427,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     allParamsResolved,
     vramCalc.learnedCurveCtxs,
     updateParam,
+    fullAutoMode,
   ]);
-
-  /**
-   * MOE OVERDRIVE: one action owns the whole cycle — calibrate with the experts in host RAM and no
-   * cache, size the cache from what the real launch leaves free, write it, reload tuned and bench
-   * both. `forceCalibrate` ignores a stored calibration; without it a known shape is one tuned
-   * load. An abort restores the knobs the run started with.
-   *
-   * The identity is the launch shape (config), not the selected slot: stopping the calibration
-   * engine must not orphan the record.
-   */
-  const performOverdriveLaunch = useCallback(
-    (forceCalibrate = false) => {
-      if (!model || !overdriveIdentity || !canStartOverdrive) return;
-      const previous = {
-        cpuMoe: String(config.cpu_moe ?? "off"),
-        cacheMib: Number(config.moe_cache_mib ?? 0) || 0,
-        share: Number(config.moe_cache_cpu_share ?? 0) || 0,
-      };
-      setOverdriveActive(true);
-      pulseLaunchAck();
-      void startOverdriveRun({
-        identity: overdriveIdentity,
-        forceCalibrate,
-        // MTP/DFlash/DSpark decode better with a code corpus; a plain model reads higher UNIQUE.
-        specOn: specBoostMethod !== "off",
-        buildConfig: (knobs) => {
-          const full = buildCurrentLaunchConfig();
-          if (!full) return null;
-          const params = (full.extra_params ??= {});
-          params.cpu_moe = knobs.cpuMoe;
-          params.moe_cache_mib = knobs.cacheMib;
-          params.moe_cache_cpu_share = knobs.share;
-          return full;
-        },
-        applyKnobs: (knobs) => {
-          updateParam("cpu_moe", knobs.cpuMoe);
-          updateParam("moe_cache_mib", knobs.cacheMib);
-          updateParam("moe_cache_cpu_share", knobs.share);
-        },
-        restoreKnobs: () => {
-          updateParam("cpu_moe", previous.cpuMoe);
-          updateParam("moe_cache_mib", previous.cacheMib);
-          updateParam("moe_cache_cpu_share", previous.share);
-        },
-      });
-    },
-    [
-      model,
-      overdriveIdentity,
-      canStartOverdrive,
-      config.cpu_moe,
-      config.moe_cache_mib,
-      config.moe_cache_cpu_share,
-      specBoostMethod,
-      buildCurrentLaunchConfig,
-      pulseLaunchAck,
-      updateParam,
-    ],
-  );
 
   /** Manual nudge: re-read free VRAM and make the layer split the active placement. */
   const handleSplitEq = useCallback(() => {
@@ -2516,7 +2488,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       alias: string,
       m: ModelEntry,
       extra: Record<string, unknown> | undefined,
-    ): import("../services/vram/scenarios/scenarios_factory").RunningSlotInfo => {
+    ): import("../services/vram/shared").RunningSlotInfo => {
       const weightMib =
         m.metadata?.file_size_bytes != null
           ? m.metadata.file_size_bytes / (1024 * 1024)
@@ -2552,12 +2524,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const launchSeat = useCallback(
     async (
       seat: LaunchSeat,
-      runningSlots: import("../services/vram/scenarios/scenarios_factory").RunningSlotInfo[],
+      runningSlots: import("../services/vram/shared").RunningSlotInfo[],
     ): Promise<{
       port: number;
       alias: string;
       idx: number;
-      slotInfo: import("../services/vram/scenarios/scenarios_factory").RunningSlotInfo;
+      slotInfo: import("../services/vram/shared").RunningSlotInfo;
     } | null> => {
       const m = findModelForSeat(seat);
       if (!m) {
@@ -3029,15 +3001,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )
     );
 
-  // OVERDRIVE is the path for exactly the launches the forecast says do not fit: it must not
-  // inherit the fit gate. The engine is loaded and measured, not projected.
-  const launchOverdriveDisabled =
-    !model
-    || modelIsDraftOnly
-    || modelIsAttachment
-    || (specNeedsExternalDraft && !draftPathValid)
-    || selectedProfileIsBuilding;
-
   // Keyboard launch — Ctrl+Enter triggers ignite (must track handleAddToStack for fresh manifest)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -3196,12 +3159,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }}
         showFitOrDeviceChrome={!modelIsDraftOnly && !modelIsAttachment && (fitLaunchSupported || Boolean(model && gpus.length > 0))}
         showGpuAssign={Boolean(model && !modelIsDraftOnly && !modelIsAttachment && gpus.length > 0 && !fullAutoMode)}
-        overdriveIdentity={overdriveIdentity}
-        overdriveCacheMib={Number(config.moe_cache_mib ?? 0)}
         expertNudge={expertNudge}
-        canStartOverdrive={canStartOverdrive}
-        onStartOverdrive={performOverdriveLaunch}
-        onOverdriveReset={handleOverdriveReset}
+        onEnableOverdrive={handleEnableOverdrive}
+        onDisableOverdrive={handleDisableOverdrive}
         gpus={gpus}
         deviceValue={config.device}
         splitValue={config.split}
@@ -3472,6 +3432,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               modelPath={model?.path ?? null}
               modelIsMoe={Number(model?.metadata?.n_expert ?? 0) > 1}
               providerId={currentProvider?.id ?? "ggml-master"}
+              effectiveCacheMib={vramCalc.manifest?.moeOverdrive?.cacheMib}
             />
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
@@ -3495,6 +3456,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             modelPath={model?.path ?? null}
             modelIsMoe={Number(model?.metadata?.n_expert ?? 0) > 1}
             providerId={currentProvider?.id ?? "ggml-master"}
+            effectiveCacheMib={vramCalc.manifest?.moeOverdrive?.cacheMib}
           />
         )}
 
@@ -3608,12 +3570,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
           acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
           onLaunchClick={handleAddToStack}
-          onLaunchOverdrive={canStartOverdrive ? () => performOverdriveLaunch(false) : undefined}
-          overdriveDisabled={launchOverdriveDisabled}
-          overdriveNudge={expertNudge}
-          overdriveHint={
-            String(config.cpu_moe ?? "off").toLowerCase() === "on" ? "cpu experts" : "MOE cache"
-          }
+          launchHint={vramCalc.manifest?.moeOverdrive?.active ? "Ctrl+Enter · Overdrive" : undefined}
           launchAck={launchAck}
           customFlagsReplaceActive={customFlagsReplaceActive}
           customFlagsLaunchActive={customFlagsLaunchActive}
@@ -3716,12 +3673,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
                 acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
                 onLaunchClick={handleAddToStack}
-          onLaunchOverdrive={canStartOverdrive ? () => performOverdriveLaunch(false) : undefined}
-          overdriveDisabled={launchOverdriveDisabled}
-          overdriveNudge={expertNudge}
-          overdriveHint={
-            String(config.cpu_moe ?? "off").toLowerCase() === "on" ? "cpu experts" : "MOE cache"
-          }
+                launchHint={vramCalc.manifest?.moeOverdrive?.active ? "Ctrl+Enter · Overdrive" : undefined}
                 launchAck={launchAck}
                 customFlagsReplaceActive={customFlagsReplaceActive}
                 customFlagsLaunchActive={customFlagsLaunchActive}

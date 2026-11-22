@@ -57,11 +57,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
     onCancelReplaceLaunch,
     acknowledgeReplaceLaunch,
     onLaunchClick,
-  onLaunchOverdrive,
-  overdriveDisabled,
-  overdriveNudge = false,
-  overdriveTitle,
-  overdriveHint,
+    launchHint,
     launchAck,
     customFlagsReplaceActive,
     customFlagsLaunchActive,
@@ -195,7 +191,6 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
           </div>
         </div>
       )}
-      <div className={`config-launch-split${onLaunchOverdrive ? " config-launch-split--armed" : ""}`} data-expert-nudge={overdriveNudge ? "1" : undefined}>
       <button
         onClick={onLaunchClick}
         disabled={launchDisabled}
@@ -218,7 +213,7 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
                   ? "Custom provider — VRAM forecast does not block launch"
                   : undefined
         }
-        className={`flex-1 h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
+        className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
       >
         {customFlagsLaunchActive && (
           <span
@@ -231,28 +226,9 @@ export default function EngineLaunchDock(props: EngineLaunchDockProps) {
         )}
         <span className="text-center">LAUNCH ENGINE</span>
         <span className="config-launch-btn__hint type-micro font-mono tracking-wider normal-case font-normal text-center">
-          Ctrl+Enter
+          {launchHint ?? "Ctrl+Enter"}
         </span>
       </button>
-      {onLaunchOverdrive ? (
-        <button
-          type="button"
-          onClick={onLaunchOverdrive}
-          disabled={overdriveDisabled ?? launchDisabled}
-          className="config-launch-overdrive ignite-btn config-launch-btn px-2 py-1.5 type-sm font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
-          data-expert-nudge={overdriveNudge ? "1" : undefined}
-          title={
-            overdriveTitle ??
-            "MOE OVERDRIVE: launch with the experts in host RAM and the measured cache, then size it on the dedicated screen"
-          }
-        >
-          <span className="text-center">OVERDRIVE</span>
-          <span className="config-launch-btn__hint type-micro font-mono tracking-wider normal-case font-normal text-center">
-            {overdriveHint ?? "MOE cache"}
-          </span>
-        </button>
-      ) : null}
-      </div>
       <div className="config-launch-dock__aux">
         <button
           type="button"
@@ -387,14 +363,7 @@ export interface EngineLaunchDockProps {
   onCancelReplaceLaunch: () => void;
   acknowledgeReplaceLaunch: () => void;
   onLaunchClick: () => void;
-  /** MOE OVERDRIVE half of the launch button; absent hides it (dense models, autopilot). */
-  onLaunchOverdrive?: () => void;
-  /** OVERDRIVE does not inherit the plain-launch fit gate: it measures the real load. */
-  overdriveDisabled?: boolean;
-  /** Plain MoE launch spills and the host can hold the experts: make the expert half the choice. */
-  overdriveNudge?: boolean;
-  overdriveTitle?: string;
-  overdriveHint?: string;
+  launchHint?: string;
   launchAck: boolean;
   customFlagsReplaceActive: boolean;
   customFlagsLaunchActive: boolean;

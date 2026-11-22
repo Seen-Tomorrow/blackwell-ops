@@ -24,25 +24,20 @@ import {
   barStyleFromNeedTone,
   cfgStr,
   computeGpuAvailableList,
+  forecastBarInsets,
   freePoolHeadroomGb,
   freePoolUtil,
   interpolateLearnedCurveGb,
+  isWeightClassHostSpill,
   kvBytesForQuant,
   launchPaintFromGate,
   needToneFromLaunchPaint,
   parseCtx,
+  ramNeedToneForHost,
   round2,
   sanitizeLearnedCurve,
-} from "../../shared";
-import {
-  freeFingerprintFromGb,
-  isLiveWeightSpill,
-  isWeightClassHostSpill,
-  lowVramBarInsets,
-  ramNeedToneForHost,
-  showHostRamBar,
   splitHostRamGb,
-} from "../../lowVramProbe";
+} from "../../shared";
 import { attachMemorySource } from "../memorySource";
 import { runtimeOverheadMibForDevice } from "../../../../lib/vramLayerPlan";
 import { specDraftPathConfigured } from "../draftPath";
@@ -69,6 +64,68 @@ function targetGpuIdx(input: ForecastInput, gpuAvailable: number[]): number {
     idx = pickFullAutoSingleGpuListPos(input.gpus, gpuAvailable);
   }
   return idx;
+}
+
+/**
+ * Multi-GPU AUTO expert cache sizing:
+ * Upstream llama.cpp splits `--moe-cache-mib` across active GPUs using `--tensor-split` weights.
+ * Each active GPU `i` caps total cache at `(free_i - base_i - reserve_i) / w_i`; the tightest
+ * card wins, capped by `hostExpertsGb`, snapped down to 256 MiB.
+ */
+export function computeAutoMoeCacheGb(opts: {
+  perGpuBaseGb: number[];
+  gpuAvailableGb: number[];
+  hostExpertsGb: number;
+  targetIdx: number;
+  splitWeights?: number[];
+}): { totalCacheGb: number; perGpuCacheGb: number[] } {
+  const n = opts.perGpuBaseGb.length;
+  const zero = { totalCacheGb: 0, perGpuCacheGb: Array(n).fill(0) };
+  if (n === 0) return zero;
+
+  const activeIndices: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (opts.perGpuBaseGb[i] > 0.1) activeIndices.push(i);
+  }
+  if (activeIndices.length === 0) {
+    const idx = Math.max(0, Math.min(n - 1, opts.targetIdx));
+    activeIndices.push(idx);
+  }
+
+  const rawWeights = activeIndices.map((i) => {
+    const sw = opts.splitWeights?.[i];
+    if (sw != null && sw > 0) return sw;
+    return opts.perGpuBaseGb[i] > 0.1 ? opts.perGpuBaseGb[i] : 1;
+  });
+  const weightSum = rawWeights.reduce((a, b) => a + b, 0);
+  const weights = new Map<number, number>();
+  activeIndices.forEach((gpuIdx, pos) => {
+    weights.set(gpuIdx, weightSum > 0 ? rawWeights[pos] / weightSum : 1 / activeIndices.length);
+  });
+
+  let maxFitTotalGb = Number.POSITIVE_INFINITY;
+  for (const i of activeIndices) {
+    const free = Math.max(0, opts.gpuAvailableGb[i] ?? 0);
+    const reserve = Math.max(0.5, freePoolHeadroomGb(free));
+    const avail = Math.max(0, free - opts.perGpuBaseGb[i] - reserve);
+    const w = weights.get(i) ?? 0;
+    if (w > 0) {
+      maxFitTotalGb = Math.min(maxFitTotalGb, avail / w);
+    }
+  }
+  if (!Number.isFinite(maxFitTotalGb)) maxFitTotalGb = 0;
+
+  const cappedGb =
+    opts.hostExpertsGb > 0 ? Math.min(maxFitTotalGb, opts.hostExpertsGb) : maxFitTotalGb;
+  const totalCacheMib = Math.floor((Math.max(0, cappedGb) * 1024) / 256) * 256;
+  if (totalCacheMib < 512) return zero;
+
+  const totalCacheGb = totalCacheMib / 1024;
+  const perGpuCacheGb = Array(n).fill(0);
+  for (const i of activeIndices) {
+    perGpuCacheGb[i] = totalCacheGb * (weights.get(i) ?? 0);
+  }
+  return { totalCacheGb, perGpuCacheGb };
 }
 
 function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
@@ -166,10 +223,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     return bytesPerToken / 1024 ** 3;
   };
 
-  // A low-VRAM probe away from its CTX is a spill outcome, not a need — never a point.
-  const probeAtLiveCtx = probeAnchorCtx <= 0 || probeAnchorCtx === liveCtx;
   const probePoint: ForecastPoint | null =
-    probeGbRaw != null && (input.fitProbeMode !== "low_vram" || probeAtLiveCtx)
+    probeGbRaw != null
       ? {
           ctx: probeAnchorCtx > 0 ? probeAnchorCtx : liveCtx,
           gb: probeGbRaw,
@@ -181,16 +236,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   // An on-demand probe pair (or the probe that just ran) — two points make the footprint
   // affine in CTX, so the predicted line captures compute growth, not only KV.
-  const probePoints: ForecastPoint[] =
-    input.fitProbeMode !== "low_vram"
-      ? (input.fitProbeCurve ?? []).map((p) => ({
-          ctx: p.ctx,
-          gb: p.vramMib / 1024,
-          hostGb: p.hostMib != null ? p.hostMib / 1024 : null,
-          kvMib: p.kvMib ?? null,
-          kind: "probe" as const,
-        }))
-      : [];
+  const probePoints: ForecastPoint[] = (input.fitProbeCurve ?? []).map((p) => ({
+    ctx: p.ctx,
+    gb: p.vramMib / 1024,
+    hostGb: p.hostMib != null ? p.hostMib / 1024 : null,
+    kvMib: p.kvMib ?? null,
+    kind: "probe" as const,
+  }));
   if (probePoint && !probePoints.some((p) => p.ctx === probePoint.ctx)) {
     probePoints.push(probePoint);
   }
@@ -279,15 +331,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   let chosenHostGb: number | null = null;
   let chosenCtx = liveCtx;
   if (exactLaunch) {
-    // A measured launch at this CTX is the config's real footprint, including spec/draft.
-    // A low-vram probe is a spill outcome; it must not mask an exact row that already exists.
     source = "launch_exact";
     baseGb = exactLaunch.gb;
     chosenHostGb = exactLaunch.hostGb;
-  } else if (probePoint && probePoint.ctx === liveCtx && input.fitProbeMode === "low_vram") {
-    source = "probe_exact";
-    baseGb = probePoint.gb;
-    chosenHostGb = probePoint.hostGb;
   } else if (curveHit) {
     source = "launch_curve";
     baseGb = curveHit.vramGb;
@@ -359,8 +405,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const learnedGb = source.startsWith("launch") ? estimateGb : null;
   const hostMeasuredGb = chosenHostGb;
-  const measurementAtLiveCtx =
-    source === "launch_exact" || (isProbeSource && probePoint?.ctx === liveCtx);
 
 
   // ASSISTED: NONE means this GPU + offload, never auto-promote to layer.
@@ -453,35 +497,62 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     }
   }
 
-  // `-cmoe` reserves an expert cache in VRAM. The engine's own accounting puts it in
-  // "unaccounted", so a learned/fit row does not include it: add the configured cache to the
-  // launch's need, split across the cards the launch already touches.
-  const moeCacheGb = Math.max(0, input.moeCacheMib ?? 0) / 1024;
-  if (moeCacheGb > 0) {
-    const activeSum = perGpuLoad.reduce((sum, gb) => sum + Math.max(0, gb), 0);
-    perGpuLoad =
-      activeSum > 0.05
-        ? perGpuLoad.map((gb) => (gb > 0.1 ? gb + (moeCacheGb * gb) / activeSum : gb))
-        : perGpuLoad.map((gb, i) => (i === tgt ? gb + moeCacheGb : gb));
-  }
-
   // What the card actually loses, not what the engine prints: every touched device also
-  // carries the CUDA context, graph pools and allocator slack. Measured per device
-  // (median residual); the conservative default covers a card that never launched here.
-  // The same figure now feeds the number, the per-card bars and the gate.
-  perGpuLoad = perGpuLoad.map((gb, i) =>
+  // carries the CUDA context, graph pools and allocator slack.
+  const perGpuBaseGb = perGpuLoad.map((gb, i) =>
     gb > 0.1
       ? gb + runtimeOverheadMibForDevice(input.gpus[i].index, input.gpuCalibration) / 1024
       : gb,
   );
+  const baseVramGb = perGpuBaseGb.reduce((sum, gb) => sum + gb, 0);
+
+  // `-cmoe` reserves an expert cache in VRAM. In AUTO mode it fills remaining headroom up to
+  // `free - reserve` across active GPUs; in MANUAL mode it adds `moeCacheMib` proportionally.
+  const cpuExperts = input.moeCpuExperts === true;
+  const autoCache = cpuExperts && input.moeCacheAuto === true;
+  const hostExpertsGb = cpuExperts ? Math.max(0, hostMeasuredGb ?? 0) : 0;
+  let effectiveCacheGb = 0;
+  if (cpuExperts) {
+    if (autoCache) {
+      const auto = computeAutoMoeCacheGb({
+        perGpuBaseGb,
+        gpuAvailableGb: gpuAvailable,
+        hostExpertsGb,
+        targetIdx: tgt,
+        splitWeights: input.layerSplitMib,
+      });
+      effectiveCacheGb = auto.totalCacheGb;
+      perGpuLoad = perGpuBaseGb.map((gb, i) => gb + auto.perGpuCacheGb[i]);
+    } else {
+      effectiveCacheGb = Math.max(0, input.moeCacheMib ?? 0) / 1024;
+      const activeSum = perGpuBaseGb.reduce((sum, gb) => sum + Math.max(0, gb), 0);
+      perGpuLoad =
+        effectiveCacheGb > 0
+          ? activeSum > 0.05
+            ? perGpuBaseGb.map((gb) => (gb > 0.1 ? gb + (effectiveCacheGb * gb) / activeSum : gb))
+            : perGpuBaseGb.map((gb, i) => (i === tgt ? gb + effectiveCacheGb : gb))
+          : perGpuBaseGb;
+    }
+  } else {
+    effectiveCacheGb = Math.max(0, input.moeCacheMib ?? 0) / 1024;
+    if (effectiveCacheGb > 0) {
+      const activeSum = perGpuBaseGb.reduce((sum, gb) => sum + Math.max(0, gb), 0);
+      perGpuLoad =
+        activeSum > 0.05
+          ? perGpuBaseGb.map((gb) => (gb > 0.1 ? gb + (effectiveCacheGb * gb) / activeSum : gb))
+          : perGpuBaseGb.map((gb, i) => (i === tgt ? gb + effectiveCacheGb : gb));
+    } else {
+      perGpuLoad = perGpuBaseGb;
+    }
+  }
   const gpuProjectionGb = perGpuLoad.reduce((sum, gb) => sum + gb, 0);
 
-  // Per-CARD gate. A pool sum can hide one card overflow — the exact failure mode that
-  // matters for an honest "fits".
+  // Per-CARD gate. In AUTO cache mode, base must fit (cache fills remaining headroom intentionally).
   const cardFits = perGpuLoad.map((gb, i) => {
-    if (!(gb > 0.1)) return true;
+    const checkGb = autoCache ? perGpuBaseGb[i] : gb;
+    if (!(checkGb > 0.1)) return true;
     const free = gpuAvailable[i] ?? 0;
-    return gb <= free - freePoolHeadroomGb(free);
+    return checkGb <= free - freePoolHeadroomGb(free);
   });
   const fitsAllCards = cardFits.every(Boolean);
   const exceedsGpuPool = !fitsAllCards;
@@ -489,11 +560,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const modelFootprintGb = Math.max(gpuProjectionGb, weightGb);
   const overSystemMemory = modelFootprintGb > systemAvailableGb - systemHeadroom;
 
-  // learnedHostGb is often a leftover from a stuffed-GPU spill launch — do not
-  // treat "we have a host number" as proof this launch will offload.
   const trustFitAtLoad = !overSystemMemory && exceedsGpuPool;
-  // `fits` is the hard gate: does the launch have anywhere to go (VRAM+RAM)? The three
-  // verdicts below separate "fully on GPU" from "fits with spill/split".
   const fits = !overSystemMemory;
   const verdict: "fits" | "spill" | "none" = !fits
     ? "none"
@@ -502,30 +569,16 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
       : "spill";
   // Soft tone bands follow the worst CARD, not the pool.
   const vramFreeUtil = perGpuLoad.reduce((worst, gb, i) => {
-    if (!(gb > 0.1)) return worst;
+    const checkGb = autoCache ? perGpuBaseGb[i] : gb;
+    if (!(checkGb > 0.1)) return worst;
     const free = gpuAvailable[i] ?? 0;
-    return Math.max(worst, freePoolUtil(gb, free));
+    return Math.max(worst, freePoolUtil(checkGb, free));
   }, 0);
 
-  const liveFreeFp = freeFingerprintFromGb(targetAvail);
-  const fittedNgl = input.fitProbeFittedNgl;
-  const realSpill = isLiveWeightSpill({
-    estimateGb: gpuProjectionGb,
-    freeGb: targetAvail,
-    hostGb: hostSpillLikeGb,
-    probeMode: input.fitProbeMode,
-    fittedNgl,
-    measurementAtLiveCtx,
-  });
-  const displayHostGb = realSpill
-    ? Math.max(hostOffloadGb, hostSpillLikeGb)
-    : 0;
-  const showHostRam = showHostRamBar({
-    hostOffloadGb: displayHostGb,
-    realSpill,
-    overSystemMemory,
-  });
-  const useOffloadPalette = (trustFitAtLoad && exceedsGpuPool) || realSpill;
+  const realSpill =
+    !cpuExperts &&
+    (hostOffloadGb > 2.5 || (targetAvail > 0 && gpuProjectionGb > targetAvail - freePoolHeadroomGb(targetAvail)));
+  const useOffloadPalette = !cpuExperts && ((trustFitAtLoad && exceedsGpuPool) || realSpill);
   const multiGpuLoad = perGpuLoad.filter((gb) => gb > 0.1).length > 1;
 
   const fitHint = "ENGINE pre-tunes on load";
@@ -570,13 +623,10 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
           : "Fits with spill — RAM offload expected"
         : `Fits — ${gpuWord}`;
 
-  // The CPU-expert regime is a placement, not a spill: the host weights are where the user put
-  // them, and the cache is VRAM the launch reserves. Its layout (and copy) is its own scenario.
-  const cpuExperts = input.moeCpuExperts === true;
-  const cacheMib = Math.max(0, input.moeCacheMib ?? 0);
+  const cacheMib = Math.round(effectiveCacheGb * 1024);
   const cpuExpertsSummary = cpuExperts
-    ? `CPU experts${cacheMib > 0 ? ` + ${Math.round(cacheMib).toLocaleString("en-US")} MiB cache` : ""} — ${
-        fits ? "fits" : "over device free"
+    ? `Overdrive${cacheMib > 0 ? ` · ${autoCache ? "AUTO" : "MANUAL"} ${cacheMib.toLocaleString("en-US")} MiB cache` : ""} — ${
+        fits && fitsAllCards ? "fits" : "over device free"
       }`
     : launchSummary;
 
@@ -596,46 +646,48 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         ? Math.round(chosenHostGb * 1024)
         : undefined;
   // History, never gated: what the LAST launch of this config put on the host.
-  const lastLaunchSpillGb = entrySpilled
-    ? Math.max(
-        0,
-        (input.learnedHostModelMib != null && input.learnedHostModelMib > 0
-          ? input.learnedHostModelMib / 1024
-          : (input.learnedHostMib ?? 0) / 1024) - engramNeedGb,
-      )
-    : 0;
+  const lastLaunchSpillGb =
+    input.learnedSpilledHostMib != null && input.learnedSpilledHostMib > 0
+      ? input.learnedSpilledHostMib / 1024
+      : entrySpilled
+        ? Math.max(
+            0,
+            (input.learnedHostModelMib != null && input.learnedHostModelMib > 0
+              ? input.learnedHostModelMib / 1024
+              : (input.learnedHostMib ?? 0) / 1024) - engramNeedGb,
+          )
+        : 0;
 
-  const launchPaint = launchPaintFromGate(fits, useOffloadPalette);
-  // Soft OOM only when still full-GPU fit; spill path skips OOM risk copy.
-  const vramNeedTone = needToneFromLaunchPaint(
-    launchPaint,
-    realSpill ? undefined : vramFreeUtil,
-  );
+  const launchPaint = cpuExperts
+    ? fits && fitsAllCards
+      ? "fit"
+      : fits
+        ? "offload"
+        : "nofit"
+    : launchPaintFromGate(fits, useOffloadPalette);
+  const vramNeedTone =
+    cpuExperts && autoCache && fitsAllCards
+      ? "ok"
+      : needToneFromLaunchPaint(launchPaint, realSpill ? undefined : vramFreeUtil);
   const paintClasses = barStyleFromNeedTone(vramNeedTone);
-  const insets = lowVramBarInsets({
+  const insets = forecastBarInsets({
     launchPaint,
     freeUtil: vramFreeUtil,
     freeGb: targetAvail,
-    estimateGb: gpuProjectionGb,
-    hostOffloadGb: hostSpillLikeGb,
+    estimateGb: autoCache ? baseVramGb : gpuProjectionGb,
+    hostOffloadGb: cpuExperts ? 0 : hostSpillLikeGb,
     overSystemMemory,
-    probeMode: input.fitProbeMode,
-    probeFreeFingerprint: input.fitProbeFreeFingerprint,
-    liveFreeFingerprint: liveFreeFp,
-    fittedNgl,
-    measurementAtLiveCtx,
   });
-  // A ctx outside the measured range is a clamp; ask for a real point instead of
-  // pretending the curve knows.
-  if (curveHit?.beyondMeasured) {
-    insets.needsReprobe = true;
-  }
-  const spill = realSpill || insets.realSpill;
-  const ramNeedTone = ramNeedToneForHost({
-    overSystemMemory,
-    hostOffloadGb: hostMeasuredGb ?? 0,
-    realSpill: spill,
-  });
+  const spill = !cpuExperts && (realSpill || insets.realSpill);
+  const ramNeedTone = cpuExperts
+    ? overSystemMemory
+      ? "hot"
+      : "ok"
+    : ramNeedToneForHost({
+        overSystemMemory,
+        hostOffloadGb: hostMeasuredGb ?? 0,
+        realSpill: spill,
+      });
 
   // The lookup table is host by design and is deliberately absent from the engine's host
   // buffer ledger. Put it back into the RAM total; it is not VRAM and not a weight spill.
@@ -660,7 +712,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     !overSystemMemory
     && hostMeasuredGb == null
     && engramNeedGb <= 0
-    && (launchPaint === "offload" || spill || insets.needsReprobe);
+    && (launchPaint === "offload" || spill);
   if (!overSystemMemory) {
     if (ramHostUnknown) {
       insets.ramInset = "UNKNOWN SO FAR - RE-PROBE FIRST";
@@ -677,21 +729,20 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const spillWeightGb = hostSplit.weightGb;
 
   const base: VramManifest = {
-    scenario: cpuExperts ? "CPU_EXPERTS" : "AUTO_FIT",
+    scenario: "AUTO_FIT",
     style: {
       ...paintClasses,
-      icon: (cpuExperts ? fits : vramNeedTone === "ok") ? "*" : "o",
-      label: cpuExperts ? "CACHE" : fitLabel,
-      launchPaint: cpuExperts ? "fit" : launchPaint,
-      vramNeedTone: cpuExperts && fits ? "ok" : vramNeedTone,
-      ramNeedTone: cpuExperts ? "ok" : ramHostUnknown ? "warn" : hostSplit.weightGb > 0.05 ? ramNeedTone : "ok",
-      needsLowVramReprobe: insets.needsReprobe,
+      icon: (cpuExperts ? fits && fitsAllCards : vramNeedTone === "ok") ? "*" : "o",
+      label: cpuExperts ? "OVERDRIVE" : fitLabel,
+      launchPaint,
+      vramNeedTone,
+      ramNeedTone,
       uiTemplate: {
         heroText,
         launchSummary: cpuExpertsSummary,
         gpuLayerText: layerText,
         ramLayerText: cpuExperts
-          ? `${(hostMeasuredGb ?? ramNeedGb).toFixed(1)} GB expert pool in host RAM (by design)`
+          ? `${hostExpertsGb.toFixed(1)} GB experts (host by design)`
           : hostSplit.weightGb > 0.05
             ? `${ramNeedGb.toFixed(1)} GB host (${hostSplit.bufferGb.toFixed(1)} buffer + ${hostSplit.weightGb.toFixed(1)} weight)`
             : ramNeedGb > 0.05
@@ -699,16 +750,16 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
               : autoSplit
                 ? "VRAM spread across GPUs — offload decided at load"
                 : "engine might use some RAM at launch",
-        showRamBar: cpuExperts ? true : ramNeedGb > 0.05,
+        showRamBar: cpuExperts ? hostExpertsGb > 0.05 : ramNeedGb > 0.05,
         moeRamBar: false,
-        kvSpillRiskText: cpuExperts ? undefined : insets.vramInset,
+        kvSpillRiskText: cpuExperts && autoCache && fitsAllCards ? undefined : insets.vramInset,
         offloadWarningText: cpuExperts ? undefined : insets.ramInset,
       },
     },
     vramWeightsGb: round2(weightGb),
     vramTotalGb: round2(gpuProjectionGb),
     ramSpillGb: cpuExperts ? 0 : round2(hostSplit.weightGb),
-    ramTotalGb: cpuExperts && hostMeasuredGb != null ? round2(hostMeasuredGb) : round2(ramNeedGb),
+    ramTotalGb: cpuExperts ? round2(hostExpertsGb) : round2(ramNeedGb),
     ramBufferGb: cpuExperts ? 0 : round2(hostSplit.bufferGb),
     ramWeightGb: cpuExperts ? 0 : round2(spillWeightGb),
     ramEngramGb: round2(hostEngramGb),
@@ -727,12 +778,52 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     learnedInterpolated: source === "launch_curve",
     learnedCurveCtxs: launchPoints.map((p) => p.ctx),
     forecastCurve: (() => {
-      const pts = launchPoints.map((p) => ({ ctx: p.ctx, gb: round2(p.gb) }));
-      if (!pts.some((p) => p.ctx === liveCtx)) {
-        pts.push({ ctx: liveCtx, gb: round2(estimateGb) });
+      const runtimeOverheadGb = perGpuBaseGb.reduce(
+        (sum, gb, i) =>
+          gb > 0.1
+            ? sum + runtimeOverheadMibForDevice(input.gpus[i].index, input.gpuCalibration) / 1024
+            : sum,
+        0,
+      );
+      const curveCacheGb = autoCache ? 0 : effectiveCacheGb;
+      const activeOverheadGb =
+        runtimeOverheadGb + visionAddonGb + curveCacheGb + (addDraft ? draftAddon : 0);
+      let pts: Array<{ ctx: number; gb: number }> = [];
+      if (launchPoints.length >= 2) {
+        pts = launchPoints.map((p) => ({ ctx: p.ctx, gb: round2(p.gb + activeOverheadGb) }));
+      } else if (source === "probe_anchored" && probePoints.length >= 2 && launchPoints[0]) {
+        const launchAnchor = launchPoints[0];
+        const atAnchor = probeLineAt(launchAnchor.ctx);
+        if (atAnchor) {
+          pts = probePoints.map((p) => ({
+            ctx: p.ctx,
+            gb: round2(Math.max(0, launchAnchor.gb + (p.gb - atAnchor.vramGb)) + activeOverheadGb),
+          }));
+        }
+      } else if (source === "probe_curve" && probePoints.length >= 2) {
+        pts = probePoints.map((p) => ({ ctx: p.ctx, gb: round2(p.gb + activeOverheadGb) }));
+      } else if (source === "launch_other" && nearestPoint) {
+        pts = [{ ctx: nearestPoint.ctx, gb: round2(nearestPoint.gb + activeOverheadGb) }];
       }
-      return pts;
+      const liveIdx = pts.findIndex((p) => p.ctx === liveCtx);
+      const livePt = { ctx: liveCtx, gb: round2(autoCache ? baseVramGb : gpuProjectionGb) };
+      if (liveIdx >= 0) pts[liveIdx] = livePt;
+      else pts.push(livePt);
+      return pts.sort((a, b) => a.ctx - b.ctx);
     })(),
+    moeOverdrive: cpuExperts
+      ? {
+          active: true,
+          autoCache,
+          cacheMib,
+          baseVramGb: round2(baseVramGb),
+          hostExpertsGb: round2(hostExpertsGb),
+          coveragePct:
+            hostExpertsGb > 0.05
+              ? Math.min(100, Math.round((effectiveCacheGb / hostExpertsGb) * 100))
+              : 0,
+        }
+      : undefined,
     forecastFreeGb: round2(targetAvail),
     validatedVramMib,
     validatedHostMib,
@@ -743,7 +834,8 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     memorySourceState: source,
     memorySourceAnchorCtx: source === "launch_other" ? chosenCtx : undefined,
     lastLaunchSpillGb: lastLaunchSpillGb > 0.05 ? round2(lastLaunchSpillGb) : undefined,
-    lastLaunchSpillAt: lastLaunchSpillGb > 0.05 ? input.learnedMeasuredAt : undefined,
+    lastLaunchSpillAt:
+      lastLaunchSpillGb > 0.05 ? (input.learnedSpilledAt ?? input.learnedMeasuredAt) : undefined,
     fitProbeMeasuredAt: isProbeSource ? input.fitProbeMeasuredAt : undefined,
   };
 

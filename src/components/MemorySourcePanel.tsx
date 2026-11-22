@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { MemorySource } from "../lib/types";
-import type { FitProbeMode } from "../services/vram/lowVramProbe";
 import {
   MEMORY_SOURCE_ACCENT,
   MEMORY_SOURCE_LABELS,
@@ -263,11 +262,9 @@ export function MemorySourceNeedOverlay({
 export interface MemorySourceReprobeProps {
   memorySource: MemorySource;
   isValidating?: boolean;
-  onValidate?: (mode?: FitProbeMode) => void;
+  onValidate?: () => void;
   hideValidate?: boolean;
   className?: string;
-  needsLowVramReprobe?: boolean;
-  overFreeReprobe?: boolean;
 }
 
 export function MemorySourceReprobe({
@@ -276,52 +273,27 @@ export function MemorySourceReprobe({
   onValidate,
   hideValidate = false,
   className,
-  needsLowVramReprobe = false,
-  overFreeReprobe = false,
 }: MemorySourceReprobeProps) {
   const view = getMemorySourceView(memorySource, { onValidate, hideValidate });
   if (!view.canProbe) return null;
 
   const wrap = className ? ` ${className}` : "";
-  const fire = (mode: FitProbeMode) => (e: { stopPropagation: () => void }) => {
+  const fire = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
-    onValidate?.(mode);
+    onValidate?.();
   };
-
-  const autoLow = needsLowVramReprobe && !isValidating;
-  const autoLabel = isValidating
-    ? needsLowVramReprobe
-      ? "PROBING LOW VRAM…"
-      : "PROBING…"
-    : autoLow
-      ? "RE-PROBE LOW VRAM"
-      : "RE-PROBE";
 
   return (
     <span className={`vram-fc-header__reprobe-pair${wrap}`}>
       <button
         type="button"
-        className={`vram-fc-source__reprobe vram-fc-header__reprobe${
-          overFreeReprobe
-            ? " vram-fc-header__reprobe--over-free"
-            : autoLow
-              ? " vram-fc-header__reprobe--low-vram"
-              : ""
-        }`}
-        data-probe-state={
-          isValidating ? "probing" : overFreeReprobe ? "over-free" : autoLow ? "low-vram" : "reprobe"
-        }
+        className="vram-fc-source__reprobe vram-fc-header__reprobe"
+        data-probe-state={isValidating ? "probing" : "reprobe"}
         disabled={isValidating}
-        onClick={fire(autoLow || overFreeReprobe ? "low_vram" : "full")}
-        title={
-          overFreeReprobe
-            ? "Over free VRAM — run FIT now (auto picks low-vram)"
-            : autoLow
-              ? "Auto: free VRAM is tight — free-aware FIT (not on CTX drag)"
-              : "Auto: full-need FIT at this CTX"
-        }
+        onClick={fire}
+        title="Full-need FIT at this CTX"
       >
-        {autoLabel}
+        {isValidating ? "PROBING…" : "RE-PROBE"}
       </button>
     </span>
   );

@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { ForecastNeedTone, GpuAllocation } from "../lib/types";
-import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
+import { splitGpuTopoBarUsage } from "../services/vram/shared";
 /** Visible row bank in forecast glass — extra rows scroll (wheel). */
 const GPU_TOPO_MAX_ROWS = 2;
 

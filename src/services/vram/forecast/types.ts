@@ -45,6 +45,8 @@ export interface ForecastInput {
   moeCacheMib?: number;
   /** `-cmoe`: host model weights are the chosen expert placement, not a VRAM spill. */
   moeCpuExperts?: boolean;
+  /** When true under `-cmoe`, size the expert cache dynamically across active GPUs from live free VRAM. */
+  moeCacheAuto?: boolean;
   /** Backend says whether `learnedVramMib` already includes the external draft. */
   learnedSpecIncluded?: boolean;
   learnedHostMib?: number;
@@ -58,6 +60,8 @@ export interface ForecastInput {
   learnedGpuComponentsMib?: Array<{ model_mib: number; ctx_mib: number; compute_mib: number }>;
   learnedLaunchProfile?: string;
   learnedMeasuredAt?: string;
+  learnedSpilledHostMib?: number;
+  learnedSpilledAt?: string;
   learnedSpecContextMib?: number;
   learnedAnchorCtx?: number;
   learnedCurve?: Array<{
@@ -87,12 +91,6 @@ export interface ForecastInput {
   fitProbeAnchorCtx?: number;
   /** Display clock when probe completed (session). */
   fitProbeMeasuredAt?: string;
-  /** `full` | `low_vram` session probe regime. */
-  fitProbeMode?: "full" | "low_vram";
-  /** Free-pool fingerprint when probe was taken (stale when free moves). */
-  fitProbeFreeFingerprint?: string;
-  /** Fitted -ngl from low_vram probe when known. */
-  fitProbeFittedNgl?: number;
 }
 
 /** Compat alias — old scenario call sites. */

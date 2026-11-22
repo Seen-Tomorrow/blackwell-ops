@@ -14,19 +14,21 @@ interface ExpertCachePanelProps {
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
   modelIsMoe: boolean;
+  effectiveCacheMib?: number;
 }
 
 /**
  * EXPERT CACHE - where the expert working set lives and how much of it is cached in VRAM.
  *
  * A dense model has nothing to tune here, so the instrument hides itself instead of showing dead
- * knobs. The knobs write straight to the profile; sizing/relaunching is OVERDRIVE's job.
+ * knobs. When `cpu_moe` is on, `AUTO` sizes the cache from live free VRAM across active GPUs.
  */
 export default function ExpertCachePanel({
   defs,
   config,
   onChange,
   modelIsMoe,
+  effectiveCacheMib,
 }: ExpertCachePanelProps) {
   // Open by default: TUNE is the point of this instrument, not a hidden extra.
   const [open, setOpen] = useState(true);
@@ -72,6 +74,8 @@ export default function ExpertCachePanel({
             const values = visibleParamValuesOf(def);
             const current = String(config[def.key] ?? def.defaultValue ?? "");
             const cacheRow = def.key === "moe_cache_mib";
+            const cpuMoeOn = String(config.cpu_moe ?? "off").trim().toLowerCase() === "on";
+            const cacheAuto = cpuMoeOn && String(config.moe_cache_auto ?? "on").trim().toLowerCase() !== "off";
             return (
               <Fragment key={def.key}>
                 <span
@@ -81,19 +85,46 @@ export default function ExpertCachePanel({
                   {def.label}
                 </span>
                 {cacheRow ? (
-                  // Granular by hand: a slider with a typed MiB field, not a handful of presets.
-                  // Finding the edge of the cache is the whole point (it is a cliff, not a curve).
                   <span className="cockpit-expert-slider">
-                    <SliderParam
-                      paramKey={def.key}
-                      currentValue={Number(config[def.key] ?? def.defaultValue ?? 0)}
-                      defaultValue={def.defaultValue}
-                      onChange={(value) => onChange(def.key, value)}
-                      step={def.step ?? 256}
-                      values={values}
-                      fieldFormat="grouped"
-                    />
-                    <span className="cockpit-expert-unit type-micro font-mono">MiB</span>
+                    {cpuMoeOn && (
+                      <SegmentSwitch
+                        ariaLabel="Expert cache mode"
+                        options={[
+                          { id: "on", label: "AUTO" },
+                          { id: "off", label: "MANUAL" },
+                        ]}
+                        selectedId={cacheAuto ? "on" : "off"}
+                        onSelect={(id) => {
+                          onChange("moe_cache_auto", id);
+                          if (id === "off" && effectiveCacheMib != null && effectiveCacheMib > 0) {
+                            onChange("moe_cache_mib", effectiveCacheMib);
+                          }
+                        }}
+                        size="compact"
+                        tone="accent"
+                        className="segment-switch--gpu-bezel segment-switch--cockpit-flag"
+                      />
+                    )}
+                    {cacheAuto ? (
+                      <span className="cockpit-expert-unit type-micro font-mono">
+                        {effectiveCacheMib != null
+                          ? `${Math.round(effectiveCacheMib).toLocaleString("en-US")} MiB (auto)`
+                          : "auto"}
+                      </span>
+                    ) : (
+                      <>
+                        <SliderParam
+                          paramKey={def.key}
+                          currentValue={Number(config[def.key] ?? def.defaultValue ?? 0)}
+                          defaultValue={def.defaultValue}
+                          onChange={(value) => onChange(def.key, value)}
+                          step={def.step ?? 256}
+                          values={values}
+                          fieldFormat="grouped"
+                        />
+                        <span className="cockpit-expert-unit type-micro font-mono">MiB</span>
+                      </>
+                    )}
                   </span>
                 ) : (
                   <SegmentSwitch

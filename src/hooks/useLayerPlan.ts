@@ -10,7 +10,7 @@ import {
 import {
   computeGpuAvailableList,
   type RunningSlotInfo,
-} from "../services/vram/scenarios/scenarios_factory";
+} from "../services/vram/shared";
 
 /** Exact per-block sizes, as read from the GGUF tensor table. */
 type ColdForecast = {

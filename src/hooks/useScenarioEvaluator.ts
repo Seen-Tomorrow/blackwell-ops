@@ -1,13 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
-import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList, type ScenarioInput } from "../services/vram/scenarios/scenarios_factory";
-import {
-  freeFingerprintFromGb,
-  isWeightClassHostSpill,
-  shouldApplyLowVramSession,
-  type FitProbeMode,
-} from "../services/vram/lowVramProbe";
+import { evaluate } from "../services/vram/forecast/evaluate";
+import type { ForecastInput as ScenarioInput } from "../services/vram/forecast/types";
+import { committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList } from "../services/vram/shared";
 import { isDevBuild } from "../lib/build";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../lib/telemetryGpu";
 import { MEMORY_SOURCE_LABELS } from "../services/vram/forecast/memorySource";
@@ -22,13 +18,6 @@ import {
 } from "../lib/specDraft";
 import { normalizeDraftPath } from "../lib/spec/adapters";
 import { useTauriListen } from "./useTauriListen";
-
-/**
- * PARKED: the free-aware low-VRAM FIT probe (`low_vram`, fit off, multi-scenario) no longer runs.
- * The normal full-need FIT probe (`full`, fit on) stays: it is what measures a fresh model and
- * what the header's RE-PROBE runs. The low_vram code stays in the repo for revival.
- */
-const LOW_VRAM_PROBE_PARKED = true;
 
 type ProbeSession = {
   modelPath: string;
@@ -45,11 +34,6 @@ type ProbeSession = {
   validatedEngramMib?: number;
   validatedComponentsMib?: VramManifest["validatedComponentsMib"];
   fitProbeMeasuredAt: string;
-  /** full = ngl999 need; low_vram = free-aware spill. */
-  mode: FitProbeMode;
-  /** Free-pool fingerprint at probe time. */
-  freeFingerprint: string;
-  fittedNgl?: number;
   /** On-demand probe pair at two CTXs — makes the incomplete curve affine. */
   curve?: Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>;
 };
@@ -79,20 +63,6 @@ function probeKvMib(
   return kv > 0 ? kv : undefined;
 }
 
-/**
- * Mirrors the forecast adapter: host bytes above the by-design lookup table are a weight
- * spill. Such a launch is an outcome, not a measurement of what the config needs, so it
- * must not suppress the probe that would produce a real need.
- */
-function learnedLaunchSpilled(
-  hostModelMib: number | null | undefined,
-  hostMib: number | null | undefined,
-  engramMib: number | null | undefined,
-): boolean {
-  const baseGb =
-    hostModelMib != null && hostModelMib > 0 ? hostModelMib / 1024 : (hostMib ?? 0) / 1024;
-  return isWeightClassHostSpill(Math.max(0, baseGb - (engramMib ?? 0) / 1024));
-}
 function placementConfigKey(config: Record<string, unknown>): string {
   return `${config.device || ""}|${config.split || ""}|${config.gpu_sync || ""}`;
 }
@@ -110,7 +80,11 @@ function draftBaseName(config: Record<string, unknown>): string {
  * session or force a re-probe.
  * Parallel is not a FIT input either, but it is part of this identity: a probe taken at one\n * slot count must not be shown as current for another.
  */
-function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
+function cpuMoeFlag(config: Record<string, unknown>): "1" | "0" {
+  return String(config.cpu_moe ?? "off").trim().toLowerCase() === "on" ? "1" : "0";
+}
+
+export function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
   const split = String(config.split ?? "none").trim().toLowerCase() || "none";
   const spec = effectiveSpecTypeFromConfig(config);
   const specDraft = specDraftForLearned(config);
@@ -129,25 +103,30 @@ function fitProbeKey(config: Record<string, unknown>, autoVramLaunch: boolean): 
     String(config.parallel ?? 1),
     spec,
     draftBase,
+    cpuMoeFlag(config),
     autoVramLaunch ? "1" : "0",
   ].join("|");
 }
 
-/** Learned rows also key on boost/draft/split. CTX is not here. */
-function learnedIdentityKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
+/** Learned rows also key on boost/draft/split/cpu_moe. CTX is not here. */
+export function learnedIdentityKey(config: Record<string, unknown>, autoVramLaunch: boolean): string {
   return [
     fitProbeKey(config, autoVramLaunch),
     effectiveSpecTypeFromConfig(config),
     draftBaseName(config),
     String(config.split ?? "none"),
+    cpuMoeFlag(config),
   ].join("|");
 }
 
-function liveEvalKey(
+export function liveEvalKey(
   config: Record<string, unknown>,
   autoVramLaunch: boolean,
 ): string {
-  return `${placementConfigKey(config)}|${learnedIdentityKey(config, autoVramLaunch)}|ctx=${config.ctx || ""}`;
+  const cmoe = cpuMoeFlag(config) === "1";
+  const moeCacheAuto = cmoe && String(config.moe_cache_auto ?? "on").trim().toLowerCase() !== "off";
+  const moeCacheKey = !cmoe ? "0" : moeCacheAuto ? "auto" : String(Math.max(0, Number(config.moe_cache_mib ?? 0) || 0));
+  return `${placementConfigKey(config)}|${learnedIdentityKey(config, autoVramLaunch)}|ctx=${config.ctx || ""}|cache=${moeCacheKey}`;
 }
 
 function probeScenarioFields(
@@ -155,36 +134,10 @@ function probeScenarioFields(
   modelPath: string,
   hardKey: string,
   placementKey: string,
-  liveFreeGb?: number,
-  liveFreeFp?: string,
-  liveCtx?: number,
 ) {
   if (!session || session.modelPath !== modelPath || session.hardKey !== hardKey) {
     return {};
   }
-  // The probe travels with its anchor ctx; the adapter scales it to the live one instead of
-  // dropping it (dropping left an empty manifest, which reads as "EVALUATING" forever).
-  if (
-    isDevBuild()
-    && session.mode === "low_vram"
-    && liveFreeGb != null
-    && liveFreeFp
-    && !shouldApplyLowVramSession({
-      mode: session.mode,
-      probeFreeFingerprint: session.freeFingerprint,
-      liveFreeFingerprint: liveFreeFp,
-      probeGpuGb: session.validatedVramMib / 1024,
-      liveFreeGb,
-      anchorCtx: session.anchorCtx,
-      liveCtx,
-    })
-  ) {
-    return {};
-  }
-  // A probe taken under another placement (device / split / tensor split) is not a measurement of
-  // this one: its total describes a different arrangement of the same weights. Reusing the total
-  // while dropping only the per-card breakdown is what let a split-layer view inherit a split-none
-  // number and spread it across two cards.
   const placementMatches = session.placementKey === placementKey;
   if (!placementMatches) {
     return {};
@@ -200,17 +153,46 @@ function probeScenarioFields(
     fitProbePlacementKey: session.placementKey,
     fitProbeAnchorCtx: session.anchorCtx,
     fitProbeMeasuredAt: session.fitProbeMeasuredAt,
-    fitProbeMode: session.mode,
-    fitProbeFreeFingerprint: session.freeFingerprint,
-    fitProbeFittedNgl: session.fittedNgl,
   };
 }
 
 
-interface LearnedVramFitAttempt {
-  vram_mib: number;
-  host_mib?: number;
-  gpu_breakdown_mib?: number[];
+interface LearnedForecastBundle {
+  exact: LearnedVramEntry | null;
+  exact_spilled_host_mib?: number | null;
+  exact_spilled_at?: string | null;
+  curve: Array<{
+    ctx: number;
+    vram_mib: number;
+    host_mib?: number;
+    kv_mib?: number;
+    engram_mib?: number;
+    host_model_mib?: number;
+  }>;
+}
+
+interface LearnedBundleState {
+  vramMib: number | null;
+  specIncluded: boolean | null;
+  hostMib: number | null;
+  hostModelMib: number | null;
+  engramMib: number | null;
+  gpuBreakdownMib: number[] | null;
+  gpuComponentsMib: VramManifest["validatedComponentsMib"];
+  launchProfile: string | undefined;
+  measuredAt: string | undefined;
+  mtpContextMib: number | undefined;
+  anchorCtx: number | undefined;
+  spilledHostMib: number | undefined;
+  spilledAt: string | undefined;
+  curve: Array<{
+    ctx: number;
+    vramMib: number;
+    hostMib?: number;
+    kvMib?: number;
+    engramMib?: number;
+    hostModelMib?: number;
+  }>;
 }
 
 interface LearnedLaunchSnapshot {
@@ -248,7 +230,6 @@ interface LearnedVramEntry {
   host_components_mib?: { model_mib?: number; ctx_mib?: number; compute_mib?: number };
   gpu_components_mib?: VramManifest["validatedComponentsMib"];
   launch_snapshot?: LearnedLaunchSnapshot;
-  fit_attempts?: LearnedVramFitAttempt[];
 }
 
 interface UseScenarioEvaluatorProps {
@@ -527,31 +508,7 @@ export function useScenarioEvaluator({
   const lastHardKeyRef = useRef<string>("");
   const lastPlacementKeyRef = useRef<string>("");
   const lastStackKeyRef = useRef<string>("");
-  const learnedVramRef = useRef<number | null>(null);
-  /** Whether the learned row already includes the external draft (backend response). */
-  const learnedSpecIncludedRef = useRef<boolean | null>(null);
-  const learnedHostRef = useRef<number | null>(null);
-  /** Host model column (lookup table + spilled weights) from the learned entry. */
-  const learnedHostModelRef = useRef<number | null>(null);
-  /** Host-resident lookup table (Engram / PLE) from the learned launch snapshot. */
-  const learnedEngramRef = useRef<number | null>(null);
-  const learnedGpuBreakdownRef = useRef<number[] | null>(null);
-  const learnedGpuComponentsRef = useRef<VramManifest["validatedComponentsMib"]>(null);
-  const learnedLaunchProfileRef = useRef<string | undefined>(undefined);
-  const learnedMeasuredAtRef = useRef<string | undefined>(undefined);
-  const learnedMtpContextRef = useRef<number | undefined>(undefined);
-  const learnedAnchorCtxRef = useRef<number | undefined>(undefined);
-  const learnedCurveRef = useRef<
-    Array<{
-      ctx: number;
-      vramMib: number;
-      hostMib?: number;
-      kvMib?: number;
-      engramMib?: number;
-    }>
-  >([]);
-  /** Last entry spilled weights to host — an outcome, not a usable need measurement. */
-  const learnedSpilledRef = useRef(false);
+  const learnedBundleRef = useRef<LearnedBundleState | null>(null);
   const catalogModelsRef = useRef(catalogModels);
   catalogModelsRef.current = catalogModels;
   /** Disk-stat fallback for draft GGUF size when not in catalog metadata (MiB). */
@@ -680,22 +637,11 @@ export function useScenarioEvaluator({
     const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
     const curPlacementKey = placementConfigKey(curConfig);
     const session = probeSessionRef.current;
-    const gpuAvailLive = computeGpuAvailableList(curGpus, runningSlots);
-    const devMatchLive = /GPU-?(\d+)/i.exec(String(curConfig.device || "GPU-0"));
-    const devIdxLive = devMatchLive ? parseInt(devMatchLive[1], 10) : 0;
-    const liveFreeGb =
-      devIdxLive >= 0 && devIdxLive < gpuAvailLive.length
-        ? Math.max(0, gpuAvailLive[devIdxLive] ?? 0)
-        : Math.max(0, ...gpuAvailLive, 0);
-    const liveFreeFp = freeFingerprintFromGb(liveFreeGb);
     const sessionFields = probeScenarioFields(
       session,
       model.path,
       curProbeKey,
       curPlacementKey,
-      liveFreeGb,
-      liveFreeFp,
-      parseCtx(curConfig.ctx ?? "32768"),
     );
     const input: ScenarioInput = {
       modelMeta: model.metadata,
@@ -718,21 +664,26 @@ export function useScenarioEvaluator({
       autoVramLaunch: autoVramLaunchRef.current,
       fullAutoMode: fullAutoModeRef.current,
       gpuCalibration: gpuCalibrationRef.current,
-      learnedVramMib: learnedVramRef.current ?? undefined,
+      learnedVramMib: learnedBundleRef.current?.vramMib ?? undefined,
       moeCacheMib: moeCacheMibFor(curConfig),
-      moeCpuExperts: String(curConfig.cpu_moe ?? "off").trim().toLowerCase() === "on",
-      learnedSpecIncluded: learnedSpecIncludedRef.current ?? undefined,
-      learnedHostMib: learnedHostRef.current ?? undefined,
-      learnedHostModelMib: learnedHostModelRef.current ?? undefined,
-      learnedEngramMib: learnedEngramRef.current ?? undefined,
+      moeCpuExperts: cpuMoeFlag(curConfig) === "1",
+      moeCacheAuto:
+        cpuMoeFlag(curConfig) === "1"
+        && String(curConfig.moe_cache_auto ?? "on").trim().toLowerCase() !== "off",
+      learnedSpecIncluded: learnedBundleRef.current?.specIncluded ?? undefined,
+      learnedHostMib: learnedBundleRef.current?.hostMib ?? undefined,
+      learnedHostModelMib: learnedBundleRef.current?.hostModelMib ?? undefined,
+      learnedEngramMib: learnedBundleRef.current?.engramMib ?? undefined,
       modelEngramMib: ggufEngramMib(model),
-      learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
-      learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
-      learnedLaunchProfile: learnedLaunchProfileRef.current,
-      learnedMeasuredAt: learnedMeasuredAtRef.current,
-      learnedSpecContextMib: learnedMtpContextRef.current,
-      learnedAnchorCtx: learnedAnchorCtxRef.current,
-      learnedCurve: learnedCurveRef.current,
+      learnedGpuBreakdownMib: learnedBundleRef.current?.gpuBreakdownMib ?? undefined,
+      learnedGpuComponentsMib: learnedBundleRef.current?.gpuComponentsMib ?? undefined,
+      learnedLaunchProfile: learnedBundleRef.current?.launchProfile,
+      learnedMeasuredAt: learnedBundleRef.current?.measuredAt,
+      learnedSpilledHostMib: learnedBundleRef.current?.spilledHostMib,
+      learnedSpilledAt: learnedBundleRef.current?.spilledAt,
+      learnedSpecContextMib: learnedBundleRef.current?.mtpContextMib,
+      learnedAnchorCtx: learnedBundleRef.current?.anchorCtx,
+      learnedCurve: learnedBundleRef.current?.curve ?? [],
       layerSplitMib: layerSplitRef.current,
       ...sessionFields,
     };
@@ -820,36 +771,14 @@ export function useScenarioEvaluator({
   }, []);
   const refreshLearnedVram = useCallback(() => {
     if (!model) {
-      learnedVramRef.current = null;
-      learnedHostRef.current = null;
-    learnedHostModelRef.current = null;
-    learnedEngramRef.current = null;
-      learnedGpuBreakdownRef.current = null;
-      learnedGpuComponentsRef.current = null;
-      learnedLaunchProfileRef.current = undefined;
-      learnedMeasuredAtRef.current = undefined;
-      learnedMtpContextRef.current = undefined;
-      learnedAnchorCtxRef.current = undefined;
-      learnedCurveRef.current = [];
-      learnedSpilledRef.current = false;
+      learnedBundleRef.current = null;
       setLearnedCurveCtxs([]);
       learnedFetchPendingRef.current = false;
       return;
     }
     const fetchGen = ++learnedFetchGenRef.current;
     learnedFetchPendingRef.current = true;
-    learnedVramRef.current = null;
-    learnedSpecIncludedRef.current = null;
-    learnedHostRef.current = null;
-    learnedHostModelRef.current = null;
-    learnedEngramRef.current = null;
-    learnedGpuBreakdownRef.current = null;
-    learnedGpuComponentsRef.current = null;
-    learnedLaunchProfileRef.current = undefined;
-    learnedMeasuredAtRef.current = undefined;
-    learnedMtpContextRef.current = undefined;
-    learnedAnchorCtxRef.current = undefined;
-    learnedCurveRef.current = [];
+    learnedBundleRef.current = null;
     // Keep a live FIT probe painted; otherwise re-eval immediately (null frame ok).
     const keepProbe = probeSessionRef.current?.modelPath === model.path
       && probeSessionRef.current.hardKey === fitProbeKey(configRef.current, autoVramLaunchRef.current);
@@ -862,90 +791,34 @@ export function useScenarioEvaluator({
     const specType = effectiveSpecTypeFromConfig(curConfig);
     const draftModel = validDraftForForecast(curConfig, model, catalogModelsRef.current) || null;
     const vramTopo = vramTopoTag(gpusRef.current, curConfig.device);
-    void Promise.all([
-      invoke<LearnedVramEntry | null>("get_learned_vram", {
-        modelPath: model.path,
-        providerId: curConfig.backend_type || "ggml-master",
-        ctx: String(queryCtx),
-        kvQuant,
-        device: String(curConfig.device ?? "GPU-0"),
-        split: String(curConfig.split ?? "none"),
-        memoryMode: fullAutoModeRef.current ? "full_auto" : "assisted",
-        offloadMode: "regular",
-        specType,
-        cacheRam: String(curConfig.cache_ram ?? "0"),
-        draftModel,
-        vramTopo: vramTopo || null,
-        parallel: Number(curConfig.parallel ?? 1),
-        ubatch: Number(curConfig.ubatch ?? 0),
-        // Expert regime is part of the learned identity: a CPU-expert/cache launch records under
-        // its own key, so asking as a plain launch would paint the wrong footprint.
-        cpuMoe: String(curConfig.cpu_moe ?? "off"),
-        moeCacheMib: String(curConfig.moe_cache_mib ?? "0"),
-        // A row recorded at another ctx must not masquerade as this one.
-        strictCtx: true,
-      }),
-      invoke<Array<{ ctx: number; vram_mib: number; host_mib?: number; kv_mib?: number; engram_mib?: number }>>("get_learned_vram_curve", {
-        modelPath: model.path,
-        providerId: curConfig.backend_type || "ggml-master",
-        kvQuant,
-        specType,
-        draftModel,
-        split: String(curConfig.split ?? "none"),
-        vramTopo: vramTopo || null,
-        parallel: Number(curConfig.parallel ?? 1),
-        ubatch: Number(curConfig.ubatch ?? 0),
-        cpuMoe: String(curConfig.cpu_moe ?? "off"),
-        moeCacheMib: String(curConfig.moe_cache_mib ?? "0"),
-      }).catch(() => []),
-    ])
-      .then(([entry, curve]) => {
+    void invoke<LearnedForecastBundle>("get_learned_forecast_bundle", {
+      modelPath: model.path,
+      providerId: curConfig.backend_type || "ggml-master",
+      ctx: String(queryCtx),
+      kvQuant,
+      split: String(curConfig.split ?? "none"),
+      specType,
+      draftModel,
+      vramTopo: vramTopo || null,
+      ubatch: Number(curConfig.ubatch ?? 0),
+      parallel: Number(curConfig.parallel ?? 1),
+      cpuMoe: String(curConfig.cpu_moe ?? "off"),
+      modelEngramMib: ggufEngramMib(model) ?? null,
+    })
+      .then((bundle) => {
         if (fetchGen !== learnedFetchGenRef.current) return;
+        const entry = bundle?.exact ?? null;
         const specKey = specKeyForLearned(curConfig, draftModel ?? undefined);
         const specMatch = Boolean(
-          entry
-          && (entry.reference_spec_key === specKey || entry.spec_deltas?.[specKey]),
+          entry && (entry.reference_spec_key === specKey || entry.spec_deltas?.[specKey]),
         );
-        // `batch` is not in the learned key (it moves no memory), so a row is valid for this
-        // config whatever batch it was measured at. `ubatch` is in the key, so it always matches.
-        const specValid = Boolean(entry?.reference_spec_key === specKey || specMatch);
-        if (entry && specValid) {
-          // A measured base or a learned spec addition is valid for this config; do not waste
-          // a FIT probe just because the config changed.
+        if (entry && specMatch) {
           forceProbeRef.current = false;
         }
         const snap = entry?.launch_snapshot;
-        const lastAttempt = entry?.fit_attempts?.length
-          ? entry.fit_attempts[entry.fit_attempts.length - 1]
-          : undefined;
-        learnedVramRef.current = entry?.vram_mib ?? snap?.vram_mib ?? null;
-        learnedSpecIncludedRef.current = entry?.spec_included ?? null;
-        learnedHostRef.current =
-          entry?.host_mib ?? snap?.host_mib ?? lastAttempt?.host_mib ?? null;
-        learnedHostModelRef.current =
-          entry?.host_components_mib?.model_mib ?? snap?.host_components_mib?.model_mib ?? null;
-        learnedEngramRef.current = snap?.engram_mib ?? null;
-        learnedGpuBreakdownRef.current =
-          entry?.gpu_breakdown_mib ?? snap?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
-        learnedGpuComponentsRef.current =
-          entry?.gpu_components_mib ?? snap?.gpu_components_mib ?? null;
-        learnedLaunchProfileRef.current = snap?.reference_profile;
-        learnedMeasuredAtRef.current = entry?.measured_at;
-        learnedMtpContextRef.current = snap?.mtp_context_mib;
-        learnedAnchorCtxRef.current = learnedVramRef.current ? queryCtx : undefined;
-        const cpuExpertsOn =
-          String(curConfig.cpu_moe ?? "off").trim().toLowerCase() === "on";
-        // Under -cmoe the host model weights are the chosen expert placement, not a spill: the
-        // row stays usable history, and the curve keeps its points.
-        learnedSpilledRef.current =
-          !cpuExpertsOn &&
-          learnedLaunchSpilled(
-            learnedHostModelRef.current,
-            learnedHostRef.current,
-            learnedEngramRef.current ?? ggufEngramMib(model),
-          );
+        const vramMib = entry?.vram_mib ?? snap?.vram_mib ?? null;
         const cleanCurve = sanitizeLearnedCurve(
-          (curve ?? []).map((p) => ({
+          (bundle?.curve ?? []).map((p) => ({
             ctx: p.ctx,
             vramMib: p.vram_mib,
             hostMib: p.host_mib,
@@ -953,35 +826,28 @@ export function useScenarioEvaluator({
             engramMib: p.engram_mib,
             hostModelMib: p.host_model_mib,
           })),
-        ).filter(
-          (p) =>
-            // Host *model* weights decide spill; host compute is a legitimate buffer and used to
-            // drop every big-ubatch point from the curve while its exact row still answered.
-            cpuExpertsOn ||
-            !learnedLaunchSpilled(
-              p.hostModelMib,
-              p.hostMib,
-              p.engramMib ?? ggufEngramMib(model),
-            ),
         );
-        learnedCurveRef.current = cleanCurve;
+        learnedBundleRef.current = {
+          vramMib,
+          specIncluded: entry?.spec_included ?? null,
+          hostMib: entry?.host_mib ?? snap?.host_mib ?? null,
+          hostModelMib: entry?.host_components_mib?.model_mib ?? snap?.host_components_mib?.model_mib ?? null,
+          engramMib: snap?.engram_mib ?? null,
+          gpuBreakdownMib: entry?.gpu_breakdown_mib ?? snap?.gpu_breakdown_mib ?? null,
+          gpuComponentsMib: entry?.gpu_components_mib ?? snap?.gpu_components_mib ?? null,
+          launchProfile: snap?.reference_profile,
+          measuredAt: entry?.measured_at,
+          mtpContextMib: snap?.mtp_context_mib,
+          anchorCtx: vramMib ? queryCtx : undefined,
+          spilledHostMib: bundle?.exact_spilled_host_mib ?? undefined,
+          spilledAt: bundle?.exact_spilled_at ?? undefined,
+          curve: cleanCurve,
+        };
         setLearnedCurveCtxs(cleanCurve.map((p) => p.ctx));
       })
       .catch(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
-        learnedVramRef.current = null;
-        learnedSpecIncludedRef.current = null;
-        learnedHostRef.current = null;
-    learnedHostModelRef.current = null;
-    learnedEngramRef.current = null;
-        learnedGpuBreakdownRef.current = null;
-        learnedGpuComponentsRef.current = null;
-        learnedLaunchProfileRef.current = undefined;
-        learnedMeasuredAtRef.current = undefined;
-        learnedMtpContextRef.current = undefined;
-        learnedAnchorCtxRef.current = undefined;
-        learnedCurveRef.current = [];
-        learnedSpilledRef.current = false;
+        learnedBundleRef.current = null;
         setLearnedCurveCtxs([]);
       })
       .finally(() => {
@@ -1131,36 +997,19 @@ export function useScenarioEvaluator({
     return () => { clearTimeout(timerRef.current); };
   }, [model?.path, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, learnedKey, stackKey, sysInfoLoaded, metaReady, commitManifest]);
 
-  const validate = useCallback(async (requestedMode?: FitProbeMode): Promise<VramManifest | null> => {
+  const validate = useCallback(async (): Promise<VramManifest | null> => {
     if (!model || validatingRef.current) return null;
     if (isNonLaunchableModel(model)) return null;
     const curConfig = configRef.current;
     const providerId = curConfig.backend_type || "";
     if (tomMtpBlocked(providerId, model)) {
       toastTomMtpSkip(TOM_MTP_SKIP_MESSAGE);
-      return;
+      return null;
     }
     validatingRef.current = true;
     setIsValidating(true);
     try {
-      // Auto / default RE-PROBE is always full-need (ngl 999).
-      // low_vram only when the button is flashing and the user clicks it.
-      // PARKED: never the free-aware low-VRAM hunt. The normal full-need probe is the only one.
-      const probeMode: FitProbeMode = LOW_VRAM_PROBE_PARKED
-        ? "full"
-        : requestedMode
-          ?? (manifestRef.current?.style?.needsLowVramReprobe ? "low_vram" : "full");
-
       const runningSlots = committedSlotsFromStack(stackRef.current);
-      const gpuAvail = computeGpuAvailableList(gpusRef.current, runningSlots);
-      const devMatch = /GPU-?(\d+)/i.exec(String(curConfig.device || "GPU-0"));
-      const devIdx = devMatch ? parseInt(devMatch[1], 10) : 0;
-      const targetFreeGb =
-        devIdx >= 0 && devIdx < gpuAvail.length
-          ? Math.max(0, gpuAvail[devIdx] ?? 0)
-          : Math.max(0, ...gpuAvail, 0);
-      const freeBudgetMib = targetFreeGb * 1024;
-      const liveFreeFp = freeFingerprintFromGb(targetFreeGb);
 
       const probeArgs = (ctxSize: number) => ({
         modelPath: model.path,
@@ -1173,39 +1022,53 @@ export function useScenarioEvaluator({
         ubatch: typeof curConfig.ubatch === "number" ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
         flashAttn: curConfig["flash_attn"]?.toLowerCase() !== "off",
         offloadMode: "regular",
-        mode: probeMode,
-        freeBudgetMib: probeMode === "low_vram" ? freeBudgetMib : null,
+        cpuMoe: cpuMoeFlag(curConfig) === "1",
       });
 
       const anchorCtx = parseCtx(curConfig.ctx ?? "32768");
       const result: FitScanResult = await invoke("fit_scan_model", probeArgs(anchorCtx));
 
-      // One launch point is not a curve. A short probe pair makes the footprint affine in
-      // CTX, so the predicted line carries the compute growth the KV slope cannot see.
-      let probeCurve: Array<{ ctx: number; vramMib: number; hostMib?: number; kvMib?: number }>
-        | undefined;
+      const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
+      const curPlacementKey = placementConfigKey(curConfig);
+      const prevSession = probeSessionRef.current;
+      const mergedByCtx = new Map<
+        number,
+        { ctx: number; vramMib: number; hostMib?: number; kvMib?: number }
+      >();
+      if (
+        prevSession
+        && prevSession.modelPath === model.path
+        && prevSession.hardKey === curProbeKey
+        && prevSession.placementKey === curPlacementKey
+      ) {
+        if (prevSession.curve?.length) {
+          for (const pt of prevSession.curve) mergedByCtx.set(pt.ctx, pt);
+        } else if (prevSession.anchorCtx > 0 && prevSession.validatedVramMib > 0) {
+          mergedByCtx.set(prevSession.anchorCtx, {
+            ctx: prevSession.anchorCtx,
+            vramMib: prevSession.validatedVramMib,
+            hostMib: prevSession.validatedHostMib,
+            kvMib: probeKvMib(prevSession.validatedComponentsMib),
+          });
+        }
+      }
+      mergedByCtx.set(anchorCtx, {
+        ctx: anchorCtx,
+        vramMib: result.vram_mib,
+        hostMib: result.host_mib,
+        kvMib: probeKvMib(result.gpu_components_mib),
+      });
+
       const pairCtx = probePairCtx(anchorCtx);
-      // The pair is an explicit user action: one probe is enough for an automatic first
-      // paint, and a launch curve needs no probe line at all.
       const wantsPair =
-        requestedMode != null
-        && probeMode === "full"
-        && pairCtx !== anchorCtx
-        && (learnedCurveRef.current.length < 2
+        pairCtx !== anchorCtx
+        && ((learnedBundleRef.current?.curve?.length ?? 0) < 2
           || manifestRef.current?.memorySourceState === "launch_other");
       if (wantsPair) {
-        const points = [
-          {
-            ctx: anchorCtx,
-            vramMib: result.vram_mib,
-            hostMib: result.host_mib,
-            kvMib: probeKvMib(result.gpu_components_mib),
-          },
-        ];
         try {
           const extra: FitScanResult = await invoke("fit_scan_model", probeArgs(pairCtx));
           if (extra.vram_mib > 0) {
-            points.push({
+            mergedByCtx.set(pairCtx, {
               ctx: pairCtx,
               vramMib: extra.vram_mib,
               hostMib: extra.host_mib,
@@ -1215,8 +1078,9 @@ export function useScenarioEvaluator({
         } catch {
           // One point is still a point; the line is a bonus, not a requirement.
         }
-        if (points.length >= 2) probeCurve = points.sort((a, b) => a.ctx - b.ctx);
       }
+      const mergedPoints = Array.from(mergedByCtx.values()).sort((a, b) => a.ctx - b.ctx);
+      const probeCurve = mergedPoints.length >= 2 ? mergedPoints : undefined;
 
       const engineConfig: EngineConfig = {
         alias: "",
@@ -1237,10 +1101,6 @@ export function useScenarioEvaluator({
         hour: "2-digit",
         minute: "2-digit",
       });
-      const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
-      const curPlacementKey = placementConfigKey(curConfig);
-      const resultMode: FitProbeMode =
-        result.probe_mode === "low_vram" ? "low_vram" : probeMode;
 
       const input: ScenarioInput = {
         modelMeta: model.metadata!,
@@ -1263,21 +1123,26 @@ export function useScenarioEvaluator({
         autoVramLaunch: autoVramLaunchRef.current,
         fullAutoMode: fullAutoModeRef.current,
         gpuCalibration: gpuCalibrationRef.current,
-        learnedVramMib: learnedVramRef.current ?? undefined,
+        learnedVramMib: learnedBundleRef.current?.vramMib ?? undefined,
         moeCacheMib: moeCacheMibFor(curConfig),
-        moeCpuExperts: String(curConfig.cpu_moe ?? "off").trim().toLowerCase() === "on",
-        learnedSpecIncluded: learnedSpecIncludedRef.current ?? undefined,
-        learnedHostMib: learnedHostRef.current ?? undefined,
-        learnedHostModelMib: learnedHostModelRef.current ?? undefined,
-        learnedEngramMib: learnedEngramRef.current ?? undefined,
+        moeCpuExperts: cpuMoeFlag(curConfig) === "1",
+        moeCacheAuto:
+          cpuMoeFlag(curConfig) === "1"
+          && String(curConfig.moe_cache_auto ?? "on").trim().toLowerCase() !== "off",
+        learnedSpecIncluded: learnedBundleRef.current?.specIncluded ?? undefined,
+        learnedHostMib: learnedBundleRef.current?.hostMib ?? undefined,
+        learnedHostModelMib: learnedBundleRef.current?.hostModelMib ?? undefined,
+        learnedEngramMib: learnedBundleRef.current?.engramMib ?? undefined,
         modelEngramMib: ggufEngramMib(model),
-        learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
-        learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
-        learnedLaunchProfile: learnedLaunchProfileRef.current,
-        learnedMeasuredAt: learnedMeasuredAtRef.current,
-        learnedSpecContextMib: learnedMtpContextRef.current,
-        learnedAnchorCtx: learnedAnchorCtxRef.current,
-        learnedCurve: learnedCurveRef.current,
+        learnedGpuBreakdownMib: learnedBundleRef.current?.gpuBreakdownMib ?? undefined,
+        learnedGpuComponentsMib: learnedBundleRef.current?.gpuComponentsMib ?? undefined,
+        learnedLaunchProfile: learnedBundleRef.current?.launchProfile,
+        learnedMeasuredAt: learnedBundleRef.current?.measuredAt,
+        learnedSpilledHostMib: learnedBundleRef.current?.spilledHostMib,
+        learnedSpilledAt: learnedBundleRef.current?.spilledAt,
+        learnedSpecContextMib: learnedBundleRef.current?.mtpContextMib,
+        learnedAnchorCtx: learnedBundleRef.current?.anchorCtx,
+        learnedCurve: learnedBundleRef.current?.curve ?? [],
         layerSplitMib: layerSplitRef.current,
         fitProbeVramMib: result.vram_mib,
         fitProbeHostMib: result.host_mib,
@@ -1287,11 +1152,6 @@ export function useScenarioEvaluator({
         fitProbePlacementKey: curPlacementKey,
         fitProbeAnchorCtx: anchorCtx,
         fitProbeMeasuredAt: probeMeasuredAt,
-        fitProbeMode: resultMode,
-        fitProbeFreeFingerprint: liveFreeFp,
-        fitProbeFittedNgl: result.fitted_ngl,
-        fitProbeHostModelMib: result.host_components_mib?.model_mib,
-        fitProbeEngramMib: result.engram_mib,
       };
 
       const session: ProbeSession = {
@@ -1306,9 +1166,6 @@ export function useScenarioEvaluator({
         validatedEngramMib: result.engram_mib,
         validatedComponentsMib: result.gpu_components_mib ?? null,
         fitProbeMeasuredAt: probeMeasuredAt,
-        mode: resultMode,
-        freeFingerprint: liveFreeFp,
-        fittedNgl: result.fitted_ngl,
         curve: probeCurve,
       };
 
@@ -1326,8 +1183,8 @@ export function useScenarioEvaluator({
           host_mib: result.host_mib,
           gpu_breakdown_mib: result.gpu_breakdown_mib,
           gpu_components_mib: result.gpu_components_mib ?? null,
-          fitted_ngl: result.fitted_ngl,
-          mode: session.mode,
+          fitted_ngl: null,
+          mode: "full",
         },
       }).catch(() => {
         // Diagnostic only.
@@ -1361,7 +1218,9 @@ export function useScenarioEvaluator({
           window.__blackopsToasts?.addToast(`FIT probe failed: ${msg}`, "error");
           break;
       }
-      const hasLearned = learnedVramRef.current != null || (learnedCurveRef.current?.length ?? 0) > 0;
+      const hasLearned =
+        learnedBundleRef.current?.vramMib != null ||
+        (learnedBundleRef.current?.curve?.length ?? 0) > 0;
       void invoke("emit_to_blackwell_console", {
         category: "utils",
         content: hasLearned
@@ -1397,25 +1256,8 @@ export function useScenarioEvaluator({
       // A probe covers this CTX only when taken here; a probe pair is a line and covers all.
       && (sess.anchorCtx === liveCtx || (sess.curve?.length ?? 0) >= 2)
     ) {
-      const freeList = computeGpuAvailableList(
-        gpusRef.current,
-        committedSlotsFromStack(stackRef.current),
-      );
-      const freeGb = Math.max(...freeList, 0);
-      const staleLowVram =
-        isDevBuild()
-        && sess.mode === "low_vram"
-        && !shouldApplyLowVramSession({
-          mode: sess.mode,
-          probeFreeFingerprint: sess.freeFingerprint,
-          liveFreeFingerprint: freeFingerprintFromGb(freeGb),
-          probeGpuGb: sess.validatedVramMib / 1024,
-          liveFreeGb: freeGb,
-        });
-      if (!staleLowVram) {
-        forceProbeRef.current = false;
-        return;
-      }
+      forceProbeRef.current = false;
+      return;
     }
     // Any usable launch history for this model means the forecast can paint a point or a
     // curve; a CTX move alone must not fire a probe (the glass says ESTIMATE, RE-PROBE or
@@ -1423,8 +1265,8 @@ export function useScenarioEvaluator({
     // that would measure one. A hard-knob change forces a fresh probe.
     if (
       !forceProbe
-      && ((learnedVramRef.current != null && !learnedSpilledRef.current)
-        || (learnedCurveRef.current?.length ?? 0) > 0)
+      && (learnedBundleRef.current?.vramMib != null
+        || (learnedBundleRef.current?.curve?.length ?? 0) > 0)
     ) {
       return;
     }
@@ -1452,6 +1294,7 @@ export function useScenarioEvaluator({
         draftModel: draftPathForLearned(curConfig) || null,
         split: String(curConfig.split ?? "none"),
         vramTopo: vramTopoTag(gpusRef.current, curConfig.device) || null,
+        cpuMoe: String(curConfig.cpu_moe ?? "off"),
         removeCtxs,
       });
       if (n > 0) {

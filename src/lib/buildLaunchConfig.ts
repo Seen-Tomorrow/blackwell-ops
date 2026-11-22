@@ -44,7 +44,7 @@ import {
   SPEC_PROFILE_PARAM_KEYS,
 } from "./specProfiles";
 import { pickHighNumeric } from "./multiAgentBooster";
-import type { RunningSlotInfo } from "../services/vram/scenarios/scenarios_factory";
+import type { RunningSlotInfo } from "../services/vram/shared";
 
 const SPEC_CLI_KEYS = new Set([
   SPEC_CLI_TYPE,

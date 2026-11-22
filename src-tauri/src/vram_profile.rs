@@ -136,53 +136,39 @@ fn kv_geometry(header: &HeaderFacts) -> f64 {
     }
 }
 
-fn model_path_from_key(key: &str) -> &str {
-    key.split('|').next().unwrap_or("")
-}
-
-fn key_token<'a>(key: &'a str, name: &str) -> Option<&'a str> {
-    key.split('|')
-        .find_map(|token| token.strip_prefix(name))
-        .map(str::trim)
-}
-
-fn cuda_compute_mib(entry: &serde_json::Value) -> f64 {
+fn cuda_compute_mib(entry: &crate::vram_learn::LearnedVramEntry) -> f64 {
     entry
-        .get("launch_snapshot")
-        .and_then(|s| s.get("buffers"))
-        .and_then(|b| b.as_array())
-        .map(|lines| {
-            lines
+        .launch_snapshot
+        .as_ref()
+        .map(|s| {
+            s.buffers
                 .iter()
                 .filter(|line| {
-                    let device = line.get("device").and_then(|d| d.as_str()).unwrap_or("");
-                    let rest = device.strip_prefix("CUDA").unwrap_or("");
+                    let rest = line.device.strip_prefix("CUDA").unwrap_or("");
                     !rest.is_empty()
                         && rest.bytes().all(|b| b.is_ascii_digit())
-                        && line.get("category").and_then(|c| c.as_str()) == Some("compute")
+                        && line.category == "compute"
                 })
-                .filter_map(|line| line.get("mib").and_then(|m| m.as_f64()))
+                .map(|line| line.mib)
                 .sum()
         })
         .unwrap_or(0.0)
 }
 
-fn cuda_kv_mib(entry: &serde_json::Value) -> f64 {
+fn cuda_kv_mib(entry: &crate::vram_learn::LearnedVramEntry) -> f64 {
     entry
-        .get("launch_snapshot")
-        .and_then(|s| s.get("buffers"))
-        .and_then(|b| b.as_array())
-        .map(|lines| {
-            lines
+        .launch_snapshot
+        .as_ref()
+        .map(|s| {
+            s.buffers
                 .iter()
                 .filter(|line| {
-                    let device = line.get("device").and_then(|d| d.as_str()).unwrap_or("");
-                    let rest = device.strip_prefix("CUDA").unwrap_or("");
+                    let rest = line.device.strip_prefix("CUDA").unwrap_or("");
                     !rest.is_empty()
                         && rest.bytes().all(|b| b.is_ascii_digit())
-                        && line.get("category").and_then(|c| c.as_str()) == Some("kv")
+                        && line.category == "kv"
                 })
-                .filter_map(|line| line.get("mib").and_then(|m| m.as_f64()))
+                .map(|line| line.mib)
                 .sum()
         })
         .unwrap_or(0.0)
@@ -196,21 +182,6 @@ fn median(values: &mut Vec<f64>) -> f64 {
     } else {
         values.get(mid).copied().unwrap_or(0.0)
     }
-}
-
-fn store_entries() -> serde_json::Map<String, serde_json::Value> {
-    let path = crate::config::cache_dir().join("learned-vram.json");
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return serde_json::Map::new();
-    };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return serde_json::Map::new();
-    };
-    value
-        .get("entries")
-        .and_then(|e| e.as_object())
-        .cloned()
-        .unwrap_or_default()
 }
 
 /// Forecast a model that has never launched, from any recorded launches of the same shape.
@@ -240,7 +211,7 @@ pub fn cold_forecast(
     let kv_norm = kv_quant.trim().to_lowercase();
     let excluded = exclude_model.map(|m| m.replace('\\', "/").to_lowercase());
 
-    let entries = store_entries();
+    let entries = crate::vram_learn::all_entries_snapshot();
     let mut points: Vec<(f64, f64)> = Vec::new();
     let mut point_rows: Vec<ProfilePoint> = Vec::new();
     let mut kv_ratios: Vec<f64> = Vec::new();
@@ -255,8 +226,11 @@ pub fn cold_forecast(
         kv_ratios.clear();
         used_ubatch = if ignore_ubatch { 0 } else { ubatch };
 
-        for (key, entry) in entries.iter() {
-            let model = model_path_from_key(key);
+        for entry in entries.iter() {
+            if entry.key.regime != crate::vram_learn::ExpertRegime::Plain {
+                continue;
+            }
+            let model = entry.key.model_path.as_str();
             if let Some(exclude) = excluded.as_deref() {
                 if model.replace('\\', "/").to_lowercase() == exclude {
                     continue;
@@ -268,18 +242,12 @@ pub fn cold_forecast(
             if info.arch != target.arch || info.layers != target.layers {
                 continue;
             }
-            let Some(entry_ctx) = key_token(key, "ctx=").and_then(|v| v.parse::<u64>().ok()) else {
-                continue;
-            };
-            if key_token(key, "split=") != Some(split_norm.as_str()) {
+            let entry_ctx = entry.key.ctx as u64;
+            if entry.key.split != split_norm {
                 continue;
             }
-            let entry_batch = key_token(key, "batch=")
-                .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(0);
-            let entry_ubatch = key_token(key, "ubatch=")
-                .and_then(|v| v.parse::<u32>().ok())
-                .unwrap_or(0);
+            let entry_batch = entry.reference_batch.unwrap_or(0);
+            let entry_ubatch = entry.reference_ubatch.unwrap_or(0);
             if !ignore_batch && batch != 0 && entry_batch != batch {
                 continue;
             }
@@ -297,9 +265,7 @@ pub fn cold_forecast(
                 });
             }
 
-            if key_token(key, "kv=") == Some(kv_norm.as_str())
-                && info.kv_bytes_per_token_per_layer > 0.0
-            {
+            if entry.key.kv_quant == kv_norm && info.kv_bytes_per_token_per_layer > 0.0 {
                 let measured = cuda_kv_mib(entry);
                 let expected =
                     info.kv_bytes_per_token_per_layer * entry_ctx as f64 * info.layers as f64 / MIB;

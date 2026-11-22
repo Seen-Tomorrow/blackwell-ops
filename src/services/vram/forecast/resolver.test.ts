@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { EngineConfig, GpuInfo, ModelMetadata } from "../../../lib/types";
+import { fitProbeKey, learnedIdentityKey, liveEvalKey } from "../../../hooks/useScenarioEvaluator";
+import { chooseSecondCtx } from "../../../lib/forecastCurveRun";
 import { evaluate } from "./evaluate";
+import { computeAutoMoeCacheGb } from "./adapters/ggml_master";
 import type { ForecastInput } from "./types";
 
 /**
@@ -233,7 +236,7 @@ describe("forecast resolver states", () => {
         fitProbeVramMib: 50 * GIB,
         fitProbeHostMib: 1024,
         fitProbeAnchorCtx: 65_536,
-        fitProbeMode: "full",
+
         fitProbeMeasuredAt: "Nov 6, 12:00",
       }),
     );
@@ -251,7 +254,7 @@ describe("forecast resolver states", () => {
           { model_mib: 30 * GIB, ctx_mib: 8 * GIB, compute_mib: 12 * GIB },
         ],
         fitProbeAnchorCtx: 131_072,
-        fitProbeMode: "full",
+
         fitProbeMeasuredAt: "Nov 6, 12:00",
       }),
     );
@@ -273,7 +276,7 @@ describe("forecast resolver states", () => {
         learnedMeasuredAt: "2026-11-06T10:00:00Z",
         fitProbeVramMib: 72 * GIB,
         fitProbeAnchorCtx: 65_536,
-        fitProbeMode: "full",
+
         fitProbeMeasuredAt: "Nov 6, 12:00",
       }),
     );
@@ -371,7 +374,7 @@ describe("forecast resolver states", () => {
         visionOn: true,
         fitProbeVramMib: 50 * GIB,
         fitProbeAnchorCtx: 65_536,
-        fitProbeMode: "full",
+
         fitProbeMeasuredAt: "Nov 6, 12:00",
       }),
     );
@@ -415,7 +418,7 @@ describe("forecast resolver states", () => {
         },
         fitProbeVramMib: 50 * GIB,
         fitProbeAnchorCtx: 65_536,
-        fitProbeMode: "full",
+
         fitProbeMeasuredAt: "Nov 6, 12:00",
       }),
     );
@@ -432,5 +435,80 @@ describe("forecast resolver states", () => {
     );
     expect(m?.memorySourceState).toBe("launch_exact");
     expect(m?.lastLaunchSpillGb).toBeUndefined();
+  });
+
+  it("forecastCurve includes runtime overhead, vision, and expert cache, sorted ascending", () => {
+    const m = evaluate(
+      input({
+        learnedCurve: [launchPoint(131_072, 20), launchPoint(32_768, 12)],
+        mmprojSizeMib: 1024,
+        visionOn: true,
+        moeCpuExperts: true,
+        moeCacheMib: 8 * GIB,
+      }),
+    )!;
+    // 65,536 interpolated between 12 @32K and 20 @128K = 14.67 + 0.5 runtime + 1.0 vision + 8.0 cache = 24.17
+    expect(m.forecastCurve?.map((p) => p.ctx)).toEqual([32_768, 65_536, 131_072]);
+    const atLive = m.forecastCurve?.find((p) => p.ctx === 65_536);
+    expect(atLive?.gb).toBeCloseTo(m.vramTotalGb, 2);
+    expect(m.forecastCurve![0].gb).toBeCloseTo(12 + 0.5 + 1 + 8, 1);
+  });
+
+  it("reactive keys: cpu_moe invalidates probe/learned; moe_cache_mib invalidates liveEvalKey only", () => {
+    const base = { backend_type: "ggml-master", kv_quant: "q8_0", split: "none", ctx: 65_536, cpu_moe: "off", moe_cache_auto: "off", moe_cache_mib: 0 };
+    const cmoe0 = { ...base, cpu_moe: "on", moe_cache_mib: 0 };
+    const cmoe8 = { ...base, cpu_moe: "on", moe_cache_mib: 8192 };
+
+    expect(fitProbeKey(cmoe0, false)).not.toBe(fitProbeKey(base, false));
+    expect(learnedIdentityKey(cmoe0, false)).not.toBe(learnedIdentityKey(base, false));
+
+    expect(fitProbeKey(cmoe8, false)).toBe(fitProbeKey(cmoe0, false));
+    expect(learnedIdentityKey(cmoe8, false)).toBe(learnedIdentityKey(cmoe0, false));
+    expect(liveEvalKey(cmoe8, false)).not.toBe(liveEvalKey(cmoe0, false));
+  });
+
+  it("chooseSecondCtx picks furthest lower for >=32K and ~32K for <32K", () => {
+    expect(chooseSecondCtx(65_536, [4096, 8192, 32_768, 65_536])).toBe(4096);
+    expect(chooseSecondCtx(4096, [4096, 8192, 16_384, 32_768, 65_536])).toBe(32_768);
+  });
+
+  it("computeAutoMoeCacheGb sizes single and asymmetric multi-GPU caches safely", () => {
+    // Single 16 GB GPU: 16 - 4 base - 1.0 headroom = 11.0 GB, snapped to 256 MiB, capped by hostExpertsGb
+    const single = computeAutoMoeCacheGb({
+      perGpuBaseGb: [4],
+      gpuAvailableGb: [16],
+      hostExpertsGb: 40,
+      targetIdx: 0,
+    });
+    expect(single.totalCacheGb).toBeCloseTo(11.0, 1);
+
+    // Asymmetric 16 GB + 96 GB with 0.5 / 0.5 split: tightest card (16 GB) caps total cache
+    const multi = computeAutoMoeCacheGb({
+      perGpuBaseGb: [2, 2],
+      gpuAvailableGb: [16, 96],
+      hostExpertsGb: 40,
+      targetIdx: 0,
+    });
+    // 16 - 2 - 1.0 = 13.0 avail on GPU0 -> / 0.5 = 26.0 GB total (13.0 per card)
+    expect(multi.totalCacheGb).toBeCloseTo(26.0, 1);
+    expect(multi.perGpuCacheGb[0]).toBeCloseTo(13.0, 1);
+    expect(multi.perGpuCacheGb[1]).toBeCloseTo(13.0, 1);
+  });
+
+  it("evaluate with moeCpuExperts + moeCacheAuto sizes cache and keeps CTX ribbon on base", () => {
+    const m = evaluate(
+      input({
+        learnedCurve: [launchPoint(32_768, 4, 32), launchPoint(131_072, 8, 32)],
+        moeCpuExperts: true,
+        moeCacheAuto: true,
+      }),
+    )!;
+    expect(m.moeOverdrive?.active).toBe(true);
+    expect(m.moeOverdrive?.autoCache).toBe(true);
+    expect(m.moeOverdrive?.cacheMib).toBeGreaterThan(0);
+    expect(m.style.vramNeedTone).toBe("ok");
+    expect(m.ramSpillGb).toBe(0);
+    const atLive = m.forecastCurve?.find((p) => p.ctx === 65_536);
+    expect(atLive?.gb).toBeCloseTo(m.moeOverdrive!.baseVramGb, 1);
   });
 });

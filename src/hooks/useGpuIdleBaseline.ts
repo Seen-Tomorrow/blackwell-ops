@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GpuInfo, StackEntry } from "../lib/types";
-import { isVramCommittedSlot } from "../services/vram/scenarios/scenarios_factory";
+import { isVramCommittedSlot } from "../services/vram/shared";
 
 /**
  * Per-GPU NVML used (MiB) captured while no engine holds VRAM — session-scoped only.

@@ -156,7 +156,8 @@ if ($SkipCache) {
             foreach ($k in $map.Keys) { $learned[$k] = $map[$k] }
         }
     }
-    if ($learned.Count -gt 0) { Write-JsonAtomic (Join-Path $cache_dst 'learned-vram.json') @{ entries = $learned } }
+    $schema = if ($learned_src.schema) { $learned_src.schema } elseif ($learned_dst.schema) { $learned_dst.schema } else { 2 }
+    if ($learned.Count -gt 0) { Write-JsonAtomic (Join-Path $cache_dst 'learned-vram.json') @{ schema = $schema; entries = $learned } }
 
     $models_src = Read-JsonMap (Join-Path $cache_src 'model_cache.json')
     $models_dst = Read-JsonMap (Join-Path $cache_dst 'model_cache.json')

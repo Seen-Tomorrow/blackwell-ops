@@ -251,6 +251,8 @@ interface CockpitInstrumentsProps {
   /** Expert knobs are only meaningful for a MoE model. */
   modelIsMoe?: boolean;
   providerId?: string;
+  /** Effective hot expert cache size in MiB when AUTO is active. */
+  effectiveCacheMib?: number;
 }
 
 /**
@@ -322,6 +324,7 @@ export function CockpitInstruments({
   modelPath = null,
   modelIsMoe = false,
   providerId = "",
+  effectiveCacheMib,
 }: CockpitInstrumentsProps) {
   return (
     <div
@@ -349,6 +352,7 @@ export function CockpitInstruments({
         config={config}
         onChange={onChange}
         modelIsMoe={modelIsMoe}
+        effectiveCacheMib={effectiveCacheMib}
       />
     </div>
   );

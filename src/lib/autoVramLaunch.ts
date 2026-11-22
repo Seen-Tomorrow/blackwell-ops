@@ -3,7 +3,7 @@ import { resolveVisibleParamValue } from "./paramConfigResolve";
 import {
   computeGpuAvailableList,
   type RunningSlotInfo,
-} from "../services/vram/scenarios/scenarios_factory";
+} from "../services/vram/shared";
 import { fullAutoSingleDeviceLabel } from "./fullAutoGpuPick";
 
 export function gpuHeadroomGb(capacityGb: number): number {

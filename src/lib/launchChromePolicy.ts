@@ -3,7 +3,7 @@ import { needsAutoLayerSplit, bestVramEstimateGb, gpuHeadroomGb } from "./autoVr
 import {
   computeGpuAvailableList,
   type RunningSlotInfo,
-} from "../services/vram/scenarios/scenarios_factory";
+} from "../services/vram/shared";
 
 type LaunchMemoryMode = "full_auto" | "assisted";
 

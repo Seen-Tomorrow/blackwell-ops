@@ -757,7 +757,7 @@ pub async fn launch_engine(
         Some(template.spawn_profile.fusion_adapter.as_str()),
     );
     let mut cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
-    crate::fit_low_vram::apply_default_fit_target(&mut cmd_args);
+    crate::fit_scanner::apply_default_fit_target(&mut cmd_args);
     // A device that already hosts another process cannot be planned by `--fit` (it reads CUDA's
     // budget, not physical free — see `occupied_target_devices`). Turn fit off so the engine
     // either allocates on the card or fails visibly, and say why in the console.
@@ -1425,7 +1425,7 @@ pub(crate) fn assemble_launch_command(
     let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, test_has_split);
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path, &config);
     let mut cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
-    crate::fit_low_vram::apply_default_fit_target(&mut cmd_args);
+    crate::fit_scanner::apply_default_fit_target(&mut cmd_args);
     // A device that already hosts another process cannot be planned by `--fit` (it reads CUDA's
     // budget, not physical free — see `occupied_target_devices`). Turn fit off so the engine
     // either allocates on the card or fails visibly, and say why in the console.

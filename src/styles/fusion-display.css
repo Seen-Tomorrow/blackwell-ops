@@ -6486,369 +6486,14 @@ html[data-industrial-bezel="brush"] {
   border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border));
 }
 
-/* ── CPU EXPERTS scenario ──────────────────────────────────────────────────
-   The `-cmoe` placement: host experts by design, cache in VRAM, no spill palette. */
-.vram-cpu-experts {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.5rem 0.65rem;
-  min-height: 0;
-  overflow: auto;
-  font-family: var(--font-mono, monospace);
-}
-
-.vram-cpu-experts__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-
-.vram-cpu-experts__title {
-  font-size: var(--type-label);
-  letter-spacing: 0.12em;
-  color: var(--theme-accent);
-}
-
-.vram-cpu-experts__state {
-  font-size: var(--type-micro);
-  color: var(--theme-text-muted);
-}
-
-.vram-cpu-experts[data-fits="0"] .vram-cpu-experts__state {
-  color: var(--theme-warn);
-}
-
-.vram-cpu-experts__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-}
-
-.vram-cpu-experts__cell {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
-  padding-left: 0.5rem;
-  border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-}
-
-.vram-cpu-experts__lab {
-  font-size: var(--type-micro);
-  letter-spacing: 0.1em;
-  color: var(--theme-text-muted);
-}
-
-.vram-cpu-experts__val {
-  font-size: var(--type-md);
-  color: var(--theme-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.vram-cpu-experts__sub {
-  font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.vram-cpu-experts__measured {
-  display: flex;
-  align-items: baseline;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-  padding-top: 0.3rem;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
-  font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-text) 70%, transparent);
-}
-
-.vram-cpu-experts__measured b {
-  color: var(--theme-accent);
-  font-weight: 500;
-}
-
-.vram-cpu-experts__measured-lab {
-  letter-spacing: 0.1em;
-  color: var(--theme-accent);
-}
-
-.vram-cpu-experts__sep {
-  color: color-mix(in srgb, var(--theme-text) 35%, transparent);
-}
-
-.vram-cpu-experts__age {
-  color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
-}
-
-.vram-cpu-experts__recal {
-  margin-left: auto;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--type-micro);
-  padding: 0 0.4rem;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
-  color: var(--theme-accent);
-  background: transparent;
-}
-
-.vram-cpu-experts__recal:hover {
-  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
-}
-
-.vram-cpu-experts__note {
-  font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-text) 45%, transparent);
-}
-
-/* ── MOE OVERDRIVE ─────────────────────────────────────────────────────────
-   Its own screen, its own classes: if this path dies, delete this block and the panel. */
-.moe-od {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.45rem 0.6rem;
-  min-height: 0;
-  overflow: auto;
-  font-family: var(--font-mono, monospace);
-}
-
-.moe-od__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.moe-od__title {
-  font-size: var(--type-label);
-  letter-spacing: 0.12em;
-  color: var(--theme-accent);
-}
-
-.moe-od__chip {
-  font-size: var(--type-micro);
-  padding: 0.1rem 0.4rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
-  color: var(--theme-text-muted);
-  background: transparent;
-}
-
-.moe-od__chip:hover:not(:disabled) {
-  color: var(--theme-accent);
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-}
-
-.moe-od__chip:disabled {
-  opacity: 0.45;
-}
-
-.moe-od__chip--primary {
-  color: var(--theme-accent);
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
-}
-
-.moe-od__hero {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-}
-
-.moe-od__tps {
-  font-size: 2.1rem;
-  line-height: 1;
-  color: var(--theme-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.moe-od__unit {
-  font-size: var(--type-micro);
-  color: var(--theme-text-muted);
-}
-
-.moe-od__sub {
-  margin-left: auto;
-  font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
-}
-
-.moe-od__phase {
-  font-size: var(--type-micro);
-  letter-spacing: 0.1em;
-  color: color-mix(in srgb, var(--theme-text) 55%, transparent);
-}
-
-.moe-od__phase[data-phase="done"] {
-  color: var(--theme-accent);
-}
-
-.moe-od__boot {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.moe-od__boot-cap {
-  font-size: var(--type-micro);
-  letter-spacing: 0.06em;
-  color: var(--theme-text-muted);
-}
-
-/* The glass is shorter than the fusion display; drop the raw stderr ticker here so the phase
-   ladder and the GPU/disk instruments keep their rows. */
-.moe-od__boot .fusion-boot-ticker {
-  display: none;
-}
-
-.moe-od__boot .fusion-boot {
-  gap: 4px;
-  padding: 4px 6px;
-}
-
-.moe-od__progress {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.6rem 0;
-}
-
-.moe-od__progress-label {
-  font-size: var(--type-label);
-  letter-spacing: 0.12em;
-  color: var(--theme-accent);
-}
-
-.moe-od__progress-msg {
-  font-size: var(--type-micro);
-  color: var(--theme-text);
-}
-
-.moe-od__progress-hint {
-  font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-text) 60%, transparent);
-}
-
-.moe-od__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex-wrap: wrap;
-  margin-top: auto;
-}
-
-.moe-od__cmp {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  padding: 0.4rem 0.55rem;
-}
-
-/* Two columns so speed and memory sit side by side: the glass is wide, the height is the
-   constraint (120% app font must still fit without scrolling). */
-.moe-od__cmp-table {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.1rem 1.4rem;
-}
-
-.moe-od__cmp-col {
-  display: grid;
-  grid-template-columns: 3.4rem 4.4rem 1.1rem 4.6rem 2.6rem 3rem;
-  align-items: baseline;
-  gap: 0.05rem 0.35rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.moe-od__cmp-lab {
-  font-size: var(--type-micro);
-  letter-spacing: 0.08em;
-  color: var(--theme-text-muted);
-}
-
-.moe-od__cmp-val {
-  font-size: var(--type-label);
-  color: var(--theme-text);
-  text-align: right;
-}
-
-.moe-od__cmp-val--after {
-  color: var(--theme-accent);
-}
-
-.moe-od__cmp-arrow {
-  color: var(--theme-text-muted);
-  text-align: center;
-}
-
-.moe-od__cmp-unit {
-  font-size: var(--type-micro);
-  color: var(--theme-text-muted);
-}
-
-.moe-od__cmp-gain {
-  font-size: var(--type-micro);
-  text-align: right;
-  color: var(--theme-text-muted);
-}
-
-.moe-od__cmp-gain.is-up {
-  color: var(--theme-accent);
-}
-
-.moe-od__cmp-note {
-  font-size: var(--type-micro);
-  color: var(--theme-warn);
-}
-
-/* The benchmark is a visible phase, not a silent wait: PP and TG report as they land. */
-.moe-od__bench {
-  display: flex;
-  align-items: baseline;
-  gap: 1.2rem;
-  flex-wrap: wrap;
-}
-
-.moe-od__bench-row {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  font-size: var(--type-micro);
-  color: var(--theme-text-muted);
-}
-
-.moe-od__bench-row[data-active="1"] {
-  color: var(--theme-accent);
-}
-
-.moe-od__bench-lab {
-  letter-spacing: 0.08em;
-}
-
-.moe-od__bench-val {
-  font-size: var(--type-label);
-  color: var(--theme-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.moe-od__bench-row[data-active="1"] .moe-od__bench-val {
-  color: var(--theme-accent);
-}
-
-.moe-od__note {
-  font-size: var(--type-micro);
-  color: var(--theme-warn);
-}
-
-.moe-od__empty {
-  font-size: var(--type-micro);
-  color: var(--theme-text-muted);
-  padding: 0.5rem 0;
+@keyframes expert-nudge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  }
 }
 
 /* The plain MoE launch would spill; this is the same prompt as the launch half's nudge. */
@@ -6900,14 +6545,28 @@ html[data-industrial-bezel="brush"] {
   animation: expert-nudge-pulse 1.8s ease-in-out infinite;
 }
 
-/* One entry to the OVERDRIVE screen - a button, not half of a mode switch. */
-.vram-fc-overdrive-entry {
-  display: flex;
-  align-items: center;
-  margin-top: 0.15rem;
+.vram-fc-bar__fill--cache {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--theme-accent) 42%, transparent) 0 4px,
+    color-mix(in srgb, var(--theme-accent) 18%, transparent) 4px 8px
+  );
+  border-left: 1px solid color-mix(in srgb, var(--theme-accent-bright) 75%, transparent);
 }
 
-.vram-fc-overdrive-entry__btn {
+.vram-fc-overdrive-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--type-micro);
+  color: var(--theme-accent);
+  padding: 0.15rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
+}
+
+.vram-fc-overdrive-strip__btn {
   font-family: var(--font-mono, monospace);
   font-size: var(--type-micro);
   letter-spacing: 0.06em;
@@ -6915,19 +6574,178 @@ html[data-industrial-bezel="brush"] {
   border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
   color: var(--theme-text-muted);
   background: transparent;
+  cursor: pointer;
 }
 
-.vram-fc-overdrive-entry__btn:hover:not(:disabled) {
+.vram-fc-overdrive-strip__btn:hover {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
+}
+
+.vram-fc-autocal-nudge {
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  padding: 0 0.35rem;
+  color: var(--theme-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  cursor: pointer;
+}
+
+.vram-fc-autocal-nudge:hover {
+  background: color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+
+/* ── Full-glass 2-point memory calibration overlay ────────────────────────── */
+.vram-cal-ov {
+  gap: 0.45rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.vram-cal-ov__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vram-cal-ov__title {
+  font-size: var(--type-label);
+  letter-spacing: 0.12em;
+  color: var(--theme-accent);
+}
+
+.vram-cal-ov__step {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+}
+
+.vram-cal-ov__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.vram-cal-ov__btn {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 65%, transparent);
+  color: var(--theme-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.vram-cal-ov__btn:hover {
   color: var(--theme-accent);
   border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
 }
 
-.vram-fc-overdrive-entry__btn:disabled {
-  opacity: 0.5;
+.vram-cal-ov__btn--stop {
+  color: var(--theme-warn);
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
 }
 
-.moe-od__learned {
+.vram-cal-ov__btn--stop:hover {
+  color: var(--theme-warn);
+  background: color-mix(in srgb, var(--theme-warn) 12%, transparent);
+}
+
+.vram-cal-ov__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-bg) 45%, transparent);
+}
+
+.vram-cal-ov__svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.vram-cal-ov__axis {
+  stroke: color-mix(in srgb, var(--theme-border) 85%, transparent);
+  stroke-width: 1;
+}
+
+.vram-cal-ov__axlab,
+.vram-cal-ov__ptlab {
+  fill: var(--theme-text-muted);
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+}
+
+.vram-cal-ov__fit {
+  stroke: color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.vram-cal-ov__curve {
+  stroke: var(--theme-accent);
+  stroke-width: 2;
+}
+
+.vram-cal-ov__dot {
+  fill: var(--theme-bg);
+  stroke: var(--theme-text-muted);
+  stroke-width: 1.75;
+}
+
+.vram-cal-ov__dot.is-active {
+  fill: var(--theme-accent);
+  stroke: var(--theme-accent-bright);
+}
+
+.vram-cal-ov__dot.is-done {
+  fill: var(--theme-accent);
+  stroke: var(--theme-accent);
+}
+
+.vram-cal-ov__notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-accent) 75%, transparent);
-  letter-spacing: 0.02em;
+  color: var(--theme-text-muted);
+}
+
+.vram-cal-ov__note.is-active {
+  color: var(--theme-text);
+}
+
+.vram-cal-ov__note.is-done {
+  color: var(--theme-accent);
+}
+
+.vram-cal-ov__gain {
+  margin-top: 0.15rem;
+  color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
+}
+
+.vram-cal-ov__boot {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.vram-cal-ov__boot .fusion-boot-ticker {
+  display: none;
+}
+
+.vram-cal-ov__boot .fusion-boot {
+  gap: 4px;
+  padding: 4px 6px;
+}
+
+.vram-cal-ov__wait {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+  padding: 0.4rem 0;
 }

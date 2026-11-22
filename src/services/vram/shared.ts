@@ -478,9 +478,9 @@ export function freePoolUtil(estimateGb: number, freeGb: number): number {
 }
 
 export function launchPaintFromGate(fits: boolean, useOffloadPalette: boolean): ForecastLaunchPaint {
+  if (!fits) return "nofit";
   if (useOffloadPalette) return "offload";
-  if (fits) return "fit";
-  return "nofit";
+  return "fit";
 }
 
 /** Soft free-util tier only (ignores hard launch gate). */
@@ -526,5 +526,79 @@ export function barStyleFromNeedTone(tone: ForecastNeedTone): {
     bgTint: `bar-need-tint ${m}`,
     badgeBg: `bar-need-badge ${m}`,
   };
+}
+
+// ── Host RAM split & bar insets (moved from deleted lowVramProbe.ts) ─────────
+
+export const HOST_BUFFER_CEILING_GB = 2.5;
+
+export function isWeightClassHostSpill(hostGb: number | null | undefined): boolean {
+  return hostGb != null && Number.isFinite(hostGb) && hostGb > HOST_BUFFER_CEILING_GB;
+}
+
+export function splitHostRamGb(opts: {
+  hostGb: number;
+  hostModelGb?: number | null;
+  engramGb?: number | null;
+  bufferBaselineGb?: number | null;
+  realSpill: boolean;
+}): { bufferGb: number; weightGb: number; engramGb: number } {
+  const total = Math.max(0, opts.hostGb);
+  const engram = Math.min(total, Math.max(0, opts.engramGb ?? 0));
+  const nonEngram = Math.max(0, total - engram);
+  if (opts.hostModelGb != null && opts.hostModelGb > 0) {
+    const modelAboveEngram = Math.max(0, opts.hostModelGb - engram);
+    const weight = Math.min(nonEngram, modelAboveEngram);
+    return { bufferGb: Math.max(0, nonEngram - weight), weightGb: weight, engramGb: engram };
+  }
+  if (!opts.realSpill) {
+    return { bufferGb: nonEngram, weightGb: 0, engramGb: engram };
+  }
+  const baseBuf = Math.min(nonEngram, Math.max(0, opts.bufferBaselineGb ?? 0));
+  return { bufferGb: baseBuf, weightGb: Math.max(0, nonEngram - baseBuf), engramGb: engram };
+}
+
+export function ramNeedToneForHost(args: {
+  overSystemMemory: boolean;
+  hostOffloadGb: number;
+  realSpill: boolean;
+}): ForecastNeedTone {
+  if (args.overSystemMemory) return "hot";
+  if (args.realSpill || args.hostOffloadGb > HOST_BUFFER_CEILING_GB) return "warn";
+  return "ok";
+}
+
+export function showHostRamBar(args: {
+  hostOffloadGb: number;
+  realSpill: boolean;
+  overSystemMemory: boolean;
+}): boolean {
+  return args.realSpill || args.hostOffloadGb > 0.05 || args.overSystemMemory;
+}
+
+export function forecastBarInsets(args: {
+  launchPaint: ForecastLaunchPaint;
+  freeUtil: number;
+  freeGb: number;
+  estimateGb: number;
+  hostOffloadGb: number;
+  overSystemMemory: boolean;
+}): { vramInset?: string; ramInset?: string; realSpill: boolean } {
+  const realSpill =
+    args.hostOffloadGb > HOST_BUFFER_CEILING_GB ||
+    (args.freeGb > 0 && args.estimateGb > args.freeGb - freePoolHeadroomGb(args.freeGb));
+  if (args.overSystemMemory) {
+    return { vramInset: "OVER VRAM + RAM", ramInset: "OVER SYSTEM MEMORY", realSpill };
+  }
+  const tier = freePoolOomTier(args.freeUtil);
+  const vramInset =
+    args.launchPaint === "nofit"
+      ? "OVER FREE"
+      : tier === "warn"
+        ? "HIGH OOM RISK"
+        : tier === "caution"
+          ? "TIGHT FREE"
+          : undefined;
+  return { vramInset, realSpill };
 }
 

@@ -7,6 +7,7 @@
  * measure the KV slope. Precision over span is secondary to "never OOM on either launch".
  */
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
 import { dispatchAppEvent, EVENTS } from "./events";
 import { sleep, stopSlot, waitForRunning } from "./engineRun";
@@ -22,12 +23,13 @@ export interface CurveRunSnapshot {
   fromCtx: number | null;
   toCtx: number | null;
   slotIdx: number | null;
+  port: number | null;
+  alias: string | null;
+  gpuMask: string | null;
 }
 
 export interface CurveStartOptions {
   modelPath: string;
-  /** Slot of the launch that just happened (point 1). */
-  slotIdx: number;
   originalCtx: number;
   /** The CTX choices the UI offers; the controller picks a safe second point from them. */
   ctxOptions: number[];
@@ -35,6 +37,8 @@ export interface CurveStartOptions {
   buildConfig: (ctx: number) => EngineConfig | null;
   /** Keep the panel/profile CTX in sync while the calibration runs. */
   applyCtx: (ctx: number) => void;
+  /** Invoked when the final target launch succeeds. */
+  onTargetLaunched?: (launched: { idx: number; port: number; alias: string }) => void;
 }
 
 const INITIAL: CurveRunSnapshot = {
@@ -45,11 +49,86 @@ const INITIAL: CurveRunSnapshot = {
   fromCtx: null,
   toCtx: null,
   slotIdx: null,
+  port: null,
+  alias: null,
+  gpuMask: null,
 };
 
 let snapshot: CurveRunSnapshot = INITIAL;
 let running = false;
+let abortRequested = false;
+let skipRequested = false;
 const listeners = new Set<() => void>();
+
+export function abortForecastCurveRun(): void {
+  if (!running) return;
+  abortRequested = true;
+  set({ message: "stopping calibration…" });
+  const slot = snapshot.slotIdx;
+  if (slot != null) {
+    void invoke("stop_engine_slot", { slotIdx: slot }).catch(() => {});
+  }
+}
+
+export function skipForecastCurveCalibration(): void {
+  if (!running || snapshot.phase !== "second-load") return;
+  skipRequested = true;
+  set({ message: "skipping calibration — launching target CTX…" });
+  const slot = snapshot.slotIdx;
+  if (slot != null) {
+    void invoke("stop_engine_slot", { slotIdx: slot }).catch(() => {});
+  }
+}
+
+function normPath(p: string | null | undefined): string {
+  return (p ?? "").replace(/\\/g, "/").toLowerCase();
+}
+
+function armLearnedPersistWaiter(
+  modelPath: string,
+  timeoutMs = 8000,
+): { promise: Promise<boolean>; cancel: () => void } {
+  const target = normPath(modelPath);
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let unlistenFn: (() => void) | null = null;
+  let resolveFn: (ok: boolean) => void = () => {};
+
+  const cleanup = (ok: boolean) => {
+    if (settled) return;
+    settled = true;
+    if (timer) clearTimeout(timer);
+    if (unlistenFn) {
+      try {
+        unlistenFn();
+      } catch {
+        // ignore
+      }
+    }
+    resolveFn(ok);
+  };
+
+  const promise = new Promise<boolean>((resolve) => {
+    resolveFn = resolve;
+    timer = setTimeout(() => cleanup(false), timeoutMs);
+    void listen<{ model_path?: string }>("learned-vram-changed", (event) => {
+      if (normPath(event.payload?.model_path) === target) {
+        cleanup(true);
+      }
+    }).then((unlisten) => {
+      if (settled) {
+        unlisten();
+      } else {
+        unlistenFn = unlisten;
+      }
+    });
+  });
+
+  return {
+    promise,
+    cancel: () => cleanup(false),
+  };
+}
 
 function set(patch: Partial<CurveRunSnapshot>): void {
   snapshot = { ...snapshot, ...patch };
@@ -82,36 +161,58 @@ function fmtCtx(ctx: number): string {
   return ctx >= 1024 ? `${Math.round(ctx / 1024)}K` : String(ctx);
 }
 
-/** Furthest lower choice (safe direction: less KV); the nearest higher only at the floor. */
+/**
+ * Pick the calibration CTX:
+ * - For original >= 32K: furthest lower choice (minimal KV, zero OOM risk, wide span).
+ * - For original < 32K: pick the option > original closest to 32K (preferring <= 32K) for a clean slope.
+ */
 export function chooseSecondCtx(original: number, options: number[]): number | null {
   const sorted = [...new Set(options)]
     .filter((value) => Number.isFinite(value) && value > 0)
     .sort((a, b) => a - b);
   if (sorted.length < 2) return null;
   const lower = sorted.filter((value) => value < original);
-  if (lower.length > 0) return lower[0];
+  if (original >= 32768 && lower.length > 0) return lower[0];
   const higher = sorted.filter((value) => value > original);
-  return higher.length > 0 ? higher[0] : null;
+  if (higher.length > 0) {
+    const upTo32k = higher.filter((value) => value <= 32768);
+    if (upTo32k.length > 0) return upTo32k[upTo32k.length - 1];
+    return higher[0];
+  }
+  return lower.length > 0 ? lower[0] : null;
 }
 
-async function launchAt(options: CurveStartOptions, ctx: number): Promise<number> {
+async function launchAt(
+  options: CurveStartOptions,
+  ctx: number,
+  notifyTarget = false,
+): Promise<number> {
   options.applyCtx(ctx);
   const config = options.buildConfig(ctx);
   if (!config) throw new Error(`no launch config at ${fmtCtx(ctx)}`);
-  const launched = await invoke<{ idx: number; port: number; alias: string }>("launch_engine", {
-    config,
-  });
-  dispatchAppEvent(EVENTS.engineLaunched, {
-    slotIdx: launched.idx,
-    modelPath: options.modelPath,
-  });
-  dispatchAppEvent(EVENTS.launchSuccess, { alias: launched.alias, port: launched.port });
-  set({ slotIdx: launched.idx });
-  await waitForRunning(launched.idx);
-  // The learned row is written as the load's memory snapshot parses; let it land before the
-  // controller stops this engine, or the point never reaches the store.
-  await sleep(2500);
-  return launched.idx;
+  const waiter = armLearnedPersistWaiter(options.modelPath);
+  try {
+    const launched = await invoke<{ idx: number; port: number; alias: string }>("launch_engine", {
+      config,
+    });
+    dispatchAppEvent(EVENTS.engineLaunched, {
+      slotIdx: launched.idx,
+      modelPath: options.modelPath,
+    });
+    dispatchAppEvent(EVENTS.launchSuccess, { alias: launched.alias, port: launched.port });
+    set({ slotIdx: launched.idx, port: launched.port, alias: launched.alias, gpuMask: null });
+    if (notifyTarget) {
+      options.onTargetLaunched?.(launched);
+    }
+    const entry = await waitForRunning(launched.idx, {
+      isAborted: () => abortRequested || (!notifyTarget && skipRequested),
+    });
+    set({ gpuMask: entry.gpu || snapshot.gpuMask });
+    await waiter.promise;
+    return launched.idx;
+  } finally {
+    waiter.cancel();
+  }
 }
 
 export async function startForecastCurveRun(options: CurveStartOptions): Promise<void> {
@@ -119,56 +220,51 @@ export async function startForecastCurveRun(options: CurveStartOptions): Promise
   const secondCtx = chooseSecondCtx(options.originalCtx, options.ctxOptions);
   if (secondCtx == null) return;
   running = true;
+  abortRequested = false;
+  skipRequested = false;
   set({
-    phase: "waiting-first",
-    message: "waiting for the first point to finish loading…",
+    phase: "second-load",
+    message: `calibration point · ${fmtCtx(secondCtx)}`,
     error: null,
     modelPath: options.modelPath,
     fromCtx: options.originalCtx,
     toCtx: secondCtx,
-    slotIdx: options.slotIdx,
+    slotIdx: null,
+    port: null,
+    alias: null,
+    gpuMask: null,
   });
   try {
-    await waitForRunning(options.slotIdx);
-    // The first point must reach the learned store before this engine stops; the memory snapshot
-    // is parsed just after RUNNING.
-    await sleep(2500);
-    set({ phase: "second-load", message: `second point · ${fmtCtx(secondCtx)}` });
-    await stopSlot(options.slotIdx);
-    await sleep(500);
-    const secondSlot = await launchAt(options, secondCtx);
-    await stopSlot(secondSlot);
-    set({ phase: "restoring", message: `restoring ${fmtCtx(options.originalCtx)}` });
-    const restoredSlot = await launchAt(options, options.originalCtx);
+    try {
+      const calSlot = await launchAt(options, secondCtx, false);
+      await stopSlot(calSlot);
+      await sleep(500);
+    } catch (calErr) {
+      if (!skipRequested || abortRequested) throw calErr;
+    }
+    if (abortRequested) throw new Error("calibration aborted");
+    set({
+      phase: "restoring",
+      message: `target launch · ${fmtCtx(options.originalCtx)}`,
+      slotIdx: null,
+      port: null,
+    });
+    const targetSlot = await launchAt(options, options.originalCtx, true);
     set({
       phase: "done",
-      message: `2-PT complete · ${fmtCtx(secondCtx)} + ${fmtCtx(options.originalCtx)}`,
-      slotIdx: restoredSlot,
+      message: `curve locked · ${fmtCtx(secondCtx)} + ${fmtCtx(options.originalCtx)}`,
+      slotIdx: targetSlot,
     });
   } catch (err) {
-    // Put the user's CTX back and, if possible, their engine. The calibration must not leave
-    // them at the second point or with no engine.
     options.applyCtx(options.originalCtx);
-    try {
-      const config = options.buildConfig(options.originalCtx);
-      if (config) {
-        const launched = await invoke<{ idx: number; port: number; alias: string }>(
-          "launch_engine",
-          { config },
-        );
-        dispatchAppEvent(EVENTS.engineLaunched, {
-          slotIdx: launched.idx,
-          modelPath: options.modelPath,
-        });
-        dispatchAppEvent(EVENTS.launchSuccess, { alias: launched.alias, port: launched.port });
-        set({ slotIdx: launched.idx });
-        await waitForRunning(launched.idx);
-      }
-    } catch {
-      // The restore failed too; the error below is the one that matters.
+    if (abortRequested) {
+      set({ ...INITIAL, phase: "idle" });
+    } else {
+      set({ phase: "error", error: errorMessage(err), message: null });
     }
-    set({ phase: "error", error: errorMessage(err), message: null });
   } finally {
     running = false;
+    abortRequested = false;
+    skipRequested = false;
   }
 }

@@ -9,8 +9,7 @@ import type {
 import type { LaunchChromePolicy } from "../lib/launchChromePolicy";
 import type { LayerPlan } from "../lib/vramLayerPlan";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
-import { useOverdriveActive } from "../lib/moeOverdriveState";
-import type { MoeOverdriveIdentity } from "../lib/moeOverdriveRun";
+import { isCurveRunBusy, useForecastCurveRun } from "../lib/forecastCurveRun";
 import type { DisplayCardsPerRow, FusionDualOrient } from "../lib/storage";
 import {
   loadDisplayGpuPerRow,
@@ -141,12 +140,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onPinSecondary,
     monitorFocus = false,
     onToggleMonitor,
-    onOverdriveReset,
-    overdriveIdentity = null,
-    overdriveCacheMib = 0,
     expertNudge = false,
-    canStartOverdrive = false,
-    onStartOverdrive,
+    onEnableOverdrive,
+    onDisableOverdrive,
   } = props;
   const { theme } = useTheme();
 
@@ -293,15 +289,10 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     }
   });
   const forecastHeightPx = computeForecastPhosphorHeightPx(gpus.length, gpuPerRow);
-  // MOE OVERDRIVE owns the glass while it is on: fusion must not auto-open over it on readiness.
-  const overdriveActive = useOverdriveActive();
-  // OVERDRIVE only needs a port; the selected-slot port is empty until the cockpit selects one.
-  const overdrivePort =
-    activeEnginePort ??
-    stack.find((s) => s.status === "RUNNING" || s.status === "LOADING")?.port ??
-    null;
+  const curveRun = useForecastCurveRun();
+  const curveBusy = isCurveRunBusy(curveRun.phase);
   const fusionOverlayActive =
-    !overdriveActive &&
+    !curveBusy &&
     selectedSlotIdx != null &&
     activeEnginePort != null &&
     (engineStatus === "LOADING" || engineStatus === "RUNNING");
@@ -530,13 +521,10 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               dualActive={dualActive}
               dualOrient={dualOrient}
               secondaryPane={secondaryPane}
-              overdrivePort={overdrivePort}
-              overdriveIdentity={overdriveIdentity}
-              overdriveCacheMib={overdriveCacheMib}
               expertNudge={expertNudge}
-              canStartOverdrive={canStartOverdrive}
-              onStartOverdrive={onStartOverdrive}
-              onOverdriveReset={onOverdriveReset}
+              fullAutoMode={fullAutoMode}
+              onEnableOverdrive={onEnableOverdrive}
+              onDisableOverdrive={onDisableOverdrive}
             />
             {/* Overlay veil — does not change VramBadge face law */}
             {harness.veilNode}
@@ -627,7 +615,7 @@ export interface EngineGpuForecastProps {
   selectedGpuIndices: number[];
   isValidating: boolean;
   /** Normal full-need FIT probe (the low-VRAM free-aware variant is parked). */
-  onValidate: (mode?: "full" | "low_vram") => void;
+  onValidate?: () => void;
   /** Automatic placement owns this launch: the app writes `-ts` and turns fit off. */
   placementActive?: boolean;
   /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
@@ -696,12 +684,7 @@ export interface EngineGpuForecastProps {
   monitorFocus?: boolean;
   onToggleMonitor?: () => void;
 
-  /** MOE OVERDRIVE screen: the stored-calibration identity, and the run entry. */
-  overdriveIdentity?: MoeOverdriveIdentity | null;
-  overdriveCacheMib?: number;
   expertNudge?: boolean;
-  canStartOverdrive?: boolean;
-  onStartOverdrive?: (forceCalibrate: boolean) => void;
-  /** RESET restores the plain launch path (cpu_moe off, cache 0), not just the record. */
-  onOverdriveReset?: () => void;
+  onEnableOverdrive?: () => void;
+  onDisableOverdrive?: () => void;
 }

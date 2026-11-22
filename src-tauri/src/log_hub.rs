@@ -755,15 +755,11 @@ impl LogHub {
         let gpu_breakdown = Some(table.gpu_self_mib.clone());
         let host_mib = table.host_mib;
         let total = tables.len();
-        let learn_key = &learn_snapshot.learn_key;
         match crate::vram_learn::append_fit_breakdown_tables(
-            learn_key,
+            learn_snapshot,
             &tables,
             already_persisted,
             phase,
-            learn_snapshot.batch,
-            learn_snapshot.ubatch,
-            &learn_snapshot.spec_key,
         ) {
             Ok(Some(_)) => {
                 log::info!(
@@ -822,15 +818,11 @@ impl LogHub {
         crate::engine_stack::EngineStack::emit_stack_changed_unlocked(&ctx.stack).await;
 
         if persist && tables.len() > already_persisted {
-            let learn_key = &learn_snapshot.learn_key;
             match crate::vram_learn::append_fit_breakdown_tables(
-                learn_key,
+                learn_snapshot,
                 &tables,
                 already_persisted,
                 phase,
-                learn_snapshot.batch,
-                learn_snapshot.ubatch,
-                &learn_snapshot.spec_key,
             ) {
                 Ok(Some(_)) => {
                     log::info!(
@@ -959,7 +951,7 @@ impl LogHub {
         // A `-cmoe` cache launch parks the expert cache in "unaccounted": `used - buffers` is the
         // cache, not CUDA context/graph slack. Sampling it once pushed the per-device residual
         // median to 20 GiB. The runtime overhead is a device property; a plain launch trains it.
-        let cache_launch = learn_snapshot.learn_key.contains("|experts=cpu-cache:");
+        let cache_launch = learn_snapshot.is_cpu_experts();
         // Sample the per-device runtime cost while the allocation is fresh (see gpu_calibration).
         if !cache_launch {
             if let Err(e) = crate::gpu_calibration::capture(&learn_snapshot.model_path, slot_idx, &snapshot) {
@@ -989,11 +981,8 @@ impl LogHub {
         }
 
         match crate::vram_learn::record_launch_memory_snapshot(
-            &learn_snapshot.learn_key,
+            &learn_snapshot,
             snapshot,
-            learn_snapshot.batch,
-            learn_snapshot.ubatch,
-            &learn_snapshot.spec_key,
         ) {
             Ok(()) => {
                 // The engine is up and its own buffer inventory is parsed: this is the `ready`

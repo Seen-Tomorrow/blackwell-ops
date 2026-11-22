@@ -977,7 +977,6 @@ interface StyleObject {
   /** Host RAM NEED chip tone — weight-class spill only. */
   ramNeedTone?: ForecastNeedTone;
   /** Manual RE-PROBE LOW VRAM nudge (tight free, no fresh low_vram probe). */
-  needsLowVramReprobe?: boolean;
   /** Scenario-driven UI config — REQUIRED. Controls all text and visibility in VramBadge. */
   uiTemplate: UiTemplate;
 }
@@ -1136,6 +1135,15 @@ export interface VramManifest {
   lastLaunchSpillAt?: string;
   /** Display timestamp for on-demand FIT PROBE (set when user runs validate). */
   fitProbeMeasuredAt?: string;
+  /** Unified MOE OVERDRIVE state when `cpu_moe` is active. */
+  moeOverdrive?: {
+    active: boolean;
+    autoCache: boolean;
+    cacheMib: number;
+    baseVramGb: number;
+    hostExpertsGb: number;
+    coveragePct: number;
+  };
 }
 
 /** Per-GPU component breakdown parsed from llama's memory table. */
@@ -1165,10 +1173,6 @@ export interface FitScanResult {
   host_components_mib?: GpuComponentMib;
   /** Host-resident lookup table (Engram / PLE), from the load's `lazy read` lines. */
   engram_mib?: number;
-  /** Fitted -ngl from low_vram free-aware probe (−1 = all GPU). */
-  fitted_ngl?: number;
-  /** `full` | `low_vram` */
-  probe_mode?: string;
 }
 
 export interface LogEntry {
