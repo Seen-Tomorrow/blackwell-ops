@@ -74,7 +74,9 @@ export default function CustomSliderParam({
   forecastFreeGb,
   forecastRibbonOnTrack = true,
   trainedCtx = null,
+  formatLabel,
 }: SliderParamSharedProps) {
+  const labelOf = formatLabel ?? formatTokenLabel;
   const hero = layout === "hero";
   const areaH = hero ? HERO_TRACK_AREA_HEIGHT_PX : TRACK_AREA_HEIGHT_PX;
   const trackH = hero ? HERO_TRACK_HEIGHT_PX : TRACK_HEIGHT_PX;
@@ -379,8 +381,8 @@ export default function CustomSliderParam({
                 width: `${hitW}px`,
                 height: hero ? `${areaH}px` : `${tickH}px`,
               }}
-              title={formatTokenLabel(pNum)}
-              aria-label={`Set ${formatTokenLabel(pNum)}`}
+              title={labelOf(pNum)}
+              aria-label={`Set ${labelOf(pNum)}`}
             />
             {showLabel ? (
               <span
@@ -391,7 +393,7 @@ export default function CustomSliderParam({
                     : { top: "0px", transform: "translate(-50%, -100%)" }
                 }
               >
-                {formatTokenLabel(pNum)}
+                {labelOf(pNum)}
                 {isTrained ? <span className="ctx-slider-trained"> T</span> : null}
               </span>
             ) : null}

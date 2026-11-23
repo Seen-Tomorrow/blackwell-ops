@@ -24,6 +24,10 @@ import type { FusionDualOrient } from "../lib/storage";
 import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import { memoryLabelForKvQuant } from "../lib/multiAgentBooster";
 import MemoryCalibrationOverlay from "./MemoryCalibrationOverlay";
+import CustomSliderParam from "./CustomSliderParam";
+
+const formatCacheTickLabel = (mib: number): string =>
+  mib <= 0 ? "0" : `${(mib / 1024).toFixed(mib % 1024 === 0 ? 0 : 1)}G`;
 import { loadForecastTwoPoint, saveForecastTwoPoint } from "../lib/storage";
 import { isCurveRunBusy, useForecastCurveRun } from "../lib/forecastCurveRun";
 
@@ -48,13 +52,14 @@ interface VramBadgeProps {
   hideFitProbe?: boolean;
   /** Automatic placement owns this launch: the app writes `-ts` and turns fit off. */
   placementActive?: boolean;
-  /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
-  onSplitEq?: () => void;
   /** Plain MoE launch spills but the host can hold the experts: steer to OVERDRIVE. */
   expertNudge?: boolean;
   fullAutoMode?: boolean;
   onEnableOverdrive?: () => void;
   onDisableOverdrive?: () => void;
+  modelIsMoe?: boolean;
+  onSetMoeCacheAuto?: (auto: boolean) => void;
+  onSetMoeCacheMib?: (mib: number) => void;
   /** Bezel control: full-glass NVRAM snapshot log. */
   snapLogOpen?: boolean;
   onCloseSnapLog?: () => void;
@@ -170,7 +175,7 @@ export default function VramBadge({
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode,
   hideFitProbe = false, draftOnly = false, attachmentKind = null, incomplete = null, onRestage, restageStatus = null, className,
-  placementActive = false, onSplitEq,
+  placementActive = false,
   snapLogOpen = false,
   onCloseSnapLog,
   layerPlan = null,
@@ -193,6 +198,9 @@ export default function VramBadge({
   fullAutoMode = false,
   onEnableOverdrive,
   onDisableOverdrive,
+  modelIsMoe = false,
+  onSetMoeCacheAuto,
+  onSetMoeCacheMib,
 }: VramBadgeProps) {
 
   // The plan arrives from EngineConfigPanel: the same object feeds the manifest's per-card
@@ -564,11 +572,7 @@ export default function VramBadge({
   // runtime (CUDA context, graph pools, allocator slack). The glass prints exactly what the
   // gate uses — there is no second accounting here.
   const displayVramNeedGb = Math.max(0, manifest.vramTotalGb);
-  const displayRamNeedGb = isFitProbe
-    ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
-        ? manifest.validatedHostMib / 1024
-        : Math.max(0, manifest.ramTotalGb))
-    : Math.max(0, manifest.ramTotalGb);
+  const displayRamNeedGb = Math.max(0, manifest.ramTotalGb);
   const showRamBar = t.showRamBar !== false || !!isValidating;
 
   const totalVramMib = gpus.reduce((sum, g) => {
@@ -643,36 +647,20 @@ export default function VramBadge({
             onValidate={onValidate}
           />
         ) : null}
-        {/* Placement ownership is always on screen. */}
-        <div
-          className="vram-fc-placement"
-          data-placement={placementActive ? "auto" : "engine"}
-          data-busy={placementBusy ? "1" : undefined}
-        >
-          <span className="vram-fc-placement__label">VRAM PLACEMENT</span>
-          <span className="vram-fc-placement__mode" title={placementTitle}>
-            {placementActive ? "AUTO" : "ENGINE"}
-            {placementDetail ? (
-              <span className="vram-fc-placement__detail">{placementDetail}</span>
-            ) : null}
-          </span>
-          {onSplitEq && layerPlan ? (
-            <button
-              type="button"
-              className="vram-fc-placement__eq"
-              title="Re-read free VRAM, balance the layer split by bytes and arm it for the next launch"
-              disabled={placementBusy}
-              onClick={() => {
-                setPlacementBusy(true);
-                onSplitEq();
-                // The button is a trigger, not a mode: flash while the plan repaints.
-                setTimeout(() => setPlacementBusy(false), 600);
-              }}
-            >
-              SPLIT EQ
-            </button>
-          ) : null}
-        </div>
+        {Boolean(splitMode && splitMode.trim().toLowerCase() !== "none") && (
+          <div
+            className="vram-fc-placement"
+            data-placement={placementActive ? "auto" : "engine"}
+          >
+            <span className="vram-fc-placement__label">VRAM PLACEMENT</span>
+            <span className="vram-fc-placement__mode" title={placementTitle}>
+              {placementActive ? "AUTO" : "ENGINE"}
+              {placementDetail ? (
+                <span className="vram-fc-placement__detail">{placementDetail}</span>
+              ) : null}
+            </span>
+          </div>
+        )}
         {!fullAutoMode && (
           <button
             type="button"
@@ -700,37 +688,100 @@ export default function VramBadge({
       <div className="vram-badge-body vram-fc__body vram-fc__body--assisted relative min-h-0 overflow-hidden">
         <div className="vram-fc-measure relative">
           <div className="vram-fc-measure__main">
-            {memorySource ? (
+            {memorySource || (modelIsMoe && (!fullAutoMode || manifest.moeOverdrive?.active)) ? (
               <div className="vram-fc-measure__source">
-                <div className="vram-fc__source-row vram-forecast-header__fit-row">
-                  <div className="vram-forecast-source min-w-0">
-                    <MemorySourcePanel
-                      memorySource={memorySource}
-                      launchSummary={launchSummary}
-                    />
+                {modelIsMoe && !fullAutoMode && onEnableOverdrive && onDisableOverdrive ? (
+                  <div className="vram-fc-od-switch font-mono" role="group" aria-label="MoE placement mode">
+                    <button
+                      type="button"
+                      className="vram-fc-od-switch__btn"
+                      data-active={!manifest.moeOverdrive?.active ? "1" : undefined}
+                      onClick={onDisableOverdrive}
+                      title="Plain GPU placement"
+                    >
+                      PLAIN
+                    </button>
+                    <button
+                      type="button"
+                      className="vram-fc-od-switch__btn"
+                      data-active={manifest.moeOverdrive?.active ? "1" : undefined}
+                      data-nudge={expertNudge ? "1" : undefined}
+                      onClick={onEnableOverdrive}
+                      title="Overdrive: experts in host RAM + hot expert cache in VRAM"
+                    >
+                      OVERDRIVE
+                    </button>
                   </div>
-                  {!fullAutoMode &&
-                    (manifest.learnedCurveCtxs?.length ?? 0) < 2 &&
-                    (memorySource.kind === "fit_probe" || memorySource.exact === false) && (
+                ) : modelIsMoe && fullAutoMode && manifest.moeOverdrive?.active ? (
+                  <span className="vram-fc-od-pill font-mono">OVERDRIVE · AUTO</span>
+                ) : null}
+                {manifest.moeOverdrive?.active && !fullAutoMode && onSetMoeCacheMib && (() => {
+                  const od = manifest.moeOverdrive!;
+                  const odMaxCacheMib = Math.max(
+                    4096,
+                    Math.ceil(
+                      (Math.min(Math.max(od.hostExpertsGb, 1), Math.max(totalVramGb, 4)) * 1024) / 256,
+                    ) * 256,
+                  );
+                  return (
+                    <span className="vram-fc-od-stepper font-mono">
+                      <span className="vram-fc-od-stepper__val">
+                        {(od.cacheMib / 1024).toFixed(1)} GB
+                      </span>
                       <button
                         type="button"
-                        className="vram-fc-autocal-nudge font-mono"
-                        data-on={twoPoint ? "1" : undefined}
-                        onClick={() => {
-                          const next = !twoPoint;
-                          setTwoPoint(next);
-                          saveForecastTwoPoint(next);
-                        }}
-                        title={
-                          twoPoint
-                            ? "Auto-Cal armed: next launch runs 2 loads to lock your exact curve"
-                            : "Arm Auto-Cal to lock an exact measured curve on next launch"
-                        }
+                        className="vram-fc-od-stepper__btn"
+                        disabled={od.cacheMib <= 0}
+                        onClick={() => onSetMoeCacheMib(Math.max(0, od.cacheMib - 256))}
+                        title="−256 MiB (−0.25 GB)"
+                        aria-label="Decrease hot expert cache by 256 MiB"
                       >
-                        {twoPoint ? "Auto-Cal armed · 2 loads on launch" : "Estimate · Lock curve on launch"}
+                        ‹
                       </button>
-                    )}
-                </div>
+                      <button
+                        type="button"
+                        className="vram-fc-od-stepper__btn"
+                        disabled={od.cacheMib >= odMaxCacheMib}
+                        onClick={() => onSetMoeCacheMib(Math.min(odMaxCacheMib, od.cacheMib + 256))}
+                        title="+256 MiB (+0.25 GB)"
+                        aria-label="Increase hot expert cache by 256 MiB"
+                      >
+                        ›
+                      </button>
+                    </span>
+                  );
+                })()}
+                {memorySource ? (
+                  <div className="vram-fc__source-row vram-forecast-header__fit-row">
+                    <div className="vram-forecast-source min-w-0">
+                      <MemorySourcePanel
+                        memorySource={memorySource}
+                        launchSummary={launchSummary}
+                      />
+                    </div>
+                    {!fullAutoMode &&
+                      (manifest.learnedCurveCtxs?.length ?? 0) < 2 &&
+                      (memorySource.kind === "fit_probe" || memorySource.exact === false) && (
+                        <button
+                          type="button"
+                          className="vram-fc-autocal-nudge font-mono"
+                          data-on={twoPoint ? "1" : undefined}
+                          onClick={() => {
+                            const next = !twoPoint;
+                            setTwoPoint(next);
+                            saveForecastTwoPoint(next);
+                          }}
+                          title={
+                            twoPoint
+                              ? "Auto-Cal armed: next launch runs 2 loads to lock your exact curve"
+                              : "Arm Auto-Cal to lock an exact measured curve on next launch"
+                          }
+                        >
+                          {twoPoint ? "Auto-Cal armed · 2 loads on launch" : "Estimate · Lock curve on launch"}
+                        </button>
+                      )}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="vram-fc-measure__source vram-fc-measure__source--empty" aria-hidden />
@@ -759,16 +810,26 @@ export default function VramBadge({
                             width: `${Math.max(0, Math.min((manifest.moeOverdrive.baseVramGb / totalVramGb) * 100, 100))}%`,
                           }}
                         />
-                        {manifest.moeOverdrive.cacheMib > 0 && (
-                          <div
-                            className="vram-fc-bar__fill vram-fc-bar__fill--cache"
-                            style={{
-                              left: `${Math.max(0, Math.min((manifest.moeOverdrive.baseVramGb / totalVramGb) * 100, 100))}%`,
-                              width: `${Math.max(0, Math.min(((manifest.moeOverdrive.cacheMib / 1024) / totalVramGb) * 100, 100 - Math.min((manifest.moeOverdrive.baseVramGb / totalVramGb) * 100, 100)))}%`,
-                            }}
-                            title={`Hot expert cache: ${(manifest.moeOverdrive.cacheMib / 1024).toFixed(1)} GB`}
-                          />
-                        )}
+                        {manifest.moeOverdrive.cacheMib > 0 && (() => {
+                          const basePct = Math.min((manifest.moeOverdrive.baseVramGb / totalVramGb) * 100, 100);
+                          const cachePct = Math.max(
+                            0,
+                            Math.min(((manifest.moeOverdrive.cacheMib / 1024) / totalVramGb) * 100, 100 - basePct),
+                          );
+                          return (
+                            <div
+                              className="vram-fc-bar__fill vram-fc-bar__fill--cache"
+                              style={{ left: `${basePct}%`, width: `${cachePct}%` }}
+                              title={`Hot expert cache: ${(manifest.moeOverdrive.cacheMib / 1024).toFixed(1)} GB`}
+                            >
+                              {cachePct >= 10 && manifest.moeOverdrive.autoCache && (
+                                <span className="vram-fc-bar__cache-tag font-mono">
+                                  +{(manifest.moeOverdrive.cacheMib / 1024).toFixed(1)} GB HOT
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </>
                     ) : (
                       <div
@@ -776,7 +837,68 @@ export default function VramBadge({
                         style={{ width: `${vramUsagePct}%` }}
                       />
                     )}
-                    {vramBarInset ? (
+                    {manifest.moeOverdrive?.active &&
+                      !fullAutoMode &&
+                      onSetMoeCacheAuto &&
+                      onSetMoeCacheMib &&
+                      (() => {
+                        const od = manifest.moeOverdrive!;
+                        const maxCacheMib = Math.max(
+                          4096,
+                          Math.ceil(
+                            (Math.min(Math.max(od.hostExpertsGb, 1), Math.max(totalVramGb, 4)) * 1024) / 256,
+                          ) * 256,
+                        );
+                        if (od.autoCache) {
+                          return (
+                            <div
+                              className="vram-fc-vram-cache-ctrl font-mono"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="vram-fc-vram-cache-btn"
+                                onClick={() => onSetMoeCacheAuto(false)}
+                                title="Click to adjust hot expert VRAM cache manually"
+                              >
+                                CACHE AUTO · {(od.cacheMib / 1024).toFixed(1)} GB
+                              </button>
+                            </div>
+                          );
+                        }
+                        const cacheStops = [
+                          ...[0, 2048, 4096, 8192, 12288, 16384, 24576, 32768, 49152, 65536, 98304, 131072].filter(
+                            (v) => v < maxCacheMib,
+                          ),
+                          maxCacheMib,
+                        ];
+                        return (
+                          <div
+                            className="vram-fc-vram-cache-bar font-mono"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <CustomSliderParam
+                              paramKey="moe_cache_mib"
+                              currentValue={od.cacheMib}
+                              defaultValue={0}
+                              onChange={(val) => onSetMoeCacheMib(Number(val))}
+                              step={256}
+                              values={cacheStops}
+                              formatLabel={formatCacheTickLabel}
+                            />
+                            <button
+                              type="button"
+                              className="vram-fc-vram-cache-btn vram-fc-vram-cache-btn--auto"
+                              onClick={() => onSetMoeCacheAuto(true)}
+                              title="Return to automatic hot expert VRAM cache sizing"
+                            >
+                              AUTO
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    {vramBarInset &&
+                    !(manifest.moeOverdrive?.active && !fullAutoMode && (!manifest.moeOverdrive.autoCache || vramNeedTone === "ok")) ? (
                       <span
                         className={`vram-forecast-bar__inset-label vram-forecast-bar__inset-label--vram${
                           vramNeedTone !== "ok"
@@ -819,7 +941,34 @@ export default function VramBadge({
                         }`}
                         style={{ width: `${ramUsagePct}%` }}
                       />
-                      {ramBarInset ? (
+                      {expertNudge && onEnableOverdrive ? (
+                        <div className="vram-fc-ram-nudge font-mono">
+                          <span className="vram-fc-ram-nudge__text">EXPERTS FIT IN RAM</span>
+                          <button
+                            type="button"
+                            className="vram-fc-ram-nudge__btn"
+                            onClick={onEnableOverdrive}
+                            title="Move experts to host RAM and cache hot experts in VRAM"
+                          >
+                            ENABLE OVERDRIVE
+                          </button>
+                        </div>
+                      ) : manifest.moeOverdrive?.active && !ramBarInset ? (
+                        <span
+                          className={`vram-fc-ram-od-info font-mono${
+                            manifest.moeOverdrive.ssdPaged ? " vram-fc-ram-od-info--paged" : ""
+                          }`}
+                          title={
+                            manifest.moeOverdrive.ssdPaged
+                              ? "Host experts + Engram exceed free RAM: launching with --no-host (OS-paged NVMe mmap, avoiding CUDA_Host pinned OOM)"
+                              : undefined
+                          }
+                        >
+                          {manifest.moeOverdrive.ssdPaged ? "SSD-PAGED (--no-host) · " : ""}
+                          {manifest.moeOverdrive.hostExpertsGb.toFixed(1)} GB EXPERTS ·{" "}
+                          {manifest.moeOverdrive.coveragePct}% CACHED
+                        </span>
+                      ) : ramBarInset ? (
                         <span
                           className={`vram-forecast-bar__inset-label vram-forecast-bar__inset-label--ram${
                             ramNeedTone !== "ok"
@@ -831,7 +980,7 @@ export default function VramBadge({
                           {ramBarInset}
                         </span>
                       ) : null}
-                      {showRamHistory ? (
+                      {showRamHistory && !expertNudge && !manifest.moeOverdrive?.active ? (
                         <span
                           className="vram-fc-bar__history"
                           title={`Last recorded launch put ${ramHistoryGb.toFixed(1)} GB of weights in system RAM${
@@ -888,13 +1037,13 @@ export default function VramBadge({
                   }
                   title={
                     (manifest.ramWeightGb ?? 0) > 0.05 || (manifest.ramEngramGb ?? 0) > 0.05
-                      ? `Host ${displayRamNeedGb.toFixed(1)} GB = ${(manifest.ramBufferGb ?? 0).toFixed(1)} buffer${
-                          (manifest.ramEngramGb ?? 0) > 0.05
-                            ? ` + ${(manifest.ramEngramGb ?? 0).toFixed(1)} lookup table (host by design)`
-                            : ""
-                        }${
+                      ? `Committed RAM ${displayRamNeedGb.toFixed(1)} GB (${(manifest.ramBufferGb ?? 0).toFixed(1)} buffer${
                           (manifest.ramWeightGb ?? 0) > 0.05
                             ? ` + ${(manifest.ramWeightGb ?? 0).toFixed(1)} weight`
+                            : ""
+                        })${
+                          (manifest.ramEngramGb ?? 0) > 0.05
+                            ? ` · ${(manifest.ramEngramGb ?? 0).toFixed(1)} GB ENGRAM (SSD lazy-mapped, not committed upfront)`
                             : ""
                         }`
                       : `Host ${displayRamNeedGb.toFixed(1)} GB buffer (not layer offload)`
@@ -905,36 +1054,35 @@ export default function VramBadge({
                     {displayRamNeedGb.toFixed(1)}
                   </span>
                   <span className="vram-fc-bar__unit">GB</span>
-                  {(manifest.ramWeightGb ?? 0) > 0.05 || (manifest.ramEngramGb ?? 0) > 0.05 ? (
+                  {((manifest.ramEngramGb ?? 0) > 0.05 ||
+                    (manifest.moeOverdrive?.active && manifest.moeOverdrive.hostExpertsGb > 0.05) ||
+                    (!manifest.moeOverdrive?.active && (manifest.ramWeightGb ?? 0) >= 1.0)) && (
                     <span className="vram-fc-bar__need-split" aria-label="RAM need breakdown">
-                      <span className="vram-fc-bar__need-split-line">
-                        <span className="vram-fc-bar__need-split-val">
-                          {(manifest.ramBufferGb ?? 0).toFixed(1)}GB
-                        </span>
-                        <span className="vram-fc-bar__need-split-lab">buffer</span>
-                      </span>
                       {(manifest.ramEngramGb ?? 0) > 0.05 ? (
-                        <span className="vram-fc-bar__need-split-line">
+                        <span
+                          className={`vram-fc-bar__need-split-line vram-fc-bar__need-split-line--engram vram-fc-bar__need--${ramNeedTone}`}
+                        >
                           <span className="vram-fc-bar__need-split-val">
                             {(manifest.ramEngramGb ?? 0).toFixed(1)}GB
                           </span>
-                          <span className="vram-fc-bar__need-split-lab"> lookup</span>
+                          <span className="vram-fc-bar__need-split-lab">ENGRAM (SSD)</span>
                         </span>
                       ) : null}
-                      {(manifest.ramWeightGb ?? 0) > 0.05 ? (
+                      {manifest.moeOverdrive?.active && manifest.moeOverdrive.hostExpertsGb > 0.05 ? (
+                        <span className="vram-fc-bar__need-split-line">
+                          <span className="vram-fc-bar__need-split-val">
+                            {manifest.moeOverdrive.hostExpertsGb.toFixed(1)}GB
+                          </span>
+                          <span className="vram-fc-bar__need-split-lab">experts</span>
+                        </span>
+                      ) : !manifest.moeOverdrive?.active && (manifest.ramWeightGb ?? 0) >= 1.0 ? (
                         <span className="vram-fc-bar__need-split-line">
                           <span className="vram-fc-bar__need-split-val">
                             {(manifest.ramWeightGb ?? 0).toFixed(1)}GB
                           </span>
-                          <span className="vram-fc-bar__need-split-lab"> weights</span>
+                          <span className="vram-fc-bar__need-split-lab">weights</span>
                         </span>
                       ) : null}
-                    </span>
-                  ) : (
-                    <span className="vram-fc-bar__need-split vram-fc-bar__need-split--buf" aria-label="RAM buffer only">
-                      <span className="vram-fc-bar__need-split-line">
-                        <span className="vram-fc-bar__need-split-lab">buffer</span>
-                      </span>
                     </span>
                   )}
                 </span>
@@ -951,39 +1099,6 @@ export default function VramBadge({
             </div>
           </div>
         </div>
-
-        {manifest.moeOverdrive?.active && (
-          <div className="vram-fc-overdrive-strip font-mono">
-            <span>
-              OVERDRIVE · {manifest.moeOverdrive.autoCache ? "AUTO" : "MANUAL"} ·{" "}
-              {(manifest.moeOverdrive.cacheMib / 1024).toFixed(1)} /{" "}
-              {manifest.moeOverdrive.hostExpertsGb.toFixed(1)} GB experts cached (
-              {manifest.moeOverdrive.coveragePct}%)
-            </span>
-            {!fullAutoMode && onDisableOverdrive && (
-              <button
-                type="button"
-                className="vram-fc-overdrive-strip__btn"
-                onClick={onDisableOverdrive}
-                title="Return to plain GPU placement"
-              >
-                PLAIN GPU
-              </button>
-            )}
-          </div>
-        )}
-
-        {expertNudge && onEnableOverdrive ? (
-          <button
-            type="button"
-            className="vram-fc-expert-nudge"
-            onClick={onEnableOverdrive}
-            title="The plain launch spills; Overdrive puts experts in host RAM and caches hot experts in VRAM"
-          >
-            <span>EXPERTS FIT IN RAM · ENABLE OVERDRIVE AUTO</span>
-            <span className="vram-fc-expert-nudge__cta">ENABLE →</span>
-          </button>
-        ) : null}
 
         {manifest.gpuAllocations.length > 0 && (
           <div

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
+import type { CompanionReport, CompanionSlot, ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
+import { EVENTS } from "../lib/events";
 import { evaluate } from "../services/vram/forecast/evaluate";
 import type { ForecastInput as ScenarioInput } from "../services/vram/forecast/types";
 import { committedSlotsFromStack, committedStackKey, parseCtx, computeGpuAvailableList } from "../services/vram/shared";
@@ -42,6 +43,19 @@ type ProbeSession = {
 function ggufEngramMib(model: ModelEntry | null | undefined): number | undefined {
   const bytes = model?.ggufShape?.lookupTableBytes;
   return bytes != null && bytes > 0 ? bytes / 1_048_576 : undefined;
+}
+
+function activeCompanionSizeMib(slot: CompanionSlot | undefined): number | null {
+  if (!slot) return null;
+  if (slot.pinned_off) return 0;
+  if (slot.pinned) {
+    const hit = slot.candidates.find((c) => c.path === slot.pinned);
+    if (hit && hit.size_bytes > 0) return hit.size_bytes / 1_048_576;
+  }
+  if (slot.auto && slot.auto.size_bytes > 0) {
+    return slot.auto.size_bytes / 1_048_576;
+  }
+  return null;
 }
 /**
  * Second CTX for the on-demand probe pair. It must sit on the far side of the useful range:
@@ -126,7 +140,8 @@ export function liveEvalKey(
   const cmoe = cpuMoeFlag(config) === "1";
   const moeCacheAuto = cmoe && String(config.moe_cache_auto ?? "on").trim().toLowerCase() !== "off";
   const moeCacheKey = !cmoe ? "0" : moeCacheAuto ? "auto" : String(Math.max(0, Number(config.moe_cache_mib ?? 0) || 0));
-  return `${placementConfigKey(config)}|${learnedIdentityKey(config, autoVramLaunch)}|ctx=${config.ctx || ""}|cache=${moeCacheKey}`;
+  const visionKey = String(config.vision ?? "auto").trim().toLowerCase();
+  return `${placementConfigKey(config)}|${learnedIdentityKey(config, autoVramLaunch)}|ctx=${config.ctx || ""}|cache=${moeCacheKey}|vision=${visionKey}`;
 }
 
 function probeScenarioFields(
@@ -650,10 +665,10 @@ export function useScenarioEvaluator({
       runningSlots,
       ramAvailableGb: sysInfo.available_memory_mib / 1024,
       ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
-      mmprojSizeMib: model.mmproj_size_mib,
+      mmprojSizeMib: companionMmprojMibRef.current ?? model.mmproj_size_mib,
       visionOn:
         String(curConfig.vision ?? "auto").trim().toLowerCase() !== "off"
-        && (model.mmproj_size_mib ?? 0) > 0,
+        && (companionMmprojMibRef.current ?? model.mmproj_size_mib ?? 0) > 0,
       draftSizeMib:
         resolveDraftSizeMib(
           curConfig,
@@ -674,7 +689,7 @@ export function useScenarioEvaluator({
       learnedHostMib: learnedBundleRef.current?.hostMib ?? undefined,
       learnedHostModelMib: learnedBundleRef.current?.hostModelMib ?? undefined,
       learnedEngramMib: learnedBundleRef.current?.engramMib ?? undefined,
-      modelEngramMib: ggufEngramMib(model),
+      modelEngramMib: ggufEngramMib(model) ?? companionEngramMibRef.current,
       learnedGpuBreakdownMib: learnedBundleRef.current?.gpuBreakdownMib ?? undefined,
       learnedGpuComponentsMib: learnedBundleRef.current?.gpuComponentsMib ?? undefined,
       learnedLaunchProfile: learnedBundleRef.current?.launchProfile,
@@ -864,6 +879,46 @@ export function useScenarioEvaluator({
     learnedKey,
     commitManifest,
   ]);
+
+  const companionMmprojMibRef = useRef<number | null>(null);
+  const companionEngramMibRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    const modelPath = model?.path;
+    if (!modelPath) {
+      companionMmprojMibRef.current = null;
+      companionEngramMibRef.current = undefined;
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      void invoke<CompanionReport>("resolve_companions", { modelPath })
+        .then((report) => {
+          if (cancelled) return;
+          const nextMmproj = activeCompanionSizeMib(report.mmproj);
+          const nextEngram = report.engram?.integrated
+            ? undefined
+            : activeCompanionSizeMib(report.engram) ?? undefined;
+          const changed =
+            companionMmprojMibRef.current !== nextMmproj
+            || companionEngramMibRef.current !== nextEngram;
+          companionMmprojMibRef.current = nextMmproj;
+          companionEngramMibRef.current = nextEngram;
+          if (changed) scheduleEvaluationRef.current(true);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const onCompanions = (e: Event) => {
+      const detail = (e as CustomEvent<{ modelPath?: string }>).detail;
+      if (!detail?.modelPath || detail.modelPath === modelPath) refresh();
+    };
+    window.addEventListener(EVENTS.companionsChanged, onCompanions);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(EVENTS.companionsChanged, onCompanions);
+    };
+  }, [model?.path]);
 
   useEffect(() => {
     refreshLearnedVram();
@@ -1109,10 +1164,10 @@ export function useScenarioEvaluator({
         runningSlots,
         ramAvailableGb: sysInfo.available_memory_mib / 1024,
         ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
-        mmprojSizeMib: model.mmproj_size_mib,
+        mmprojSizeMib: companionMmprojMibRef.current ?? model.mmproj_size_mib,
         visionOn:
           String(curConfig.vision ?? "auto").trim().toLowerCase() !== "off"
-          && (model.mmproj_size_mib ?? 0) > 0,
+          && (companionMmprojMibRef.current ?? model.mmproj_size_mib ?? 0) > 0,
         draftSizeMib:
           resolveDraftSizeMib(
             curConfig,
@@ -1133,7 +1188,7 @@ export function useScenarioEvaluator({
         learnedHostMib: learnedBundleRef.current?.hostMib ?? undefined,
         learnedHostModelMib: learnedBundleRef.current?.hostModelMib ?? undefined,
         learnedEngramMib: learnedBundleRef.current?.engramMib ?? undefined,
-        modelEngramMib: ggufEngramMib(model),
+        modelEngramMib: ggufEngramMib(model) ?? companionEngramMibRef.current,
         learnedGpuBreakdownMib: learnedBundleRef.current?.gpuBreakdownMib ?? undefined,
         learnedGpuComponentsMib: learnedBundleRef.current?.gpuComponentsMib ?? undefined,
         learnedLaunchProfile: learnedBundleRef.current?.launchProfile,

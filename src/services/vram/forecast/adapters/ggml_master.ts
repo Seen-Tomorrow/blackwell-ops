@@ -106,7 +106,7 @@ export function computeAutoMoeCacheGb(opts: {
   let maxFitTotalGb = Number.POSITIVE_INFINITY;
   for (const i of activeIndices) {
     const free = Math.max(0, opts.gpuAvailableGb[i] ?? 0);
-    const reserve = Math.max(0.5, freePoolHeadroomGb(free));
+    const reserve = Math.max(1.25, freePoolHeadroomGb(free) + 0.25);
     const avail = Math.max(0, free - opts.perGpuBaseGb[i] - reserve);
     const w = weights.get(i) ?? 0;
     if (w > 0) {
@@ -510,7 +510,24 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   // `free - reserve` across active GPUs; in MANUAL mode it adds `moeCacheMib` proportionally.
   const cpuExperts = input.moeCpuExperts === true;
   const autoCache = cpuExperts && input.moeCacheAuto === true;
-  const hostExpertsGb = cpuExperts ? Math.max(0, hostMeasuredGb ?? 0) : 0;
+  // Conservation check: non-Engram model weights on host cannot exceed (file_size - engram).
+  // On models like DeepSeek-V4.1, `llama-fit-params` includes the 125.9 GB Engram table in
+  // its Host column (272.8 GB > 279.8 - 125.9 = 153.9 GB), whereas Qwen3.8-Flash lazy-read
+  // PLE is excluded from Host (32.3 GB <= 61.9 - 26.8 = 35.1 GB).
+  const LAZY_ENGRAM_THRESHOLD_GB = 4.0;
+  const engramIsLazy = engramNeedGb > LAZY_ENGRAM_THRESHOLD_GB;
+  const nonEngramModelGb = Math.max(0, weightGb - engramNeedGb);
+  const hostAlreadyIncludesEngram =
+    engramNeedGb > 0
+    && hostMeasuredGb != null
+    && hostMeasuredGb >= engramNeedGb
+    && (!cpuExperts || hostMeasuredGb > nonEngramModelGb + 2.0);
+  const hostExpertsGb = cpuExperts
+    ? Math.max(0, (hostMeasuredGb ?? 0) - (hostAlreadyIncludesEngram ? engramNeedGb : 0))
+    : 0;
+  const residentHostGb = engramIsLazy
+    ? Math.max(0, (hostMeasuredGb ?? 0) - (hostAlreadyIncludesEngram ? engramNeedGb : 0))
+    : (hostMeasuredGb ?? 0) + (engramNeedGb > 0 && !hostAlreadyIncludesEngram ? engramNeedGb : 0);
   let effectiveCacheGb = 0;
   if (cpuExperts) {
     if (autoCache) {
@@ -557,8 +574,20 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const fitsAllCards = cardFits.every(Boolean);
   const exceedsGpuPool = !fitsAllCards;
 
-  const modelFootprintGb = Math.max(gpuProjectionGb, weightGb);
-  const overSystemMemory = modelFootprintGb > systemAvailableGb - systemHeadroom;
+  const hostRamHeadroom = Math.max(2.0, input.ramAvailableGb * 0.02);
+  const overHostRam =
+    input.ramAvailableGb > 0 && residentHostGb > input.ramAvailableGb - hostRamHeadroom;
+  const pinnedRamCapGb =
+    input.ramManufacturedGb > 0
+      ? Math.min(input.ramAvailableGb - hostRamHeadroom, input.ramManufacturedGb * 0.5)
+      : input.ramAvailableGb - hostRamHeadroom;
+  const ssdPaged =
+    cpuExperts && input.ramAvailableGb > 0 && hostExpertsGb > Math.max(0, pinnedRamCapGb);
+  const residentWeightGb = engramIsLazy ? nonEngramModelGb : weightGb;
+  const modelFootprintGb = Math.max(gpuProjectionGb, residentWeightGb);
+  const overSystemMemory = ssdPaged
+    ? false
+    : modelFootprintGb > systemAvailableGb - systemHeadroom || overHostRam;
 
   const trustFitAtLoad = !overSystemMemory && exceedsGpuPool;
   const fits = !overSystemMemory;
@@ -600,9 +629,13 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         ? `full on GPU-${tgt}`
         : "full on GPU";
 
-  const recommendation = overSystemMemory
-    ? `needs ~${modelFootprintGb.toFixed(0)}G but only ~${systemAvailableGb.toFixed(0)}G free (VRAM+RAM)`
-    : "";
+  const recommendation = ssdPaged
+    ? ""
+    : overHostRam
+      ? `needs ~${residentHostGb.toFixed(0)}G RAM but only ~${input.ramAvailableGb.toFixed(0)}G free`
+      : overSystemMemory
+        ? `needs ~${modelFootprintGb.toFixed(0)}G but only ~${systemAvailableGb.toFixed(0)}G free (VRAM+RAM)`
+        : "";
 
   // Compact chip label (scenario style). Glass always uses launchSummary.
   const fitLabel =
@@ -625,9 +658,11 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const cacheMib = Math.round(effectiveCacheGb * 1024);
   const cpuExpertsSummary = cpuExperts
-    ? `Overdrive${cacheMib > 0 ? ` · ${autoCache ? "AUTO" : "MANUAL"} ${cacheMib.toLocaleString("en-US")} MiB cache` : ""} — ${
-        fits && fitsAllCards ? "fits" : "over device free"
-      }`
+    ? !fits
+      ? `Overdrive — won't run (${recommendation || "over system RAM"})`
+      : `Overdrive${ssdPaged ? " · SSD-PAGED" : ""}${cacheMib > 0 ? ` · ${autoCache ? "AUTO" : "MANUAL"} ${(cacheMib / 1024).toFixed(1)} GB cache` : ""} — ${
+          fitsAllCards ? (ssdPaged ? "fits (--no-host)" : "fits") : "over device free"
+        }`
     : launchSummary;
 
   const heroText = cpuExpertsSummary;
@@ -682,28 +717,31 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const ramNeedTone = cpuExperts
     ? overSystemMemory
       ? "hot"
-      : "ok"
+      : ssdPaged
+        ? "warn"
+        : "ok"
     : ramNeedToneForHost({
         overSystemMemory,
-        hostOffloadGb: hostMeasuredGb ?? 0,
+        hostOffloadGb: hostSpillLikeGb,
         realSpill: spill,
       });
 
   // The lookup table is host by design and is deliberately absent from the engine's host
   // buffer ledger. Put it back into the RAM total; it is not VRAM and not a weight spill.
-  const hostMeasuredPlusEngramGb =
-    (hostMeasuredGb ?? 0)
-    + (engramNeedGb > 0 && (hostMeasuredGb ?? 0) < engramNeedGb ? engramNeedGb : 0);
-  const hostTotalGb = hostMeasuredPlusEngramGb;
+  const rawHostModelGb =
+    input.fitProbeHostModelMib != null
+      ? input.fitProbeHostModelMib / 1024
+      : input.learnedHostModelMib != null
+        ? input.learnedHostModelMib / 1024
+        : null;
+  const residentHostModelGb =
+    rawHostModelGb != null && hostAlreadyIncludesEngram && engramIsLazy
+      ? Math.max(0, rawHostModelGb - engramNeedGb)
+      : rawHostModelGb;
   const hostSplit = splitHostRamGb({
-    hostGb: hostTotalGb,
-    hostModelGb:
-      input.fitProbeHostModelMib != null
-        ? input.fitProbeHostModelMib / 1024
-        : input.learnedHostModelMib != null
-          ? input.learnedHostModelMib / 1024
-          : null,
-    engramGb: engramNeedGb,
+    hostGb: residentHostGb,
+    hostModelGb: residentHostModelGb,
+    engramGb: engramIsLazy ? 0 : engramNeedGb,
     bufferBaselineGb: curveHit?.hostGb,
     realSpill: spill,
   });
@@ -723,9 +761,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
           : "OFFLOADING TO RAM";
     }
   }
-  // Total host need is unchanged: buffer + weights + the lookup table.
+  // Total committed host need: buffer + weights + small (<4 GB) resident lookup table.
   const ramNeedGb = hostSplit.bufferGb + hostSplit.weightGb + hostSplit.engramGb;
-  const hostEngramGb = hostSplit.engramGb;
+  const hostEngramGb = engramNeedGb;
   const spillWeightGb = hostSplit.weightGb;
 
   const base: VramManifest = {
@@ -742,7 +780,9 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
         launchSummary: cpuExpertsSummary,
         gpuLayerText: layerText,
         ramLayerText: cpuExperts
-          ? `${hostExpertsGb.toFixed(1)} GB experts (host by design)`
+          ? ssdPaged
+            ? `${hostExpertsGb.toFixed(1)} GB experts (SSD-paged via --no-host)`
+            : `${hostExpertsGb.toFixed(1)} GB experts (host by design)`
           : hostSplit.weightGb > 0.05
             ? `${ramNeedGb.toFixed(1)} GB host (${hostSplit.bufferGb.toFixed(1)} buffer + ${hostSplit.weightGb.toFixed(1)} weight)`
             : ramNeedGb > 0.05
@@ -750,16 +790,16 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
               : autoSplit
                 ? "VRAM spread across GPUs — offload decided at load"
                 : "engine might use some RAM at launch",
-        showRamBar: cpuExperts ? hostExpertsGb > 0.05 : ramNeedGb > 0.05,
+        showRamBar: cpuExperts ? hostExpertsGb > 0.05 : ramNeedGb > 0.05 || hostEngramGb > 0.05,
         moeRamBar: false,
-        kvSpillRiskText: cpuExperts && autoCache && fitsAllCards ? undefined : insets.vramInset,
-        offloadWarningText: cpuExperts ? undefined : insets.ramInset,
+        kvSpillRiskText: cpuExperts && autoCache && fits && fitsAllCards ? undefined : insets.vramInset,
+        offloadWarningText: cpuExperts && !overSystemMemory ? undefined : insets.ramInset,
       },
     },
     vramWeightsGb: round2(weightGb),
     vramTotalGb: round2(gpuProjectionGb),
     ramSpillGb: cpuExperts ? 0 : round2(hostSplit.weightGb),
-    ramTotalGb: cpuExperts ? round2(hostExpertsGb) : round2(ramNeedGb),
+    ramTotalGb: round2(ramNeedGb),
     ramBufferGb: cpuExperts ? 0 : round2(hostSplit.bufferGb),
     ramWeightGb: cpuExperts ? 0 : round2(spillWeightGb),
     ramEngramGb: round2(hostEngramGb),
@@ -822,6 +862,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
             hostExpertsGb > 0.05
               ? Math.min(100, Math.round((effectiveCacheGb / hostExpertsGb) * 100))
               : 0,
+          ssdPaged,
         }
       : undefined,
     forecastFreeGb: round2(targetAvail),

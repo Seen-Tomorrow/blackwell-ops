@@ -25,6 +25,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const SAMPLES_PER_DEVICE: usize = 10;
+/// A plain launch's CUDA context + graph slack is ~0.4-2.5 GiB; anything above 4 GiB is
+/// poisoned (e.g. an unattributed `-cmoe` expert cache or concurrent GPU activity).
+const MAX_PLAUSIBLE_RESIDUAL_MIB: f64 = 6144.0;
 
 static LAUNCH_BASELINES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<usize, std::collections::BTreeMap<u32, u64>>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
@@ -152,16 +155,22 @@ fn summarize(store: &CalibrationStore) -> Vec<DeviceCalibrationSummary> {
         .devices
         .iter()
         .filter_map(|(index, device)| {
-            let mut residuals: Vec<f64> = device.samples.iter().map(|s| s.residual_mib).collect();
+            let mut residuals: Vec<f64> = device
+                .samples
+                .iter()
+                .map(|s| s.residual_mib)
+                .filter(|r| r.is_finite() && *r >= 0.0 && *r <= MAX_PLAUSIBLE_RESIDUAL_MIB)
+                .collect();
             if residuals.is_empty() {
                 return None;
             }
             let last = device.samples.last()?;
+            let count = residuals.len();
             let median_residual_mib = median(&mut residuals);
             Some(DeviceCalibrationSummary {
                 index: *index,
                 median_residual_mib,
-                samples: device.samples.len(),
+                samples: count,
                 last_capacity_mib: last.capacity_mib,
                 driver_model: last.driver_model.clone(),
                 last_taken_at: last.taken_at.clone(),
@@ -226,9 +235,13 @@ pub fn capture(
         if used_mib < buffers_mib {
             continue;
         }
+        let residual_mib = used_mib - buffers_mib;
+        if residual_mib > MAX_PLAUSIBLE_RESIDUAL_MIB {
+            continue;
+        }
         let device = store.devices.entry(gpu.index).or_default();
         device.samples.push(CalibrationSample {
-            residual_mib: used_mib - buffers_mib,
+            residual_mib,
             processes: shares_per_device.get(&gpu.index).cloned().unwrap_or_default(),
             buffers_mib,
             used_mib,
@@ -259,6 +272,10 @@ pub fn capture(
 /// never fall back to the absolute device reading (which is how a sample ends up at 11 MiB).
 pub fn record_pair_residual(args: PairResidual) -> Result<(), String> {
     if args.buffers_mib <= 0.0 || args.used_mib < args.buffers_mib {
+        return Ok(());
+    }
+    let residual_mib = args.used_mib - args.buffers_mib;
+    if residual_mib > MAX_PLAUSIBLE_RESIDUAL_MIB {
         return Ok(());
     }
     let mut store = load_store();
@@ -350,5 +367,20 @@ mod tests {
         let per = buffers_by_device(&snapshot);
         assert_eq!(per.get(&0).copied(), Some(150.0));
         assert_eq!(per.len(), 1);
+    }
+
+    #[test]
+    fn summarize_ignores_poisoned_residuals_above_6144_mib() {
+        let mut store = CalibrationStore::default();
+        store.devices.insert(
+            0,
+            DeviceCalibration {
+                samples: vec![sample(600.0), sample(9691.0), sample(12117.0), sample(700.0)],
+            },
+        );
+        let summary = summarize(&store);
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].samples, 2);
+        assert_eq!(summary[0].median_residual_mib, 650.0);
     }
 }

@@ -1189,33 +1189,6 @@
   text-transform: none;
 }
 
-.vram-fc-placement__eq {
-  padding: 2px 6px;
-  border: 1px solid color-mix(in srgb, var(--theme-provider-pill-border) 70%, transparent);
-  border-radius: 3px;
-  background: transparent;
-  color: color-mix(in srgb, var(--theme-provider-pill-hover-text) 90%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: calc(9px * var(--vram-fc-scale, 1.12));
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-  text-transform: uppercase;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.vram-fc-placement__eq:hover:not(:disabled) {
-  border-color: var(--theme-provider-pill-active-border);
-  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 12%, transparent);
-  color: var(--theme-provider-pill-active-text);
-}
-
-.vram-fc-placement__eq:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
 .vram-forecast-scenario-badge {
   width: auto;
   min-width: 0;
@@ -1290,8 +1263,8 @@
   grid-row: 1;
   display: flex;
   flex-direction: row;
-  align-items: stretch;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: calc(8px * var(--vram-fc-scale, 1.12));
   width: 100%;
   min-width: 0;
@@ -1330,7 +1303,7 @@
   opacity: 1;
 }
 .vram-fc-measure__source .vram-fc__source-row {
-  margin: 0;
+  margin: 0 0 0 auto;
   width: auto;
   max-width: 100%;
   flex: 0 0 auto; /* don't stretch — recap anchors to this box */
@@ -1423,7 +1396,7 @@
   grid-template-rows: subgrid;
   align-items: stretch;
   min-width: calc(11ch + 4.6rem);
-  width: calc(11ch + 4.6rem);
+  width: max-content;
   /*
    * Double-border air only on the sides — vertical margin was shorting the
    * plate vs SOURCE/VRAM/RAM rows so status + need strips misaligned.
@@ -1947,6 +1920,7 @@
   flex-direction: column;
   justify-content: center;
   align-items: stretch;
+  flex-shrink: 0;
   gap: 1px;
   margin-left: 0.2em;
   padding: 2px 4px 2px 4px;
@@ -6496,35 +6470,6 @@ html[data-industrial-bezel="brush"] {
   }
 }
 
-/* The plain MoE launch would spill; this is the same prompt as the launch half's nudge. */
-.vram-fc-expert-nudge {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.25rem 0.6rem;
-  font-family: var(--font-mono, monospace);
-  font-size: var(--type-label);
-  letter-spacing: 0.08em;
-  color: var(--theme-accent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
-  cursor: pointer;
-  animation: expert-nudge-pulse 1.8s ease-in-out infinite;
-}
-
-.vram-fc-expert-nudge:hover {
-  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
-}
-
-.vram-fc-expert-nudge__cta {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-/* Power-user forecast calibration: tiny, persisted, off by default. */
 .vram-fc-two-point {
   font-family: var(--font-mono, monospace);
   font-size: var(--type-micro);
@@ -6546,6 +6491,10 @@ html[data-industrial-bezel="brush"] {
 }
 
 .vram-fc-bar__fill--cache {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   background: repeating-linear-gradient(
     -45deg,
     color-mix(in srgb, var(--theme-accent) 42%, transparent) 0 4px,
@@ -6554,32 +6503,205 @@ html[data-industrial-bezel="brush"] {
   border-left: 1px solid color-mix(in srgb, var(--theme-accent-bright) 75%, transparent);
 }
 
-.vram-fc-overdrive-strip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  font-size: var(--type-micro);
-  color: var(--theme-accent);
-  padding: 0.15rem 0.45rem;
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 8%, transparent);
-}
-
-.vram-fc-overdrive-strip__btn {
-  font-family: var(--font-mono, monospace);
+.vram-fc-bar__cache-tag {
   font-size: var(--type-micro);
   letter-spacing: 0.06em;
-  padding: 0 0.35rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+  color: var(--theme-text);
+  white-space: nowrap;
+  padding: 0 0.25rem;
+  background: color-mix(in srgb, var(--theme-bg) 72%, transparent);
+  border-radius: 2px;
+}
+
+.vram-fc-od-switch {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 65%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.vram-fc-od-switch__btn {
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  padding: 0.1rem 0.45rem;
   color: var(--theme-text-muted);
   background: transparent;
+  border: none;
   cursor: pointer;
 }
 
-.vram-fc-overdrive-strip__btn:hover {
+.vram-fc-od-switch__btn[data-active="1"] {
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 16%, transparent);
+}
+
+.vram-fc-od-switch__btn[data-nudge="1"]:not([data-active="1"]) {
+  color: var(--theme-accent-bright);
+  animation: expert-nudge-pulse 1.8s ease-in-out infinite;
+}
+
+.vram-fc-od-pill {
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  padding: 0.08rem 0.4rem;
+  color: var(--theme-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  flex-shrink: 0;
+}
+
+.vram-fc-vram-cache-ctrl {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-bg) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent);
+}
+
+.vram-fc-vram-cache-btn {
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  color: var(--theme-accent);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vram-fc-vram-cache-btn:hover {
+  color: var(--theme-accent-bright);
+}
+
+.vram-fc-vram-cache-bar {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.45rem;
+  background: color-mix(in srgb, var(--theme-bg) 76%, transparent);
+}
+
+.vram-fc-vram-cache-bar > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vram-fc-od-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.vram-fc-od-stepper__val {
+  font-size: var(--type-micro);
+  color: var(--theme-text);
+  font-variant-numeric: tabular-nums;
+  margin-right: 0.1rem;
+}
+
+.vram-fc-od-stepper__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.15rem;
+  padding: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, var(--theme-accent-bright) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 28%, transparent);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.vram-fc-od-stepper__btn:hover:not(:disabled) {
   color: var(--theme-accent-bright);
   border-color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
+}
+
+.vram-fc-od-stepper__btn:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.vram-fc-vram-cache-btn--auto {
+  padding: 0.08rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.vram-fc-ram-nudge {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0 0.4rem;
+}
+
+.vram-fc-ram-nudge__text {
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  color: var(--theme-text);
+  white-space: nowrap;
+}
+
+.vram-fc-ram-nudge__btn {
+  font-size: var(--type-micro);
+  letter-spacing: 0.08em;
+  padding: 0.06rem 0.4rem;
+  color: var(--theme-accent-bright);
+  background: color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vram-fc-ram-nudge__btn:hover {
+  background: color-mix(in srgb, var(--theme-accent) 28%, transparent);
+}
+
+.vram-fc-ram-od-info {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 0.45rem;
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.vram-fc-ram-od-info--paged {
+  color: var(--theme-telemetry-amber);
+}
+
+.vram-fc-bar__need-split-line--engram {
+  color: inherit;
 }
 
 .vram-fc-autocal-nudge {
@@ -6728,20 +6850,98 @@ html[data-industrial-bezel="brush"] {
   color: color-mix(in srgb, var(--theme-accent) 80%, transparent);
 }
 
-.vram-cal-ov__boot {
-  display: flex;
-  flex-direction: column;
+.vram-cal-ov__src {
+  font-size: var(--type-micro);
+  letter-spacing: 0.06em;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
+  color: var(--theme-accent);
+}
+
+.vram-cal-ov__timer {
+  font-size: var(--type-micro);
+  color: var(--theme-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.vram-cal-ov__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8.5rem;
+  gap: 0.6rem;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.vram-cal-ov__boot .fusion-boot-ticker {
-  display: none;
+.vram-cal-ov__left {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.45rem;
+  min-width: 0;
+  min-height: 0;
 }
 
-.vram-cal-ov__boot .fusion-boot {
-  gap: 4px;
-  padding: 4px 6px;
+.vram-cal-ov__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.vram-cal-ov__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vram-cal-ov__fail {
+  font-size: var(--type-micro);
+  color: var(--theme-warn);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--theme-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 10%, transparent);
+}
+
+.vram-cal-ov__io {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-bg) 45%, transparent);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.vram-cal-ov__io-lab {
+  font-size: var(--type-micro);
+  letter-spacing: 0.1em;
+  color: var(--theme-text-muted);
+}
+
+.vram-cal-ov__io-val {
+  font-size: 1.75rem;
+  line-height: 1.05;
+  color: var(--theme-text-muted);
+}
+
+.vram-cal-ov__io.is-warm .vram-cal-ov__io-val {
+  color: var(--theme-accent);
+}
+
+.vram-cal-ov__io.is-hot .vram-cal-ov__io-val {
+  color: var(--theme-accent-bright);
+}
+
+.vram-cal-ov__io-unit,
+.vram-cal-ov__io-mbit {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
 }
 
 .vram-cal-ov__wait {

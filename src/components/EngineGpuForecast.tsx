@@ -91,7 +91,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     isValidating,
     onValidate,
     placementActive = false,
-    onSplitEq,
     layerPlan = null,
     planKvSource = "none",
     planSqueezed = false,
@@ -143,6 +142,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     expertNudge = false,
     onEnableOverdrive,
     onDisableOverdrive,
+    modelIsMoe = false,
+    onSetMoeCacheAuto,
+    onSetMoeCacheMib,
   } = props;
   const { theme } = useTheme();
 
@@ -480,7 +482,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               isValidating={isValidating}
               onValidate={onValidate}
               placementActive={placementActive}
-              onSplitEq={onSplitEq}
               layerPlan={layerPlan}
               snapLogOpen={snapLogOpen}
               onCloseSnapLog={() => setSnapLogOpen(false)}
@@ -525,6 +526,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               fullAutoMode={fullAutoMode}
               onEnableOverdrive={onEnableOverdrive}
               onDisableOverdrive={onDisableOverdrive}
+              modelIsMoe={modelIsMoe}
+              onSetMoeCacheAuto={onSetMoeCacheAuto}
+              onSetMoeCacheMib={onSetMoeCacheMib}
             />
             {/* Overlay veil — does not change VramBadge face law */}
             {harness.veilNode}
@@ -618,8 +622,6 @@ export interface EngineGpuForecastProps {
   onValidate?: () => void;
   /** Automatic placement owns this launch: the app writes `-ts` and turns fit off. */
   placementActive?: boolean;
-  /** Manual nudge: recompute the byte-balanced split and arm layer placement. */
-  onSplitEq?: () => void;
   /** The single layer plan the glass prints and the bars paint. */
   layerPlan?: LayerPlan | null;
   planKvSource?: "measured" | "profile" | "geometry" | "none";
@@ -687,4 +689,7 @@ export interface EngineGpuForecastProps {
   expertNudge?: boolean;
   onEnableOverdrive?: () => void;
   onDisableOverdrive?: () => void;
+  modelIsMoe?: boolean;
+  onSetMoeCacheAuto?: (auto: boolean) => void;
+  onSetMoeCacheMib?: (mib: number) => void;
 }

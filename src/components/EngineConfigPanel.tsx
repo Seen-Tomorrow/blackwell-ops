@@ -1037,18 +1037,25 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         : boostSpec
           ? { spec_type: boostSpec, __boost_spec_type: boostSpec }
           : {}),
-      ...(autoOverdriveActive
+      ...(!modelIsMoe
         ? {
-            cpu_moe: "on",
-            moe_cache_auto: "on",
-            split: gpus.length > 1 ? "layer" : "none",
-            offload_mode: "regular",
+            cpu_moe: "off",
+            moe_cache_auto: "off",
+            moe_cache_mib: 0,
+            moe_cache_cpu_share: 0,
           }
-        : fullAutoMode
-          ? { cpu_moe: "off", offload_mode: "regular" }
-          : {}),
+        : autoOverdriveActive
+          ? {
+              cpu_moe: "on",
+              moe_cache_auto: "on",
+              split: gpus.length > 1 ? "layer" : "none",
+              offload_mode: "regular",
+            }
+          : fullAutoMode
+            ? { cpu_moe: "off", offload_mode: "regular" }
+            : {}),
     };
-  }, [autoDecision?.plan.specType, autoOverdriveActive, config, effectiveBackendType, fullAutoFixed, fullAutoMode, gpus.length, speedBoost]);
+  }, [autoDecision?.plan.specType, autoOverdriveActive, config, effectiveBackendType, fullAutoFixed, fullAutoMode, gpus.length, modelIsMoe, speedBoost]);
 
   // One plan for the glass, the bars and the launch: computing it here (instead of inside
   // VramBadge) lets the manifest take its per-card split from the same numbers the plan
@@ -2091,15 +2098,46 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
   const handleEnableOverdrive = useCallback(() => {
-    updateParam("cpu_moe", "on");
-    updateParam("moe_cache_auto", "on");
-  }, [updateParam]);
+    updateParams({
+      cpu_moe: "on",
+      moe_cache_auto: config.moe_cache_auto ?? "on",
+    });
+  }, [config.moe_cache_auto, updateParams]);
 
   const handleDisableOverdrive = useCallback(() => {
-    updateParam("cpu_moe", "off");
-    updateParam("moe_cache_mib", 0);
-    updateParam("moe_cache_cpu_share", 0);
-  }, [updateParam]);
+    updateParams({
+      cpu_moe: "off",
+      moe_cache_auto: "on",
+      moe_cache_mib: 0,
+      moe_cache_cpu_share: 0,
+    });
+  }, [updateParams]);
+
+  const handleSetMoeCacheAuto = useCallback(
+    (auto: boolean) => {
+      if (auto) {
+        updateParams({ moe_cache_auto: "on" });
+      } else {
+        const seed = vramCalc.manifest?.moeOverdrive?.cacheMib ?? 0;
+        updateParams(
+          seed > 0
+            ? { moe_cache_auto: "off", moe_cache_mib: seed }
+            : { moe_cache_auto: "off" },
+        );
+      }
+    },
+    [updateParams, vramCalc.manifest?.moeOverdrive?.cacheMib],
+  );
+
+  const handleSetMoeCacheMib = useCallback(
+    (mib: number) => {
+      updateParams({
+        moe_cache_auto: "off",
+        moe_cache_mib: Math.max(0, Math.round(mib)),
+      });
+    },
+    [updateParams],
+  );
 
   const paramGroupsCtx = useMemo<ParamGroupsCtx>(() => ({
     config,
@@ -2224,15 +2262,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     });
     if (built) {
       const effectiveCpuMoe =
-        autoOverdriveActive || String(config.cpu_moe ?? "off").trim().toLowerCase() === "on";
+        modelIsMoe &&
+        (autoOverdriveActive || String(config.cpu_moe ?? "off").trim().toLowerCase() === "on");
+      const params = (built.extra_params ??= {});
       if (effectiveCpuMoe) {
-        const params = (built.extra_params ??= {});
         params.cpu_moe = "on";
         params.moe_cache_mib =
           vramCalc.manifest?.moeOverdrive?.cacheMib ?? (Number(config.moe_cache_mib ?? 0) || 0);
+        if (vramCalc.manifest?.moeOverdrive?.ssdPaged) {
+          params.__no_host = true;
+        } else {
+          delete params.__no_host;
+        }
         if (autoOverdriveActive && gpus.length > 1) {
           params.split = "layer";
         }
+      } else if (!modelIsMoe) {
+        delete params.cpu_moe;
+        delete params.n_cpu_moe;
+        delete params.moe_cache_mib;
+        delete params.moe_cache_cpu_share;
+        delete params.__no_host;
+      } else {
+        delete params.__no_host;
       }
     }
     return built;
@@ -2261,6 +2313,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     placementOwned,
     layerPlan,
     autoOverdriveActive,
+    modelIsMoe,
   ]);
 
   /** HS button hint: panel model / CTX / parallel differ from the live engine. */
@@ -2429,13 +2482,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     updateParam,
     fullAutoMode,
   ]);
-
-  /** Manual nudge: re-read free VRAM and make the layer split the active placement. */
-  const handleSplitEq = useCallback(() => {
-    if (!tensorSplitSupported || gpus.length < 2) return;
-    if (!assistedLayerSplit) updateParam("split", "layer");
-    requestAnimationFrame(() => vramCalc.reevaluate());
-  }, [tensorSplitSupported, gpus.length, assistedLayerSplit, updateParam, vramCalc.reevaluate]);
 
   const handleOpenNobsproofCmd = useCallback(() => {
     const fullConfig = buildCurrentLaunchConfig();
@@ -3189,7 +3235,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         isValidating={vramCalc.isValidating}
         onValidate={vramCalc.validate}
         placementActive={placementOwned}
-        onSplitEq={fullAutoMode || !tensorSplitSupported ? undefined : handleSplitEq}
         layerPlan={layerPlan}
         planKvSource={planKvSource}
         planSqueezed={planSqueezed}
@@ -3221,6 +3266,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         shareLaunchConfig={shareLaunchConfig}
         shareHwTopo={shareHwTopo}
         gpuIdleBaselineMib={gpuIdleBaselineMib}
+        modelIsMoe={modelIsMoe}
+        onSetMoeCacheAuto={handleSetMoeCacheAuto}
+        onSetMoeCacheMib={handleSetMoeCacheMib}
         showEjectBelowVram={showEjectBelowVram}
         stack={stack}
         models={models}
@@ -3432,7 +3480,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               modelPath={model?.path ?? null}
               modelIsMoe={Number(model?.metadata?.n_expert ?? 0) > 1}
               providerId={currentProvider?.id ?? "ggml-master"}
-              effectiveCacheMib={vramCalc.manifest?.moeOverdrive?.cacheMib}
             />
           }
           autoGoal={fullAutoFixed ? autoGoal : null}
@@ -3456,7 +3503,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             modelPath={model?.path ?? null}
             modelIsMoe={Number(model?.metadata?.n_expert ?? 0) > 1}
             providerId={currentProvider?.id ?? "ggml-master"}
-            effectiveCacheMib={vramCalc.manifest?.moeOverdrive?.cacheMib}
           />
         )}
 
@@ -3570,7 +3616,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
           acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
           onLaunchClick={handleAddToStack}
-          launchHint={vramCalc.manifest?.moeOverdrive?.active ? "Ctrl+Enter · Overdrive" : undefined}
+          launchHint={
+            vramCalc.manifest?.moeOverdrive?.active
+              ? vramCalc.manifest.moeOverdrive.ssdPaged
+                ? "Ctrl+Enter · Overdrive (--no-host)"
+                : "Ctrl+Enter · Overdrive"
+              : undefined
+          }
           launchAck={launchAck}
           customFlagsReplaceActive={customFlagsReplaceActive}
           customFlagsLaunchActive={customFlagsLaunchActive}
@@ -3673,7 +3725,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
                 acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
                 onLaunchClick={handleAddToStack}
-                launchHint={vramCalc.manifest?.moeOverdrive?.active ? "Ctrl+Enter · Overdrive" : undefined}
+                launchHint={
+            vramCalc.manifest?.moeOverdrive?.active
+              ? vramCalc.manifest.moeOverdrive.ssdPaged
+                ? "Ctrl+Enter · Overdrive (--no-host)"
+                : "Ctrl+Enter · Overdrive"
+              : undefined
+          }
                 launchAck={launchAck}
                 customFlagsReplaceActive={customFlagsReplaceActive}
                 customFlagsLaunchActive={customFlagsLaunchActive}

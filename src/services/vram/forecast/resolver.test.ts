@@ -152,7 +152,7 @@ describe("forecast resolver states", () => {
       .toBeCloseTo(888 / 1024, 2);
   });
 
-  it("a PLE lookup table is host need, not VRAM", () => {
+  it("a PLE lookup table is lazy SSD-mapped, not committed RAM or VRAM", () => {
     const m = evaluate(
       input({
         learnedVramMib: 80 * GIB,
@@ -160,10 +160,10 @@ describe("forecast resolver states", () => {
         modelEngramMib: 27_466,
       }),
     )!;
-    // The 27.4 GB PLE table is mapped on the host; it must not inflate the GPU bars or read
-    // as a weight spill.
+    // The 26.8 GB PLE table is lazy-mapped on disk; it must not inflate VRAM or committed RAM.
     expect(m.vramTotalGb).toBeCloseTo(80.5, 1);
-    expect(m.ramTotalGb).toBeGreaterThan(27);
+    expect(m.ramEngramGb).toBeGreaterThan(26);
+    expect(m.ramTotalGb).toBeLessThan(2);
     expect(m.ramSpillGb).toBeCloseTo(0, 1);
   });
 
@@ -473,14 +473,14 @@ describe("forecast resolver states", () => {
   });
 
   it("computeAutoMoeCacheGb sizes single and asymmetric multi-GPU caches safely", () => {
-    // Single 16 GB GPU: 16 - 4 base - 1.0 headroom = 11.0 GB, snapped to 256 MiB, capped by hostExpertsGb
+    // Single 16 GB GPU: 16 - 4 base - 1.25 headroom = 10.75 GB, snapped to 256 MiB, capped by hostExpertsGb
     const single = computeAutoMoeCacheGb({
       perGpuBaseGb: [4],
       gpuAvailableGb: [16],
       hostExpertsGb: 40,
       targetIdx: 0,
     });
-    expect(single.totalCacheGb).toBeCloseTo(11.0, 1);
+    expect(single.totalCacheGb).toBeCloseTo(10.75, 1);
 
     // Asymmetric 16 GB + 96 GB with 0.5 / 0.5 split: tightest card (16 GB) caps total cache
     const multi = computeAutoMoeCacheGb({
@@ -489,10 +489,10 @@ describe("forecast resolver states", () => {
       hostExpertsGb: 40,
       targetIdx: 0,
     });
-    // 16 - 2 - 1.0 = 13.0 avail on GPU0 -> / 0.5 = 26.0 GB total (13.0 per card)
-    expect(multi.totalCacheGb).toBeCloseTo(26.0, 1);
-    expect(multi.perGpuCacheGb[0]).toBeCloseTo(13.0, 1);
-    expect(multi.perGpuCacheGb[1]).toBeCloseTo(13.0, 1);
+    // 16 - 2 - 1.25 = 12.75 avail on GPU0 -> / 0.5 = 25.5 GB total (12.75 per card)
+    expect(multi.totalCacheGb).toBeCloseTo(25.5, 1);
+    expect(multi.perGpuCacheGb[0]).toBeCloseTo(12.75, 1);
+    expect(multi.perGpuCacheGb[1]).toBeCloseTo(12.75, 1);
   });
 
   it("evaluate with moeCpuExperts + moeCacheAuto sizes cache and keeps CTX ribbon on base", () => {
@@ -510,5 +510,136 @@ describe("forecast resolver states", () => {
     expect(m.ramSpillGb).toBe(0);
     const atLive = m.forecastCurve?.find((p) => p.ctx === 65_536);
     expect(atLive?.gb).toBeCloseTo(m.moeOverdrive!.baseVramGb, 1);
+  });
+
+  it("Engram host table + small host embeddings keep ramNeedTone ok and ramWeightGb 0; real spill warns", () => {
+    const engramFit = evaluate(
+      input({
+        modelEngramMib: 27_466,
+        fitProbeVramMib: 14_000,
+        fitProbeHostMib: 600,
+        fitProbeHostModelMib: 300,
+      }),
+    );
+    expect(engramFit).not.toBeNull();
+    expect(engramFit!.style.ramNeedTone).toBe("ok");
+    expect(engramFit!.ramEngramGb).toBeGreaterThan(26);
+    expect(engramFit!.ramWeightGb).toBe(0);
+
+    const realSpill = evaluate(
+      input({
+        modelEngramMib: 27_466,
+        fitProbeVramMib: 14_000,
+        fitProbeHostMib: 34_000,
+        fitProbeHostModelMib: 33_000,
+      }),
+    );
+    expect(realSpill).not.toBeNull();
+    expect(realSpill!.style.ramNeedTone).toBe("warn");
+    expect(realSpill!.ramWeightGb).toBeGreaterThan(2.5);
+  });
+
+  it("Overdrive + Engram keeps lazy Engram out of committed ramNeedGb", () => {
+    const m = evaluate(
+      input({
+        modelMeta: { ...input({}).modelMeta, file_size_bytes: Math.round(61.9 * 1024 ** 3) },
+        learnedCurve: [launchPoint(32_768, 4, 32.3), launchPoint(131_072, 8, 32.3)],
+        moeCpuExperts: true,
+        moeCacheAuto: true,
+        modelEngramMib: 27_443,
+      }),
+    )!;
+    expect(m.moeOverdrive?.active).toBe(true);
+    expect(m.moeOverdrive?.ssdPaged).toBe(false);
+    expect(m.moeOverdrive?.hostExpertsGb).toBeCloseTo(32.3, 1);
+    expect(m.ramEngramGb).toBeCloseTo(26.8, 1);
+    expect(m.ramTotalGb).toBeCloseTo(32.3, 1);
+  });
+
+  it("Overdrive + Engram gates --no-host on pinned RAM cap (DeepSeek-V4.1 Full vs Coder)", () => {
+    const dsv41Full256 = evaluate(
+      input({
+        modelMeta: { ...input({}).modelMeta, file_size_bytes: Math.round(279.8 * 1024 ** 3) },
+        fitProbeVramMib: Math.round(10.9 * 1024),
+        fitProbeHostMib: Math.round(272.8 * 1024),
+        moeCpuExperts: true,
+        moeCacheAuto: true,
+        modelEngramMib: Math.round(125.9 * 1024),
+        ramManufacturedGb: 256,
+        ramAvailableGb: 210,
+      }),
+    )!;
+    expect(dsv41Full256.fits).toBe(true);
+    expect(dsv41Full256.moeOverdrive?.ssdPaged).toBe(true);
+    expect(dsv41Full256.style.launchPaint).toBe("fit");
+    expect(dsv41Full256.style.ramNeedTone).toBe("warn");
+    expect(dsv41Full256.style.uiTemplate.launchSummary).toContain("--no-host");
+    expect(dsv41Full256.moeOverdrive?.hostExpertsGb).toBeCloseTo(146.9, 1);
+    expect(dsv41Full256.ramEngramGb).toBeCloseTo(125.9, 1);
+    expect(dsv41Full256.ramTotalGb).toBeCloseTo(146.9, 1);
+
+    const dsv41Coder256 = evaluate(
+      input({
+        modelMeta: { ...input({}).modelMeta, file_size_bytes: Math.round(68.1 * 1024 ** 3) },
+        fitProbeVramMib: Math.round(10.9 * 1024),
+        fitProbeHostMib: Math.round(62.0 * 1024),
+        moeCpuExperts: true,
+        moeCacheAuto: true,
+        modelEngramMib: Math.round(125.9 * 1024),
+        ramManufacturedGb: 256,
+        ramAvailableGb: 185,
+      }),
+    )!;
+    expect(dsv41Coder256.fits).toBe(true);
+    expect(dsv41Coder256.moeOverdrive?.ssdPaged).toBe(false);
+    expect(dsv41Coder256.style.launchPaint).toBe("fit");
+    expect(dsv41Coder256.style.ramNeedTone).toBe("ok");
+    expect(dsv41Coder256.moeOverdrive?.hostExpertsGb).toBeCloseTo(62.0, 1);
+    expect(dsv41Coder256.ramEngramGb).toBeCloseTo(125.9, 1);
+    expect(dsv41Coder256.ramTotalGb).toBeCloseTo(62.0, 1);
+
+    const dsv41Full384 = evaluate(
+      input({
+        modelMeta: { ...input({}).modelMeta, file_size_bytes: Math.round(279.8 * 1024 ** 3) },
+        fitProbeVramMib: Math.round(10.9 * 1024),
+        fitProbeHostMib: Math.round(272.8 * 1024),
+        moeCpuExperts: true,
+        moeCacheAuto: true,
+        modelEngramMib: Math.round(125.9 * 1024),
+        ramManufacturedGb: 384,
+        ramAvailableGb: 340,
+      }),
+    )!;
+    expect(dsv41Full384.fits).toBe(true);
+    expect(dsv41Full384.moeOverdrive?.ssdPaged).toBe(false);
+    expect(dsv41Full384.style.launchPaint).toBe("fit");
+    expect(dsv41Full384.style.ramNeedTone).toBe("ok");
+    expect(dsv41Full384.moeOverdrive?.hostExpertsGb).toBeCloseTo(146.9, 1);
+    expect(dsv41Full384.ramEngramGb).toBeCloseTo(125.9, 1);
+    expect(dsv41Full384.ramTotalGb).toBeCloseTo(146.9, 1);
+    expect(dsv41Full384.moeOverdrive?.coveragePct).toBeGreaterThanOrEqual(50);
+
+    const plainOverRam = evaluate(
+      input({
+        modelMeta: { ...input({}).modelMeta, file_size_bytes: Math.round(279.8 * 1024 ** 3) },
+        fitProbeVramMib: Math.round(10.9 * 1024),
+        fitProbeHostMib: Math.round(280.0 * 1024),
+        moeCpuExperts: false,
+        modelEngramMib: 0,
+        ramAvailableGb: 240,
+      }),
+    )!;
+    expect(plainOverRam.fits).toBe(false);
+    expect(plainOverRam.style.launchPaint).toBe("nofit");
+  });
+
+  it("vision toggle invalidates liveEvalKey and adds/removes mmprojSizeMib on vramTotalGb", () => {
+    const base = { backend_type: "ggml-master", kv_quant: "q8_0", split: "none", ctx: 65_536, vision: "auto" };
+    const off = { ...base, vision: "off" };
+    expect(liveEvalKey(base, false)).not.toBe(liveEvalKey(off, false));
+
+    const withVision = evaluate(input({ learnedCurve: [launchPoint(65_536, 40)], mmprojSizeMib: 1024, visionOn: true }))!;
+    const noVision = evaluate(input({ learnedCurve: [launchPoint(65_536, 40)], mmprojSizeMib: 1024, visionOn: false }))!;
+    expect(withVision.vramTotalGb - noVision.vramTotalGb).toBeCloseTo(1.0, 2);
   });
 });

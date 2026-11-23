@@ -74,6 +74,11 @@ const SURFACE_PARAM_KEYS: ReadonlySet<string> = new Set<string>([
   "unified_kv",
   /** PROMPT CACHE lives on the TASK row — never a free chip. */
   "cache_ram",
+  /** Expert offload/cache knobs are owned by Overdrive / Tweaks — never free chips. */
+  "cpu_moe",
+  "n_cpu_moe",
+  "moe_cache_mib",
+  "moe_cache_cpu_share",
   ...COMPAT_KEYS,
 ]);
 

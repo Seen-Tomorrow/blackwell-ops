@@ -28,7 +28,6 @@ import {
 import BatchRangeSlider from "./BatchRangeSlider";
 import CockpitNavSegment from "./CockpitNavSegment";
 import TweaksPanel from "./TweaksPanel";
-import ExpertCachePanel from "./ExpertCachePanel";
 
 interface SamplerTaskProps {
   defs: UserEditedTemplateParam[];
@@ -251,8 +250,6 @@ interface CockpitInstrumentsProps {
   /** Expert knobs are only meaningful for a MoE model. */
   modelIsMoe?: boolean;
   providerId?: string;
-  /** Effective hot expert cache size in MiB when AUTO is active. */
-  effectiveCacheMib?: number;
 }
 
 /**
@@ -324,7 +321,6 @@ export function CockpitInstruments({
   modelPath = null,
   modelIsMoe = false,
   providerId = "",
-  effectiveCacheMib,
 }: CockpitInstrumentsProps) {
   return (
     <div
@@ -346,14 +342,7 @@ export function CockpitInstruments({
         />
         <PromptCache defs={defs} config={config} onChange={onChange} />
       </div>
-      <TweaksPanel defs={defs} config={config} onChange={onChange} />
-      <ExpertCachePanel
-        defs={defs}
-        config={config}
-        onChange={onChange}
-        modelIsMoe={modelIsMoe}
-        effectiveCacheMib={effectiveCacheMib}
-      />
+      <TweaksPanel defs={defs} config={config} onChange={onChange} modelIsMoe={modelIsMoe} />
     </div>
   );
 }

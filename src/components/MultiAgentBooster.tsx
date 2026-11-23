@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 import type { SpecCapability } from "../lib/specDraft";
 import type { CompanionCandidate, CompanionReport, CompanionRole, RepoCompanion } from "../lib/types";
 import { ConfigChipSegment } from "./EngineParamGroups";
@@ -274,6 +275,7 @@ export default function MultiAgentBooster({
       try {
         await invoke("set_companion_pin", { modelPath, role, path });
         await reloadCompanions();
+        dispatchAppEvent(EVENTS.companionsChanged, { modelPath });
       } finally {
         setCompanionBusy(false);
       }
@@ -288,6 +290,7 @@ export default function MultiAgentBooster({
       try {
         await invoke("clear_companion_pin", { modelPath, role });
         await reloadCompanions();
+        dispatchAppEvent(EVENTS.companionsChanged, { modelPath });
       } finally {
         setCompanionBusy(false);
       }

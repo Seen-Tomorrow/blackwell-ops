@@ -148,6 +148,10 @@ export function useConfigResolver({
       resolved[p.key] = baseMerged[p.key] ?? resolveParamDefaultValue(p);
     }
 
+    if (profile.moe_cache_auto !== undefined) {
+      resolved.moe_cache_auto = profile.moe_cache_auto;
+    }
+
     const normalized: Record<string, any> = Object.fromEntries(
       Object.entries(resolved).map(([k, v]) => [k, normalizeValue(v)]),
     );

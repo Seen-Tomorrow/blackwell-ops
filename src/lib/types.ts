@@ -1143,6 +1143,8 @@ export interface VramManifest {
     baseVramGb: number;
     hostExpertsGb: number;
     coveragePct: number;
+    /** True when host experts + Engram exceed free RAM, triggering `--no-host` OS-paged NVMe mmap fallback. */
+    ssdPaged?: boolean;
   };
 }
 

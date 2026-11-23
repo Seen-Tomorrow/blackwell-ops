@@ -962,6 +962,17 @@ impl ProviderTemplate {
             args.push("--no-warmup".into());
         }
 
+        if sp.fit_style.as_str() == "ggml_fit_params"
+            && config
+                .extra_params
+                .get("__no_host")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            && !args.iter().any(|a| a == "--no-host")
+        {
+            args.push("--no-host".into());
+        }
+
         finalize_launch_cli_args(&mut args);
 
         #[cfg(debug_assertions)]
@@ -1795,6 +1806,40 @@ mod build_cmd_tests {
             args.windows(2).any(|w| w[0] == "--reasoning" && w[1] == "off"),
             "empty sub_params must still emit parent flag+value: {args:?}"
         );
+    }
+
+    #[test]
+    fn overdrive_no_host_emitted_once_when_requested_on_ggml_fit_params() {
+        let mut tmpl = sample_template();
+        tmpl.spawn_profile.fit_style = "ggml_fit_params".to_string();
+
+        let mut extra = HashMap::new();
+        extra.insert("__no_host".to_string(), serde_json::json!(true));
+        let cfg_on = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: String::new(),
+            binary_profile: String::new(),
+            extra_params: extra.clone(),
+        };
+        let args_on = tmpl.build_command(&cfg_on, "", &[]);
+        assert_eq!(args_on.iter().filter(|a| a.as_str() == "--no-host").count(), 1);
+
+        extra.insert("__test_args_add".to_string(), serde_json::json!(["--no-host"]));
+        let cfg_dedup = EngineConfig {
+            extra_params: extra,
+            ..cfg_on.clone()
+        };
+        let args_dedup = tmpl.build_command(&cfg_dedup, "", &[]);
+        assert_eq!(args_dedup.iter().filter(|a| a.as_str() == "--no-host").count(), 1);
+
+        let cfg_off = EngineConfig {
+            extra_params: HashMap::new(),
+            ..cfg_on
+        };
+        let args_off = tmpl.build_command(&cfg_off, "", &[]);
+        assert!(!args_off.iter().any(|a| a == "--no-host"));
     }
 }
 

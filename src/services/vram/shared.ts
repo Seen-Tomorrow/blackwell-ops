@@ -548,6 +548,9 @@ export function splitHostRamGb(opts: {
   const nonEngram = Math.max(0, total - engram);
   if (opts.hostModelGb != null && opts.hostModelGb > 0) {
     const modelAboveEngram = Math.max(0, opts.hostModelGb - engram);
+    if (!opts.realSpill && modelAboveEngram < 1.0) {
+      return { bufferGb: nonEngram, weightGb: 0, engramGb: engram };
+    }
     const weight = Math.min(nonEngram, modelAboveEngram);
     return { bufferGb: Math.max(0, nonEngram - weight), weightGb: weight, engramGb: engram };
   }

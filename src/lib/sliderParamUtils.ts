@@ -41,6 +41,8 @@ export interface SliderParamSharedProps {
   onChange: (value: number) => void;
   step?: number;
   values?: (string | number)[];
+  /** Optional custom tick label formatter (defaults to token K/M labels). */
+  formatLabel?: (n: number) => string;
   /** Launch-measured ctx tokens — cyan ticks on the rail. */
   learnedMarks?: number[];
   /** all = preset+custom learned; regular = preset-only; off = hidden. */

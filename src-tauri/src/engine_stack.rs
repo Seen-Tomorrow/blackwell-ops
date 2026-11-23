@@ -121,6 +121,8 @@ pub struct EngineSlot {
     pub backend_type: String,
     /// Multi-GPU split mode at launch (`none` / `layer` / `row` / `tensor`) — for load-failure hints.
     pub split_mode: String,
+    /// True when launched with `-cmoe` (experts in host RAM + optional VRAM cache).
+    pub cpu_moe: bool,
     /// Runtime profile binary env (vanguard/edge/fresh/stable) used at launch.
     pub binary_profile: String,
     /// Engine exe this slot launched — lets a load failure name a missing dependent DLL.
@@ -161,6 +163,7 @@ impl EngineStack {
                 provider_name: String::new(),
                 backend_type: String::new(),
                 split_mode: String::new(),
+                cpu_moe: false,
                 binary_profile: String::new(),
                 binary_path: None,
                 supports_fusion: true,
@@ -651,6 +654,10 @@ impl EngineStack {
                 slot.provider_name = provider_display_name;
                 slot.backend_type = backend_type;
                 slot.split_mode = config.get_param_str("split").unwrap_or_default();
+                slot.cpu_moe = config
+                    .get_param_str("cpu_moe")
+                    .map(|v| v.eq_ignore_ascii_case("on"))
+                    .unwrap_or(false);
                 slot.binary_profile = if config.binary_profile.is_empty() {
                     crate::config::DEFAULT_BINARY_PROFILE.to_string()
                 } else {

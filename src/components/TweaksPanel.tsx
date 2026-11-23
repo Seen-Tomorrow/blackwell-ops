@@ -28,11 +28,19 @@ interface TweaksPanelProps {
   defs: UserEditedTemplateParam[];
   config: Record<string, unknown>;
   onChange: (key: string, value: string | number) => void;
+  modelIsMoe?: boolean;
 }
 
-export default function TweaksPanel({ defs, config, onChange }: TweaksPanelProps) {
+export default function TweaksPanel({
+  defs,
+  config,
+  onChange,
+  modelIsMoe = false,
+}: TweaksPanelProps) {
   const [open, setOpen] = useState(false);
-  const tweaks = defs.filter((def) => TWEAK_KEY_SET.has(def.key));
+  const tweaks = defs.filter(
+    (def) => TWEAK_KEY_SET.has(def.key) || (modelIsMoe && def.key === "moe_cache_cpu_share"),
+  );
   if (tweaks.length === 0) return null;
 
   const changed = countTuned(tweaks, config);

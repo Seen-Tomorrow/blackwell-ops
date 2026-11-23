@@ -2656,33 +2656,3 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 /* Second source inside the picker: repo companions. Same card grammar, divider keeps
    the "on disk" and "downloadable" lists from reading as one long list. */
-
-/* EXPERT CACHE instrument: three knobs plus the calibration chip, one row each. */
-.cockpit-expert-rows {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: center;
-  gap: 0.25rem 0.5rem;
-  padding-top: 0.25rem;
-}
-
-.cockpit-instrument--experts--collapsed .cockpit-expert-rows {
-  display: none;
-}
-
-/* The cache knob is a slider with a typed MiB field; keep it inside the value column. */
-.cockpit-expert-slider {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.cockpit-expert-slider .ctx-slider-row {
-  min-width: 0;
-}
-
-.cockpit-expert-unit {
-  color: var(--theme-text-muted);
-  flex-shrink: 0;
-}

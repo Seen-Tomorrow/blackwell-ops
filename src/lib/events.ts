@@ -25,6 +25,7 @@ export type NavigateFoundryDetail = {
 
 export const EVENTS = {
   reloadProviders: `${STORAGE_PREFIX}reload-providers`,
+  companionsChanged: `${STORAGE_PREFIX}companions-changed`,
   paramConfigChanged: `${STORAGE_PREFIX}param-config-changed`,
   navigateStack: `${STORAGE_PREFIX}navigate-stack`,
   navigateCatalog: `${STORAGE_PREFIX}navigate-catalog`,
