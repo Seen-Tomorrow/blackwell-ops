@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # Majestic - private release automation for Blackwell Ops.
 # Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump|ship-toolchain|pack-provider [-DryRun]
 #   pack-provider = rebuild engine packs (all enginePacks, or one with -ProviderId/-ProfileId)
@@ -25,10 +25,17 @@ param(
     [switch]$Force,
 
     # Ship: skip the test gate (a plan runs it once, not per channel)
-    [switch]$SkipTests
+    [switch]$SkipTests,
+
+    # Ship: allow re-publishing the same semver (repair)
+    [switch]$AllowRepair
 )
 
 $ErrorActionPreference = 'Stop'
+
+$script:Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+$OutputEncoding = $script:Utf8NoBom
+try { [Console]::OutputEncoding = $script:Utf8NoBom } catch { }
 
 $script_dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent (Split-Path -Parent $script_dir)
@@ -802,10 +809,14 @@ function Invoke-MajesticPack {
     $version = Read-AppVersion
     $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
 
-    if (Test-Path -LiteralPath $out_root) {
-        Remove-Item -LiteralPath $out_root -Recurse -Force
-    }
+    # Keep .majestic-out/ intact: run-release-plan.ps1 stores live job-status.json,
+    # job-log.txt, release-plan.json and jobs/ history here, and other channels' staged
+    # assets also live beside them. Overwrite only this version's pack manifest/outputs.
     New-Item -ItemType Directory -Path $out_root -Force | Out-Null
+    $stale_manifest = Join-Path $out_root "manifest-$tag.json"
+    if (Test-Path -LiteralPath $stale_manifest) {
+        Remove-Item -LiteralPath $stale_manifest -Force
+    }
 
     if ($DryRun) {
         if ($Variant -eq 'app') {
@@ -874,10 +885,6 @@ function Invoke-MajesticPack {
         $manifest_files += New-ManifestEntry -Channel 'app' -File (Get-Item -LiteralPath $app_archive)
 
         if ($Variant -eq 'full') {
-            $link_archive = Invoke-PackLinkUpdate -OutRoot $out_root
-            if ($link_archive) {
-                $manifest_files += New-ManifestEntry -Channel 'link' -File (Get-Item -LiteralPath $link_archive)
-            }
             # NSIS needs the full runtime-bundle (app + seeded engines) for the installer.
             Invoke-PrepareReleaseBundle -Variant 'full'
             $dest_installer = Stage-InstallerForVariant -Version $version -Variant 'full' -OutRoot $out_root
@@ -1214,8 +1221,15 @@ function Publish-ChannelRelease {
     $releases = @()
     $kept = @()
 
+    $prev = Read-PublishedChannelManifest -OutDir $out_root -Tag $Tag -Repo $repo
+    if ($channel.versionToken -eq 'semver' -and -not $AllowRepair -and $prev -and $prev.latest -and $prev.latest.version) {
+        if (-not (Test-SemverGreater -Candidate $Version -Current ([string]$prev.latest.version))) {
+            throw "Channel '$Tag' already publishes v$($prev.latest.version) - bump version first (or pass -AllowRepair)."
+        }
+    }
+
     # Idempotent ship: an asset already on the channel with the same size and (when GitHub
-    # reports it) the same digest is not re-uploaded — a body/manifest refresh stays cheap.
+    # reports it) the same digest is not re-uploaded - a body/manifest refresh stays cheap.
     $published = @{}
     if ($null -ne $existing) {
         foreach ($a in @($existing.assets)) { $published[[string]$a.name] = $a }
@@ -1223,7 +1237,8 @@ function Publish-ChannelRelease {
     if ($null -eq $existing) {
         Write-Majestic "Creating channel release '$Tag'..." -Color Cyan
         $latestArgs = if ($channel.latest) { @('--latest') } else { @('--latest=false') }
-        $createArgs = @('release', 'create', $Tag, '--repo', $repo, '--title', [string]$channel.title, '--notes', [string]$channel.blurb) + $latestArgs
+        $prereleaseArgs = if ($channel.prerelease) { @('--prerelease') } else { @() }
+        $createArgs = @('release', 'create', $Tag, '--repo', $repo, '--title', [string]$channel.title, '--notes', [string]$channel.blurb) + $latestArgs + $prereleaseArgs
         $createOut = & gh @createArgs 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) {
             Throw-GhReleaseCreateFailed -Tag $Tag -Repo $repo -GhOutput $createOut.Trim()
@@ -1254,6 +1269,9 @@ function Publish-ChannelRelease {
         Write-Majestic "Assets already published - refreshing channel.json + body only" -Color DarkGray
     }
 
+    # Step 4: re-read from GitHub and verify size + digest BEFORE generating channel.json.
+    Invoke-ChannelAssetVerify -Tag $Tag -Repo $repo -Files $Files
+
     # Manifest is generated from the uploaded set (never from the staging dir alone).
     if ($Tag -eq 'engines') {
         $engineDoc = Get-Content -LiteralPath (Join-Path $root 'src-tauri\runtime-catalog\engines.json') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -1271,7 +1289,6 @@ function Publish-ChannelRelease {
                 cuda      = [string]$_.cuda
             }
         })
-        $prev = Read-PublishedChannelManifest -OutDir $out_root -Tag $Tag -Repo $repo
         $kept = Merge-EngineChannelEntries -Previous $prev -NewEntries $newEngines -Retention $channel.retention
         if (@($kept).Count -eq 0) {
             throw "engines channel: no manifest entries for the uploaded assets - refusing to publish an empty engine manifest"
@@ -1284,17 +1301,21 @@ function Publish-ChannelRelease {
             asset       = [string]$Files[0].name
             sizeBytes   = [long]$Files[0].bytes
             sha256      = [string]$Files[0].sha256
-            publishedAt = (Get-Date).ToUniversalTime().ToString('o')
+            publishedAt = Format-UtcIsoTimestamp (Get-Date)
             notes       = $Notes
         }
-        $prev = Read-PublishedChannelManifest -OutDir $out_root -Tag $Tag -Repo $repo
-        $releases = Merge-ChannelReleases -Previous $prev -NewLatest $latest -Retention $channel.retention
+        $releases = Merge-ChannelReleases -Previous $prev -NewLatest $latest -Retention $channel.retention -VersionToken ([string]$channel.versionToken)
         $manifestPath = Write-ChannelManifestFile -OutDir $out_root -Tag $Tag -Product $channel.product -Latest $latest -Releases $releases
     }
 
     gh release upload $Tag --repo $repo --clobber $manifestPath
     if ($LASTEXITCODE -ne 0) { throw "gh release upload $Tag (channel.json) failed" }
-    Write-Majestic "Published $Tag/channel.json" -Color Green
+    if ($Tag -eq 'engines') {
+        Invoke-ChannelManifestVerify -Tag $Tag -Repo $repo -ExpectedEngines $newEngines
+    } else {
+        Invoke-ChannelManifestVerify -Tag $Tag -Repo $repo -ExpectedAsset $latest.asset -ExpectedSha256 $latest.sha256
+    }
+    Write-Majestic "Published & verified $Tag/channel.json" -Color Green
 
     # Prune: keep exactly what the manifest references, plus the manifest itself.
     $keep = @((Get-ChannelManifestAssetName))
@@ -1313,11 +1334,14 @@ function Publish-ChannelRelease {
         }
     }
 
-    $body = New-ChannelReleaseBody -Channel $channel -Latest $latest -Releases $releases -Engines $kept
+    $body = New-ChannelReleaseBody -Channel $channel -Latest $latest -Releases $releases -Engines $kept -Repo $repo
     $bodyPath = Join-Path $out_root "release-body-$Tag.md"
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($bodyPath, $body, $utf8NoBom)
-    gh release edit $Tag --repo $repo --notes-file $bodyPath | Out-Null
+    $editArgs = @('release', 'edit', $Tag, '--repo', $repo, '--title', [string]$channel.title, '--notes-file', $bodyPath)
+    if ($channel.latest) { $editArgs += '--latest' } else { $editArgs += '--latest=false' }
+    if ($channel.prerelease) { $editArgs += '--prerelease' }
+    & gh @editArgs | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Majestic "  WARN: release body update failed for $Tag" -Color Yellow }
 }
 
@@ -1440,7 +1464,6 @@ function Invoke-MajesticShip {
     }
 
     $assets = @()
-    $link_assets = @()
     # Optional channel filter (plan steps ship one channel at a time, e.g. app now, full later).
     $channel_filter = @()
     if ($Channels) {
@@ -1449,10 +1472,6 @@ function Invoke-MajesticShip {
     foreach ($entry in @($manifest.files)) {
         if (-not (Test-Path -LiteralPath $entry.path)) { continue }
         $leaf = Split-Path -Leaf $entry.path
-        if ($leaf -like 'LINK_OYM-Link-*.7z') {
-            $link_assets += $entry.path
-            continue
-        }
         $channel = if ($entry.PSObject.Properties.Name -contains 'channel') { [string]$entry.channel } else { '' }
         if (-not $channel) {
             throw "Manifest entry '$leaf' has no channel - re-run pack (docs/RELEASE-CHANNELS.md)."
@@ -1521,6 +1540,16 @@ function Invoke-MajesticShip {
     try {
         Push-Location $root
         try {
+            $commit = (git rev-parse --short HEAD).Trim()
+            $shipped_channels = @()
+            foreach ($g in $groups) {
+                $channelTag = [string]$g.Name
+                $notes = Get-ChannelReleaseNotes -Config $Config -ChannelTag $channelTag
+                Publish-ChannelRelease -Config $Config -Tag $channelTag -Files @($g.Group) -Version $version -Commit $commit -Notes $notes
+                $shipped_channels += $channelTag
+            }
+
+            # Step 9: provenance git tag after channel publish succeeds.
             $tag_exists = [bool](git tag -l $tag 2>$null)
             if (-not $tag_exists) {
                 Write-Majestic "Creating local git tag $tag on current commit..." -Color Cyan
@@ -1536,20 +1565,9 @@ function Invoke-MajesticShip {
                 Write-Majestic "pushTag=false - skipping git push (channels are labels, the git tag carries provenance)." -Color DarkGray
             }
 
-            $commit = (git rev-parse --short HEAD).Trim()
-            foreach ($g in $groups) {
-                $channelTag = [string]$g.Name
-                $notes = Get-ChannelReleaseNotes -Config $Config -ChannelTag $channelTag
-                Publish-ChannelRelease -Config $Config -Tag $channelTag -Files @($g.Group) -Version $version -Commit $commit -Notes $notes
+            foreach ($ct in $shipped_channels) {
+                Write-Majestic "SHIPPED $tag ($ct) - https://github.com/$($Config.repo)/releases/tag/$ct" -Color Green
             }
-
-            if ($link_assets.Count -gt 0) {
-                Write-Majestic "Shipping LINK asset to its own tag..." -Color Cyan
-                & (Join-Path $root 'scripts/ship-link.ps1') -Asset $link_assets[0]
-                if (-not $?) { throw "ship-link.ps1 failed" }
-            }
-
-            Write-Majestic "SHIPPED $tag - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
         } finally {
             Pop-Location
         }
@@ -1601,8 +1619,10 @@ function Invoke-MajesticShipToolchain {
     }
 
     $tag = 'toolchain'
+    $channel = Get-ReleaseChannel -Tag $tag
+    $repo = $Config.repo
     $total_mb = [math]::Round((($assets | Measure-Object Length -Sum).Sum) / 1MB, 1)
-    Write-Majestic ("About to upload {0} toolchain asset(s), {1} MB total, to tag '{2}' on {3}" -f $assets.Count, $total_mb, $tag, $Config.repo) -Color Cyan
+    Write-Majestic ("About to upload {0} toolchain asset(s), {1} MB total, to tag '{2}' on {3}" -f $assets.Count, $total_mb, $tag, $repo) -Color Cyan
     foreach ($a in $assets) {
         Write-Majestic ("  {0}  {1:N1} MB" -f $a.Name, ($a.Length / 1MB)) -Color DarkGray
     }
@@ -1626,26 +1646,63 @@ function Invoke-MajesticShipToolchain {
         throw "GitHub CLI (gh) is required. Install: https://cli.github.com/"
     }
 
-    $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
-    $notes = "Portable toolchain packs (CUDA runtime per version, Foundry build tools, full). The app resolves them by name from its embedded manifest; extract via in-app setup / Foundry."
-    $asset_paths = @($assets | ForEach-Object { $_.FullName })
+    $release_meta = Get-GhReleaseView -Tag $tag -Repo $repo
     if ($null -eq $release_meta) {
-        Write-Majestic "Creating GitHub release $tag with $($assets.Count) asset(s)..." -Color Cyan
-        $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $notes -Assets $asset_paths
-        if ($create_result.ExitCode -ne 0) {
-            throw "gh release create failed:`n$($create_result.Output)"
-        }
+        Write-Majestic "Creating GitHub release $tag..." -Color Cyan
+        gh release create $tag --repo $repo --title ([string]$channel.title) --notes ([string]$channel.blurb) --latest=false
+        if ($LASTEXITCODE -ne 0) { throw "gh release create $tag failed" }
+        $release_meta = Get-GhReleaseView -Tag $tag -Repo $repo
     } elseif ($release_meta.isImmutable) {
         throw "Release $tag is immutable - delete it on GitHub or use a new tag before re-uploading."
-    } else {
-        Write-Majestic "Release $tag exists - uploading $($assets.Count) asset(s) (clobber)..." -Color Cyan
-        gh release upload $tag --repo $Config.repo --clobber @asset_paths
-        if ($LASTEXITCODE -ne 0) {
-            throw "gh release upload failed"
+    }
+
+    $published = @{}
+    foreach ($a in @($release_meta.assets)) { $published[[string]$a.name] = $a }
+
+    $verifyFiles = @()
+    $toUpload = @()
+    foreach ($a in $assets) {
+        $sha = Get-FileSha256Hex -Path $a.FullName
+        $verifyFiles += [PSCustomObject]@{ name = $a.Name; bytes = [long]$a.Length; sha256 = $sha }
+        $cur = $published[$a.Name]
+        $sameSize = ($null -ne $cur) -and ([long]$cur.size -eq [long]$a.Length)
+        $digestOk = $true
+        if ($null -ne $cur -and $cur.digest) {
+            $digestOk = (([string]$cur.digest).ToLowerInvariant() -eq ('sha256:' + $sha.ToLowerInvariant()))
+        }
+        if ($sameSize -and $digestOk) {
+            Write-Majestic "  already published, skipping upload: $($a.Name)" -Color DarkGray
+        } else {
+            $toUpload += $a.FullName
         }
     }
 
-    Write-Majestic "SHIPPED toolchain - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
+    if ($toUpload.Count -gt 0) {
+        Write-Majestic "Uploading $($toUpload.Count) toolchain asset(s) (clobber)..." -Color Cyan
+        gh release upload $tag --repo $repo --clobber @toUpload
+        if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+    }
+
+    Invoke-ChannelAssetVerify -Tag $tag -Repo $repo -Files $verifyFiles
+
+    $keep = @($verifyFiles | ForEach-Object { $_.name })
+    $view = gh release view $tag --repo $repo --json assets | ConvertFrom-Json
+    foreach ($asset in @($view.assets)) {
+        if ($keep -notcontains $asset.name) {
+            Write-Majestic "  prune $tag/$($asset.name)" -Color DarkGray
+            gh release delete-asset $tag $asset.name --repo $repo --yes | Out-Null
+        }
+    }
+
+    $body = New-ToolchainReleaseBody -Channel $channel -Manifest $manifest
+    $bodyPath = Join-Path $out_root "release-body-$tag.md"
+    if (-not (Test-Path -LiteralPath $out_root)) { New-Item -ItemType Directory -Path $out_root -Force | Out-Null }
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($bodyPath, $body, $utf8NoBom)
+    gh release edit $tag --repo $repo --title ([string]$channel.title) --notes-file $bodyPath --latest=false | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Majestic "  WARN: release body update failed for $tag" -Color Yellow }
+
+    Write-Majestic "SHIPPED toolchain - https://github.com/$repo/releases/tag/$tag" -Color Green
     & (Join-Path $root 'scripts\prune-staging.ps1') -OutRoot $out_root -Root $root
 }
 

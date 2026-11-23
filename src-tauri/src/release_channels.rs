@@ -17,6 +17,8 @@ pub const MANIFEST_ASSET: &str = "channel.json";
 pub const TAG_APP: &str = "app";
 pub const TAG_FULL: &str = "full";
 pub const TAG_ENGINES: &str = "engines";
+pub const TAG_TOOLCHAIN: &str = "toolchain";
+pub const TAG_LINK: &str = "link";
 
 #[derive(Deserialize)]
 struct ChannelsFile {
@@ -35,6 +37,8 @@ pub struct ChannelRow {
     pub version_token: String,
     #[serde(default)]
     pub title: String,
+    #[serde(default)]
+    pub prerelease: bool,
 }
 
 fn channels() -> &'static [ChannelRow] {
@@ -93,9 +97,13 @@ pub struct ProductChannelManifest {
 #[serde(rename_all = "camelCase")]
 pub struct ChannelRelease {
     pub version: String,
+    #[serde(default)]
+    pub build: Option<u64>,
     pub asset: String,
     pub size_bytes: u64,
     pub sha256: String,
+    #[serde(default)]
+    pub published_at: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
 }
@@ -255,7 +263,7 @@ mod tests {
     #[test]
     fn embedded_channel_table_parses() {
         // The packer reads the same file; a typo here must fail the build, not the ship.
-        for expected in ["full", "app", "engines", "toolchain", "link", "link-setup"] {
+        for expected in ["full", "app", "engines", "toolchain", "link"] {
             assert!(has_tag(expected), "missing channel {expected}");
         }
         assert!(!has_tag("v1.1.13"));
@@ -274,10 +282,6 @@ mod tests {
         assert_eq!(
             asset_name("link", "b2047").as_deref(),
             Some("OYM_link_b2047.7z")
-        );
-        assert_eq!(
-            asset_name("link-setup", "0.1.0").as_deref(),
-            Some("OYM_link_SETUP_v0.1.0.exe")
         );
         // Toolchain names come from its manifest, not the channel table.
         assert!(asset_name("toolchain", "4.7").is_none());

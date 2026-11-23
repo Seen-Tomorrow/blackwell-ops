@@ -683,10 +683,9 @@ export default function DistributionDevPanel() {
             {tab === "link" && (
               <div className="space-y-2">
                 <p className="type-label font-mono config-muted leading-relaxed">
-                  OYM-Link is its own product line. It still publishes to its legacy
-                  <span className="font-mono"> link-v* </span>
-                  tag until its client migrates to the <span className="font-mono">link</span> /{" "}
-                  <span className="font-mono">link-setup</span> channels.
+                  OYM-Link (internal alpha) publishes to the prerelease{" "}
+                  <span className="font-mono">link</span> channel via{" "}
+                  <span className="font-mono">channel.json</span>.
                 </p>
                 <div className="flex gap-1.5 flex-wrap">
                   <button

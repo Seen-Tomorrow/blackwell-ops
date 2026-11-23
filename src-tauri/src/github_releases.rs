@@ -28,14 +28,8 @@ pub fn is_core_engine_provider(provider_id: &str) -> bool {
     provider_id == crate::config::DEFAULT_PROVIDER_ID
 }
 
-#[derive(Debug, Clone)]
-pub struct ReleaseAsset {
-    pub name: String,
-    pub download_url: String,
-    pub size: u64,
-    /// `assets[].digest` from the release API — `sha256:<hex>`, or `None` for an asset
-    /// uploaded before GitHub started computing digests.
-    pub digest: Option<String>,
+pub fn channel_asset_url(tag: &str, asset: &str) -> String {
+    format!("https://github.com/{GITHUB_REPO}/releases/download/{tag}/{asset}")
 }
 
 /// A release asset selected for download, flattened out of its release.
@@ -52,12 +46,6 @@ pub struct ResolvedAsset {
     pub digest: Option<String>,
     /// Channel version/build the asset belongs to (app semver, engine build id).
     pub version: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct GitHubRelease {
-    pub tag_name: String,
-    pub assets: Vec<ReleaseAsset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,35 +92,6 @@ fn github_pat_present() -> bool {
         .unwrap_or(false)
 }
 
-fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
-    let tag_name = body.get("tag_name")?.as_str()?.to_string();
-    let assets = body
-        .get("assets")
-        .and_then(|a| a.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|a| {
-                    let name = a.get("name")?.as_str()?.to_string();
-                    let download_url = a.get("browser_download_url")?.as_str()?.to_string();
-                    let size = a.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
-                    let digest = a
-                        .get("digest")
-                        .and_then(|d| d.as_str())
-                        .map(String::from);
-                    Some(ReleaseAsset {
-                        name,
-                        download_url,
-                        size,
-                        digest,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Some(GitHubRelease { tag_name, assets })
-}
-
 // ── Single GitHub REST gateway ─────────────────────────────────────────────
 // Every api.github.com call goes through `github_get_json_cached`: persistent
 // disk cache (survives rebuilds/restarts) + ETag/304 + per-URL single-flight +
@@ -140,17 +99,13 @@ fn parse_release(body: &serde_json::Value) -> Option<GitHubRelease> {
 // sane — the old in-memory-only cache was wiped on every restart, so 100 rebuilds
 // per day re-hit the API 100 times.
 
-/// TTLs per resource class. The releases list is shared by every pack/offering check.
-/// Channel tags change on every ship; 10 min keeps a post-ship refresh snappy while a
-/// background check does not hit the API at poll rate. `force` bypasses it.
-const CHANNEL_TAG_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
-/// `channel.json` content cache. Separate from the tag cache: a manifest can be replaced
-/// (rollback) without the tag/release metadata changing.
+/// `channel.json` content cache. Fetched directly from `releases/download/<tag>/channel.json`
+/// (unauthenticated, zero `api.github.com` rate-limit usage).
 const CHANNEL_MANIFEST_TTL: Duration = Duration::from_secs(5 * 60);
 const LATEST_TAG_CACHE_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 /// `force` re-fetches issued within this window share one round-trip (the Updates tab
-/// fires 3 parallel force calls; without this they'd be 3 separate API hits).
-const FORCE_DEDUP_WINDOW: Duration = Duration::from_secs(60);
+/// fires 3 parallel force calls; without this they'd be 3 separate fetches).
+const FORCE_DEDUP_WINDOW: Duration = Duration::from_secs(10);
 /// Hard hourly cap on real API calls. Background (non-force) fetches serve stale cache
 /// once we're within 2 of the cap; user-initiated force fetches always proceed.
 const BUDGET_MAX_PER_HOUR: usize = 45;
@@ -457,40 +412,26 @@ async fn github_get_json_conditional(
     }
 }
 
-/// One release by tag. Channel tags are rolling, so the response is cached briefly.
-pub async fn fetch_release_by_tag(tag: &str) -> Result<GitHubRelease, String> {
-    fetch_release_by_tag_ex(tag, false).await
-}
-
-pub async fn fetch_release_by_tag_ex(tag: &str, force: bool) -> Result<GitHubRelease, String> {
-    let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/tags/{tag}");
-    let body = github_get_json_cached(&url, CHANNEL_TAG_CACHE_TTL, force).await?;
-    parse_release(&body).ok_or_else(|| format!("Invalid release payload for tag '{tag}'"))
-}
-
 /// Fetch and parse `<tag>/channel.json` — the only way the client learns about artifacts.
+/// Uses direct `releases/download/<tag>/channel.json` (zero `api.github.com` calls).
 async fn fetch_channel_manifest_value(
     tag: &str,
     force: bool,
-) -> Result<(GitHubRelease, serde_json::Value), String> {
+) -> Result<serde_json::Value, String> {
     if !crate::release_channels::has_tag(tag) {
         return Err(format!(
             "'{tag}' is not a release channel — see src-tauri/release-channels.json"
         ));
     }
-    let release = fetch_release_by_tag_ex(tag, force).await?;
-    let asset = find_asset_by_name(&release, MANIFEST_ASSET).ok_or_else(|| {
-        format!("Channel '{tag}' has no {MANIFEST_ASSET} — publish it with the release tool")
-    })?;
-    let body = fetch_asset_json(&asset.download_url, force).await?;
-    Ok((release, body))
+    let url = channel_asset_url(tag, MANIFEST_ASSET);
+    fetch_asset_json(&url, force).await
 }
 
 pub async fn fetch_product_manifest(
     tag: &str,
     force: bool,
 ) -> Result<ProductChannelManifest, String> {
-    let (_release, body) = fetch_channel_manifest_value(tag, force).await?;
+    let body = fetch_channel_manifest_value(tag, force).await?;
     let manifest: ProductChannelManifest = serde_json::from_value(body)
         .map_err(|e| format!("Channel '{tag}': invalid {MANIFEST_ASSET}: {e}"))?;
     manifest.validate(tag)?;
@@ -498,7 +439,7 @@ pub async fn fetch_product_manifest(
 }
 
 pub async fn fetch_engine_manifest(force: bool) -> Result<EngineChannelManifest, String> {
-    let (_release, body) = fetch_channel_manifest_value(TAG_ENGINES, force).await?;
+    let body = fetch_channel_manifest_value(TAG_ENGINES, force).await?;
     let manifest: EngineChannelManifest = serde_json::from_value(body)
         .map_err(|e| format!("Channel '{TAG_ENGINES}': invalid {MANIFEST_ASSET}: {e}"))?;
     manifest.validate(TAG_ENGINES)?;
@@ -506,8 +447,8 @@ pub async fn fetch_engine_manifest(force: bool) -> Result<EngineChannelManifest,
 }
 
 /// Fetch a release-asset JSON. Deliberately unauthenticated: release downloads redirect to a
-/// signed object URL, and an Authorization header there is rejected. Disk-cached; `force`
-/// bypasses the TTL.
+/// signed object URL, and an Authorization header there is rejected. Disk-cached + single-flight
+/// + failure cooldown; `force` bypasses the TTL (with a short dedup window).
 async fn fetch_asset_json(url: &str, force: bool) -> Result<serde_json::Value, String> {
     if !force {
         if let Some(entry) = read_github_cache(url) {
@@ -516,16 +457,94 @@ async fn fetch_asset_json(url: &str, force: bool) -> Result<serde_json::Value, S
             }
         }
     }
-    let resp = GITHUB_CLIENT
-        .get(url)
-        .header("User-Agent", "Blackwell-Ops")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to download {url}: {e}"))?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(format!("Download returned {status} for {url}"));
+    {
+        let g = GATEWAY_MEM.lock();
+        if let Some((at, body)) = g.recent.get(url) {
+            if at.elapsed() < FORCE_DEDUP_WINDOW {
+                return Ok(body.clone());
+            }
+        }
     }
+    let lock = {
+        let mut g = GATEWAY_MEM.lock();
+        g.locks
+            .entry(url.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    };
+    let _guard = lock.lock().await;
+
+    if !force {
+        if let Some(entry) = read_github_cache(url) {
+            if cache_age(&entry) < CHANNEL_MANIFEST_TTL {
+                return Ok(entry.body);
+            }
+        }
+    }
+    if let Some((at, body)) = GATEWAY_MEM.lock().recent.get(url) {
+        if at.elapsed() < FORCE_DEDUP_WINDOW {
+            return Ok(body.clone());
+        }
+    }
+    {
+        let g = GATEWAY_MEM.lock();
+        if let Some((at, cooldown, msg)) = g.failures.get(url) {
+            if at.elapsed() < *cooldown {
+                if let Some(e) = read_github_cache(url) {
+                    return Ok(e.body);
+                }
+                return Err(format!("{msg} (retry later)"));
+            }
+        }
+    }
+
+    let prior = read_github_cache(url);
+    let mut req = GITHUB_CLIENT.get(url).header("User-Agent", "Blackwell-Ops");
+    if let Some(tag) = prior.as_ref().and_then(|e| e.etag.as_deref()) {
+        req = req.header("If-None-Match", tag);
+    }
+
+    let resp = match req.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = format!("Failed to download {url}: {e}");
+            GATEWAY_MEM
+                .lock()
+                .failures
+                .insert(url.to_string(), (Instant::now(), FAILURE_BACKOFF, msg.clone()));
+            if let Some(entry) = prior {
+                return Ok(entry.body);
+            }
+            return Err(msg);
+        }
+    };
+    let status = resp.status();
+    if status.as_u16() == 304 {
+        if let Some(mut entry) = prior {
+            entry.fetched_at = now_unix_secs();
+            write_github_cache(url, &entry);
+            let mut g = GATEWAY_MEM.lock();
+            g.failures.remove(url);
+            g.recent.insert(url.to_string(), (Instant::now(), entry.body.clone()));
+            return Ok(entry.body);
+        }
+    }
+    if !status.is_success() {
+        let msg = format!("Download returned {status} for {url}");
+        GATEWAY_MEM
+            .lock()
+            .failures
+            .insert(url.to_string(), (Instant::now(), FAILURE_BACKOFF, msg.clone()));
+        if let Some(entry) = prior {
+            return Ok(entry.body);
+        }
+        return Err(msg);
+    }
+    let new_etag = resp
+        .headers()
+        .get("ETag")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
     let body: serde_json::Value = resp
         .json()
         .await
@@ -534,10 +553,15 @@ async fn fetch_asset_json(url: &str, force: bool) -> Result<serde_json::Value, S
         url,
         &GitHubCacheEntry {
             fetched_at: now_unix_secs(),
-            etag: None,
+            etag: new_etag,
             body: body.clone(),
         },
     );
+    {
+        let mut g = GATEWAY_MEM.lock();
+        g.failures.remove(url);
+        g.recent.insert(url.to_string(), (Instant::now(), body.clone()));
+    }
     Ok(body)
 }
 
@@ -603,14 +627,6 @@ pub async fn fetch_repo_latest_release(repo: &str) -> Result<RepoReleaseNotes, S
         body: release_body,
         published_at,
     })
-}
-
-pub fn find_asset_by_name(release: &GitHubRelease, name: &str) -> Option<ReleaseAsset> {
-    release
-        .assets
-        .iter()
-        .find(|a| a.name == name)
-        .cloned()
 }
 
 /// Compare dotted numeric versions (handles patch 10+).
@@ -748,19 +764,12 @@ pub async fn resolve_installer_asset_for_version(
     let tag = channel_tag_for(channel)?;
     let manifest = fetch_product_manifest(tag, false).await?;
     let latest = &manifest.latest;
-    let release = fetch_release_by_tag(tag).await?;
-    let asset = find_asset_by_name(&release, &latest.asset).ok_or_else(|| {
-        format!(
-            "Channel '{tag}' lists '{}' but the release has no such asset",
-            latest.asset
-        )
-    })?;
 
     Ok(ResolvedAsset {
-        download_url: asset.download_url,
-        name: asset.name,
+        download_url: channel_asset_url(tag, &latest.asset),
+        name: latest.asset.clone(),
         release_tag: tag.to_string(),
-        size: asset.size.max(latest.size_bytes),
+        size: latest.size_bytes,
         digest: Some(latest.sha256.clone()),
         version: Some(latest.version.clone()),
     })
@@ -776,22 +785,7 @@ pub async fn resolve_provider_pack_asset(
     provider_id: &str,
     profile: &str,
 ) -> Result<ResolvedAsset, String> {
-    let release = match fetch_release_by_tag(TAG_ENGINES).await {
-        Ok(r) => Some(r),
-        Err(e) => {
-            log::warn!("[engine-pack] '{TAG_ENGINES}' release unavailable: {e}");
-            None
-        }
-    };
-    let manifest = match fetch_engine_manifest(false).await {
-        Ok(m) => Some(m),
-        Err(e) => {
-            log::warn!("[engine-pack] '{TAG_ENGINES}' manifest unavailable: {e}");
-            None
-        }
-    };
-
-    if let (Some(manifest), Some(release)) = (manifest.as_ref(), release.as_ref()) {
+    if let Ok(manifest) = fetch_engine_manifest(false).await {
         let entry = manifest.entry(provider_id, profile).ok_or_else(|| {
             format!(
                 "Engine {provider_id}/{profile} is not published on the '{TAG_ENGINES}' channel."
@@ -808,17 +802,11 @@ pub async fn resolve_provider_pack_asset(
                 );
             }
         }
-        let asset = find_asset_by_name(release, &entry.asset).ok_or_else(|| {
-            format!(
-                "Channel '{TAG_ENGINES}' lists '{}' but the release has no such asset",
-                entry.asset
-            )
-        })?;
         return Ok(ResolvedAsset {
-            download_url: asset.download_url,
-            name: asset.name,
+            download_url: channel_asset_url(TAG_ENGINES, &entry.asset),
+            name: entry.asset.clone(),
             release_tag: TAG_ENGINES.to_string(),
-            size: asset.size.max(entry.size_bytes),
+            size: entry.size_bytes,
             digest: Some(entry.sha256.clone()),
             version: Some(entry.build.clone()),
         });
@@ -831,26 +819,17 @@ pub async fn resolve_provider_pack_asset(
              build pins no pack for it."
         )
     })?;
-    let release = release.ok_or_else(|| {
-        format!("Engine {provider_id}/{profile}: the '{TAG_ENGINES}' release is unavailable")
-    })?;
     log::info!(
         "[engine-pack] fallback to build-time pin {} ({}) for {provider_id}/{profile}",
         def.asset,
         def.label
     );
-    let asset = find_asset_by_name(&release, &def.asset).ok_or_else(|| {
-        format!(
-            "Engine pack '{}' for {provider_id}/{profile} is no longer published",
-            def.asset
-        )
-    })?;
 
     Ok(ResolvedAsset {
-        download_url: asset.download_url,
-        name: asset.name,
+        download_url: channel_asset_url(TAG_ENGINES, &def.asset),
+        name: def.asset.clone(),
         release_tag: TAG_ENGINES.to_string(),
-        size: asset.size.max(def.size_bytes),
+        size: def.size_bytes,
         digest: Some(def.sha256.clone()),
         version: Some(def.build.clone()),
     })
@@ -1382,31 +1361,11 @@ mod tests {
     }
 
     #[test]
-    fn channel_manifest_must_name_a_real_asset() {
-        let empty = empty_offering(CHANNEL_APP_ONLY);
-        assert!(!empty.available);
-        assert!(empty.version.is_empty());
-
-        let manifest = fetch_manifest_fixture();
-        let release = GitHubRelease {
-            tag_name: TAG_APP.into(),
-            assets: vec![],
-        };
-        assert!(find_asset_by_name(&release, &manifest.latest.asset).is_none());
-    }
-
-    fn fetch_manifest_fixture() -> ProductChannelManifest {
-        serde_json::from_value(serde_json::json!({
-            "schemaVersion": 1,
-            "channel": "app",
-            "latest": {
-                "version": "1.1.13",
-                "asset": "APP_UPDATE_Blackwell-Ops-v1.1.13.7z",
-                "sizeBytes": 1024,
-                "sha256": "d".repeat(64)
-            }
-        }))
-        .unwrap()
+    fn channel_asset_url_is_deterministic() {
+        assert_eq!(
+            channel_asset_url("full", "FULL_SETUP_Blackwell-Ops-v1.1.23.exe"),
+            "https://github.com/Seen-Tomorrow/blackwell-ops/releases/download/full/FULL_SETUP_Blackwell-Ops-v1.1.23.exe"
+        );
     }
 
     #[test]

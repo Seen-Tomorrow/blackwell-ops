@@ -75,7 +75,7 @@ def run_powershell_script(script: Path, *extra_args: str) -> int:
         return 1
 
     args = [
-        "powershell",
+        "pwsh",
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -99,7 +99,7 @@ def run_majestic(mode: str, *, variant: str = "full", dry_run: bool = False) -> 
         return 1
 
     args = [
-        "powershell",
+        "pwsh",
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",

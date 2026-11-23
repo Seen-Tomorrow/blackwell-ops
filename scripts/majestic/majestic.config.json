@@ -4,8 +4,8 @@
   "ship": {
     "pushTag": false,
     "pushCommit": false,
-    "releaseNotes": "### Blackwell Ops release\n\nAssets are published to rolling channels (`app`, `full`, `engines`, `toolchain`); each channel carries a `channel.json` manifest that the app reads. See `docs/RELEASE-CHANNELS.md`.",
-    "appOnlyReleaseNotes": "### App update\n\nLean portable pack (~6 MB): UI, factory templates, plugin catalog, Foundry vendor patches, bundled 7z.\n\nKeeps engines, engine packs and toolchains under the app root untouched.\n\n**How to apply:** in-app UPDATE menu (download, extract, restart).\n\n**First install?** Use a FULL setup.",
-    "fullBundleReleaseNotes": "### Full install\n\nApp plus the EDGE engine seed — no STABLE, no toolchain.\n\nThe setup wizard downloads the CUDA runtime for the seeded profile on first run; STABLE and the Foundry build tools are optional downloads from CONFIG -> UPDATES.\n\nThe same release attaches the App update and both engine packs."
+    "releaseNotes": "Published via rolling release channels (`full`, `app`, `engines`, `toolchain`). See `docs/RELEASE-CHANNELS.md`.",
+    "appOnlyReleaseNotes": "Lean portable update (~7 MB): app executable, factory templates, plugin catalog, Foundry vendor patches, bundled 7z, and pi-subagents extension. Keeps installed engines and toolchains untouched.",
+    "fullBundleReleaseNotes": "Includes Blackwell Ops plus the EDGE engine seed. First run pulls the matching CUDA runtime automatically; STABLE and Foundry build tools are optional 1-click downloads in CONFIG -> UPDATES."
   }
 }

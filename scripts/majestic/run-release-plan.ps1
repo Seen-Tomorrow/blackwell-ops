@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # Plan-driven release runner (docs/DISTRIBUTION-PANEL.md §7).
 #
 # DISTRIBUTION writes `.majestic-out/release-plan.json` and spawns this windowless with
@@ -25,6 +25,13 @@ $majestic = Join-Path $script_dir 'majestic.ps1'
 $engine_packer = Join-Path $root 'scripts\pack-provider-runtime.ps1'
 $toolchain_builder = Join-Path $root 'scripts\build-foundry-toolchain.ps1'
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+$OutputEncoding = $utf8NoBom
+try { [Console]::OutputEncoding = $utf8NoBom } catch { }
+try { [Console]::InputEncoding = $utf8NoBom } catch { }
+$env:NO_COLOR = '1'
+$env:FORCE_COLOR = '0'
+$env:CARGO_TERM_COLOR = 'never'
+$env:TERM = 'dumb'
 
 # Strip DEV/tauri pollution inherited from the running app: pack must use tauri.conf.json only.
 foreach ($name in @(
@@ -42,7 +49,8 @@ $env:NODE_ENV = 'production'
 function Write-JobLog {
     param([string]$Line)
     $ts = (Get-Date).ToUniversalTime().ToString('o')
-    $text = "[$ts] $Line"
+    $clean = $Line -replace "`e\[[0-9;?]*[ -/]*[@-~]", ""
+    $text = "[$ts] $clean"
     try {
         [System.IO.File]::AppendAllText($log_path, $text + [Environment]::NewLine, $utf8NoBom)
     } catch {
@@ -117,6 +125,9 @@ function Invoke-Majestic {
 
     $call = @{} + $Params
     $call['Force'] = $true
+    if ($script:dry_run) {
+        $call['DryRun'] = $true
+    }
 
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -143,7 +154,10 @@ function Invoke-Majestic {
 function Get-ShipParams {
     param([string]$Channel)
     $params = @{ Mode = 'ship'; Channels = $Channel }
-    if ($script:gate_done) {
+    if ($script:allow_repair) {
+        $params.AllowRepair = $true
+    }
+    if ($script:dry_run -or $script:gate_done) {
         $params.SkipTests = $true
     } else {
         $script:gate_done = $true
@@ -170,6 +184,10 @@ function Invoke-PlanStep {
         '^pack:engine:([^:]+):(.+)$' {
             $provider = $Matches[1]
             $profile = $Matches[2]
+            if ($script:dry_run) {
+                Write-JobLog "[dry-run] would run pack-provider-runtime.ps1 $provider/$profile"
+                return
+            }
             Write-JobLog "RUN pack-provider-runtime.ps1 $provider/$profile"
             $prev = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
@@ -189,6 +207,10 @@ function Invoke-PlanStep {
             return
         }
         '^pack:toolchain$' {
+            if ($script:dry_run) {
+                Write-JobLog "[dry-run] would run build-foundry-toolchain.ps1"
+                return
+            }
             Write-JobLog "RUN build-foundry-toolchain.ps1"
             $prev = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
@@ -275,6 +297,8 @@ $plan_doc = Get-Content -LiteralPath $PlanFile -Raw -Encoding UTF8 | ConvertFrom
 $script:plan_id = [string]$plan_doc.id
 $script:plan_summary = [string]$plan_doc.summary
 $script:started_at = (Get-Date).ToUniversalTime().ToString('o')
+$script:dry_run = [bool]($plan_doc.plan -and $plan_doc.plan.dryRun)
+$script:allow_repair = [bool]($plan_doc.plan -and $plan_doc.plan.allowRepair)
 $steps = @($plan_doc.steps)
 $script:step_state = @($steps | ForEach-Object {
         [ordered]@{ id = [string]$_.id; label = [string]$_.label; state = 'pending' }

@@ -1561,33 +1561,24 @@ fn promote_archive_to_cache(archive_path: &std::path::Path, archive_name: &str) 
     }
 }
 
-/// Resolve GitHub release asset URL, byte size and published digest for a toolchain pack.
+/// Resolve GitHub release asset URL, byte size and pinned digest for a toolchain pack.
 pub async fn fetch_toolchain_asset(
     pack: &str,
 ) -> Result<crate::github_releases::ResolvedAsset, String> {
     let pack_key = pack.trim().to_lowercase();
-    let archive_name = pack_archive_name(&pack_key)?;
-    let release = crate::github_releases::fetch_release_by_tag(TOOLCHAIN_RELEASE_TAG)
-        .await
-        .map_err(|e| {
-            format!(
-                "GitHub release '{}' not found. Upload toolchain assets first. ({e})",
-                TOOLCHAIN_RELEASE_TAG
-            )
-        })?;
-    let asset = crate::github_releases::find_asset_by_name(&release, &archive_name)
-        .ok_or_else(|| {
-            format!(
-                "Asset '{}' not found on release '{}'.",
-                archive_name, TOOLCHAIN_RELEASE_TAG
-            )
-        })?;
+    let def = pack_def(&pack_key)?;
+    if def.sha256.trim().is_empty() {
+        return Err(format!(
+            "Toolchain pack '{}' has no pinned sha256 in toolchain/manifest.json.",
+            def.id
+        ));
+    }
     Ok(crate::github_releases::ResolvedAsset {
-        download_url: asset.download_url,
-        name: asset.name,
-        release_tag: release.tag_name,
-        size: asset.size,
-        digest: asset.digest,
+        download_url: crate::github_releases::channel_asset_url(TOOLCHAIN_RELEASE_TAG, &def.asset),
+        name: def.asset.clone(),
+        release_tag: TOOLCHAIN_RELEASE_TAG.to_string(),
+        size: def.size_bytes,
+        digest: Some(def.sha256.clone()),
         version: None,
     })
 }

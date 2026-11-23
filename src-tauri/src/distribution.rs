@@ -403,7 +403,7 @@ async fn build_distribution_state(
     app_handle: &tauri::AppHandle,
     force: bool,
 ) -> Result<DistributionState, String> {
-    use crate::release_channels::{asset_name, TAG_APP, TAG_FULL};
+    use crate::release_channels::{asset_name, TAG_APP, TAG_FULL, TAG_LINK};
 
     let app_version = repo_app_version()
         .unwrap_or_else(|| app_handle.package_info().version.to_string());
@@ -411,6 +411,7 @@ async fn build_distribution_state(
     let app_manifest = crate::github_releases::fetch_product_manifest(TAG_APP, force).await;
     let full_manifest = crate::github_releases::fetch_product_manifest(TAG_FULL, force).await;
     let engine_manifest = crate::github_releases::fetch_engine_manifest(force).await;
+    let link_manifest = crate::github_releases::fetch_product_manifest(TAG_LINK, force).await;
     let policy = load_policy().unwrap_or_default();
 
     let mut artifacts = Vec::new();
@@ -424,13 +425,15 @@ async fn build_distribution_state(
         let pub_version = published.map(|l| l.version.clone()).unwrap_or_default();
 
         let (staged, bytes, sha) = read_staged(&dir, &name, pub_size, &pub_sha);
-        let mut state = if staged { "packed" } else { "absent" };
-        if staged && !pub_sha.is_empty() && sha.eq_ignore_ascii_case(&pub_sha) {
-            state = "published";
-        }
-        if !staged && !pub_version.is_empty() {
-            state = "published";
-        }
+        let state = if staged && !pub_sha.is_empty() && sha.eq_ignore_ascii_case(&pub_sha) {
+            "published"
+        } else if !staged && !pub_version.is_empty() && pub_version == app_version {
+            "published"
+        } else if staged {
+            "needs-ship"
+        } else {
+            "needs-pack"
+        };
 
         let mut notes = Vec::new();
         if !pub_version.is_empty() && !crate::github_releases::version_gt(&app_version, &pub_version) {
@@ -599,6 +602,16 @@ async fn build_distribution_state(
                 latest_build: first.build.clone(),
             });
         }
+    }
+    if let Ok(m) = &link_manifest {
+        channels.push(ChannelStatus {
+            tag: TAG_LINK.into(),
+            title: crate::release_channels::channel(TAG_LINK)
+                .map(|c| c.title.clone())
+                .unwrap_or_else(|| "link".to_string()),
+            latest_version: m.latest.version.clone(),
+            latest_build: m.latest.build.map(|b| format!("b{b}")).unwrap_or_default(),
+        });
     }
 
     Ok(DistributionState {

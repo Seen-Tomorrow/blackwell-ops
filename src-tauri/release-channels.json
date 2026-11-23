@@ -7,11 +7,12 @@
       "product": "Blackwell-Ops",
       "kind": "installer",
       "versionToken": "semver",
-      "retention": 10,
+      "retention": 1,
       "retentionUnit": "version",
       "latest": true,
-      "title": "Blackwell Ops - FULL installers",
-      "blurb": "First install and repair. App plus the EDGE engine seed; the setup wizard pulls the CUDA runtime."
+      "prerelease": false,
+      "title": "Blackwell Ops",
+      "blurb": "First-time Windows installer (x64, NVIDIA CUDA). Includes the app and EDGE engine — the setup wizard pulls the CUDA runtime automatically. All future app updates, engine packs, and toolchains install in 1 click inside the app."
     },
     {
       "tag": "app",
@@ -22,8 +23,9 @@
       "retention": 10,
       "retentionUnit": "version",
       "latest": false,
-      "title": "Blackwell Ops - APP updates",
-      "blurb": "Lean portable update (UI, templates, foundry patches). Keeps your engines."
+      "prerelease": false,
+      "title": "Blackwell Ops — App Updates (in-app)",
+      "blurb": "In-app update channel — downloaded automatically by Blackwell Ops (1-click in-app update). First-time users: download the Latest installer instead."
     },
     {
       "tag": "engines",
@@ -31,11 +33,12 @@
       "product": "ggml-master",
       "kind": "archive",
       "versionToken": "build",
-      "retention": 10,
+      "retention": 5,
       "retentionUnit": "build",
       "latest": false,
-      "title": "Blackwell Ops - ENGINE packs",
-      "blurb": "Per engine/profile CUDA packs, published independently of the app. `channel.json` pins each asset's digest."
+      "prerelease": false,
+      "title": "Blackwell Ops — Engine Packs (in-app)",
+      "blurb": "In-app engine pack channel (per provider/profile CUDA builds). Downloaded automatically by Blackwell Ops — manual download is not needed."
     },
     {
       "tag": "toolchain",
@@ -46,8 +49,9 @@
       "retention": 10,
       "retentionUnit": "version",
       "latest": false,
-      "title": "Toolchain packs",
-      "blurb": "CUDA runtimes and Foundry build tools, resolved by name from the embedded manifest."
+      "prerelease": false,
+      "title": "Blackwell Ops — Toolchain Packs (in-app)",
+      "blurb": "In-app CUDA runtimes and Foundry build tools. Downloaded automatically by the setup wizard and Foundry — manual download is not needed."
     },
     {
       "tag": "link",
@@ -55,23 +59,12 @@
       "product": "",
       "kind": "archive",
       "versionToken": "build",
-      "retention": 10,
+      "retention": 5,
       "retentionUnit": "build",
       "latest": false,
-      "title": "OYM-Link - updates",
-      "blurb": "Remote client updates. Own version line, independent of Blackwell Ops."
-    },
-    {
-      "tag": "link-setup",
-      "assetClass": "OYM_link_SETUP",
-      "product": "",
-      "kind": "installer",
-      "versionToken": "semver",
-      "retention": 10,
-      "retentionUnit": "version",
-      "latest": false,
-      "title": "OYM-Link - installers",
-      "blurb": "Remote client first install."
+      "prerelease": true,
+      "title": "OYM Link (internal alpha)",
+      "blurb": "Internal alpha remote servicing client — self-updates automatically via channel.json. Not a public Blackwell Ops download."
     }
   ]
 }

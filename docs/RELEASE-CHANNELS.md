@@ -33,12 +33,11 @@ Rules that follow:
 
 | Tag | Class prefix | Example asset | Version unit | Retention | Latest badge |
 |---|---|---|---|---|---|
-| `full` | `FULL_SETUP_` | `FULL_SETUP_Blackwell-Ops-v1.1.13.exe` | semver | 10 | **yes** |
+| `full` | `FULL_SETUP_` | `FULL_SETUP_Blackwell-Ops-v1.1.13.exe` | semver | 1 | **yes** |
 | `app` | `APP_UPDATE_` | `APP_UPDATE_Blackwell-Ops-v1.1.13.7z` | semver | 10 | no |
-| `engines` | `ENGINE_` | `ENGINE_ggml-master-edge-0.8.0-dev-b12017-5047748f.7z` | build id | 10 builds (20 files) | no |
+| `engines` | `ENGINE_` | `ENGINE_ggml-master-edge-0.8.0-dev-b12017-5047748f.7z` | build id | 5 per profile | no |
 | `toolchain` | *(existing names)* | `toolchain-rt-13.4-v4.7.7z` | manifest version | 10 sets | no |
-| `link` | `OYM_link_` | `OYM_link_b2047.7z` | build integer | 10 | no |
-| `link-setup` | `OYM_link_SETUP_` | `OYM_link_SETUP_v0.1.0.exe` | semver | 10 | no |
+| `link` | `OYM_link_` | `OYM_link_b2047.7z` | build integer | 5 | no (Pre-release) |
 
 `full` is the only release marked **Latest**, so `…/releases/latest` is the installer page
 the website links to. Everything else is `--latest=false`.

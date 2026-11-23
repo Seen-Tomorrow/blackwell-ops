@@ -431,13 +431,19 @@ async fn queue_missing_runtime_pack(
     provider_id: &str,
     profile: &str,
 ) {
-    let Some(pack) = crate::engine_packs::engine_pack(provider_id, profile) else {
+    let cuda = match crate::github_releases::fetch_engine_manifest(false).await {
+        Ok(m) => m.entry(provider_id, profile).map(|e| e.cuda.clone()),
+        Err(_) => None,
+    }
+    .or_else(|| crate::engine_packs::engine_pack(provider_id, profile).map(|p| p.cuda.clone()));
+
+    let Some(cuda) = cuda else {
         return;
     };
-    if crate::foundry_toolchain::cuda_runtime_ready_for_version(&pack.cuda) {
+    if crate::foundry_toolchain::cuda_runtime_ready_for_version(&cuda) {
         return;
     }
-    let runtime = format!("runtime-{}", pack.cuda);
+    let runtime = format!("runtime-{cuda}");
     if crate::foundry_toolchain::pack_def(&runtime).is_err() {
         log::warn!("[binary-update] no runtime pack '{runtime}' for {provider_id}/{profile}");
         return;

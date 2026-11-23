@@ -96,15 +96,15 @@ keep working and simply never see a half-published version.
 | `FULL_SETUP_Blackwell-Ops-vX.Y.Z.exe` | `full` | first install: app + **EDGE seed** (~140 MB compressed) |
 | `ENGINE_ggml-master-{edge,stable}-{llamaVersion}-{build}.7z` | `engines` | engine packs, CRT included, digest-pinned by the channel manifest; independent of app builds |
 | `toolchain-rt-{13.4,12.9}-v4.7z`, `toolchain-build-v4.7z` | `toolchain` | split toolchain packs |
-| `LINK_OYM-Link-{build}.7z` | `link` (pending client migration) | remote client update |
+| `OYM_link_b{build}.7z` | `link` (Pre-release) | remote client update |
 
 Nothing is picked by filename — the app reads `channel.json`.
 
 ## Channels are not versions
 
-- Channel tags (`app`, `full`, `engines`, `toolchain`, `link`, `link-setup`) never move and never
+- Channel tags (`app`, `full`, `engines`, `toolchain`, `link`) never move and never
   carry a version. The **git tag** `vX.Y.Z` is the provenance record.
-- Retention is 10 per channel, pruned on every ship and derived from the manifest's retained list.
+- Retention: `full` = 1, `app` = 10, `engines` = 5 per profile, `link` = 5, pruned on every ship and derived from the manifest's retained list.
 - Rollback is a metadata edit: point `channel.json`'s `latest` at the previous entry and upload only
   that file. No asset moves, no re-tag.
 - Versions are never reused; `ship` can publish a version that already exists only as a repair.
