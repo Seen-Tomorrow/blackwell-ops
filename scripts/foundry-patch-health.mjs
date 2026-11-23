@@ -2,8 +2,8 @@
 /**
  * Foundry vendor-patch health.
  *
- * The two SSE patches are product-critical (fusion runs stream-only when they are present and
- * silently falls back to polling when they are not). Upstream moves; this script makes that
+ * The SSE telemetry patch is product-critical (fusion runs stream-only when it is present and
+ * silently falls back to polling when it is not). Upstream moves; this script makes that
  * visible before a build instead of after a ghost hunt.
  *
  * Each patch is checked in a throwaway git worktree at origin/master, applied in filename order,
@@ -41,7 +41,6 @@ const engines = [
 
 const markers = new Map([
   ["telemetry-sse", "/events/sse"],
-  ["single-model-load-sse", "handle_single_model_load_sse"],
 ]);
 
 function gitOk(cwd, args) {

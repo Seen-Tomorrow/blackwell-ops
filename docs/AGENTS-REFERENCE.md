@@ -436,11 +436,11 @@ config each carried one, which is how a dead `-DGGML_AVX512=ON` stayed visible i
 backend had moved on.
 
 **Vendor patches track upstream HEAD.** Check origin for the feature before adding or rebasing
-a patch — upstream may already provide it (it has the router `/models/sse`; the single-model
-`/models/sse` and `/events/sse` are ours). After a server entrypoint refactor, re-port
-`ggml-master-single-model-load-sse.patch` + `ggml-master-telemetry-sse.patch` onto the new
-`server_register_routes` / `server_run_instance` hooks; filename order matters (load-sse first —
-the telemetry HTTP hunk builds on it). The obsolete `cuda-graph-instance` patch is gone: upstream
+a patch — upstream may already provide it (upstream PR #32398 added single-model `/models/sse`, so
+`ggml-master-single-model-load-sse.patch` is retired; `/events/sse` via `telemetry-sse` and
+`/memory` via `memory-endpoint` + `memory-ledger` are ours). After a server entrypoint refactor,
+re-port `ggml-master-telemetry-sse.patch` onto the new `server_register_routes` /
+`middleware_server_state` hooks. The obsolete `cuda-graph-instance` patch is gone: upstream
 #30804 replaced `graph->instance` with the `instances` vector and carries the fix.
 
 `npm run check:patches` checks each vendor patch in a throwaway `origin/master` worktree

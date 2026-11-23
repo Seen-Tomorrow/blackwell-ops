@@ -380,6 +380,85 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
     log::info!("[setup] Portable structure ready at {}", root.display());
 }
 
+/// Sync `*.patch` files from `sources` (first-hit wins per filename) into `dest`,
+/// pruning any stale `*.patch` files in `dest` that are no longer in `sources`.
+///
+/// Sources that resolve to `dest` itself are skipped (on Windows REL, `BaseDirectory::Resource`
+/// resolves to `app_root`, so `res == dest`). Returns `(copied, removed)`.
+pub fn sync_foundry_patches_from_sources(
+    dest: &std::path::Path,
+    sources: &[PathBuf],
+) -> Result<(usize, usize), String> {
+    use std::collections::BTreeMap;
+
+    std::fs::create_dir_all(dest).map_err(|e| format!("create foundry/patches: {e}"))?;
+    let dest_canon = std::fs::canonicalize(dest).unwrap_or_else(|_| dest.to_path_buf());
+
+    let mut desired: BTreeMap<std::ffi::OsString, PathBuf> = BTreeMap::new();
+    for src_dir in sources {
+        let src_canon = std::fs::canonicalize(src_dir).unwrap_or_else(|_| src_dir.clone());
+        if src_canon == dest_canon {
+            continue;
+        }
+        let Ok(rd) = std::fs::read_dir(src_dir) else {
+            continue;
+        };
+        for ent in rd.flatten() {
+            let path = ent.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("patch") {
+                continue;
+            }
+            let Some(name) = path.file_name() else { continue };
+            desired.entry(name.to_os_string()).or_insert(path);
+        }
+    }
+
+    if desired.is_empty() {
+        return Ok((0, 0));
+    }
+
+    let mut copied = 0usize;
+    for (name, path) in &desired {
+        let dest_file = dest.join(name);
+        let should_copy = match (std::fs::metadata(path), std::fs::metadata(&dest_file)) {
+            (Ok(src_meta), Ok(dst_meta)) => {
+                src_meta.len() != dst_meta.len()
+                    || src_meta
+                        .modified()
+                        .ok()
+                        .zip(dst_meta.modified().ok())
+                        .map(|(s, d)| s > d)
+                        .unwrap_or(true)
+            }
+            (Ok(_), Err(_)) => true,
+            _ => false,
+        };
+        if should_copy {
+            std::fs::copy(path, &dest_file)
+                .map_err(|e| format!("copy {} → foundry/patches: {e}", path.display()))?;
+            copied += 1;
+        }
+    }
+
+    let mut removed = 0usize;
+    if let Ok(rd) = std::fs::read_dir(dest) {
+        for ent in rd.flatten() {
+            let path = ent.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("patch") {
+                continue;
+            }
+            let Some(name) = path.file_name() else { continue };
+            if !desired.contains_key(name) {
+                std::fs::remove_file(&path)
+                    .map_err(|e| format!("remove retired patch {}: {e}", path.display()))?;
+                removed += 1;
+            }
+        }
+    }
+
+    Ok((copied, removed))
+}
+
 /// Ensure product Foundry vendor patches exist under `app_root/foundry/patches`.
 ///
 /// Sources (first hit wins per file name, later sources fill gaps):
@@ -387,10 +466,9 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
 /// 2. Repo `foundry/patches/` when running from `target/debug|release` (DEV)
 ///
 /// Existing app-root patches are overwritten when the source file is newer or
-/// dest is missing — keeps the single-model SSE patch from rotting after pull.
+/// dest is missing, and retired `.patch` files absent from all sources are pruned.
 pub fn ensure_foundry_patches_materialized(app_handle: &tauri::AppHandle) -> Result<(), String> {
     let dest = foundry_patches_dir();
-    std::fs::create_dir_all(&dest).map_err(|e| format!("create foundry/patches: {e}"))?;
 
     let mut sources: Vec<PathBuf> = Vec::new();
     if let Ok(res) = app_handle
@@ -411,46 +489,10 @@ pub fn ensure_foundry_patches_materialized(app_handle: &tauri::AppHandle) -> Res
         }
     }
 
-    if sources.is_empty() {
-        return Ok(());
-    }
-
-    let mut copied = 0usize;
-    for src_dir in sources {
-        let rd = match std::fs::read_dir(&src_dir) {
-            Ok(rd) => rd,
-            Err(_) => continue,
-        };
-        for ent in rd.flatten() {
-            let path = ent.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("patch") {
-                continue;
-            }
-            let Some(name) = path.file_name() else { continue };
-            let dest_file = dest.join(name);
-            let should_copy = match (std::fs::metadata(&path), std::fs::metadata(&dest_file)) {
-                (Ok(src_meta), Ok(dst_meta)) => {
-                    src_meta.len() != dst_meta.len()
-                        || src_meta
-                            .modified()
-                            .ok()
-                            .zip(dst_meta.modified().ok())
-                            .map(|(s, d)| s > d)
-                            .unwrap_or(true)
-                }
-                (Ok(_), Err(_)) => true,
-                _ => false,
-            };
-            if should_copy {
-                std::fs::copy(&path, &dest_file)
-                    .map_err(|e| format!("copy {} → foundry/patches: {e}", path.display()))?;
-                copied += 1;
-            }
-        }
-    }
-    if copied > 0 {
+    let (copied, removed) = sync_foundry_patches_from_sources(&dest, &sources)?;
+    if copied > 0 || removed > 0 {
         log::info!(
-            "[setup] Materialized {copied} foundry patch file(s) → {}",
+            "[setup] Materialized foundry patches ({copied} copied, {removed} retired) → {}",
             dest.display()
         );
     }
@@ -563,5 +605,44 @@ pub fn normalize_ui_group(raw: &str) -> String {
         .filter(|s| !s.is_empty())
         .collect::<Vec<&str>>()
         .join("-")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sync_foundry_patches_from_sources;
+
+    #[test]
+    fn sync_foundry_patches_copies_prunes_and_skips_self() {
+        let root = std::env::temp_dir().join(format!(
+            "blackwell-paths-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let src = root.join("src");
+        let dest = root.join("dest");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+
+        std::fs::write(src.join("a.patch"), "new-a").unwrap();
+        std::fs::write(dest.join("a.patch"), "old").unwrap();
+        std::fs::write(dest.join("retired.patch"), "old-retired").unwrap();
+        std::fs::write(dest.join("notes.txt"), "keep").unwrap();
+
+        // Passing dest itself as a source must not treat dest as authoritative or self-copy.
+        let (copied, removed) =
+            sync_foundry_patches_from_sources(&dest, &[dest.clone(), src.clone()]).unwrap();
+        assert_eq!(copied, 1);
+        assert_eq!(removed, 1);
+        assert_eq!(std::fs::read_to_string(dest.join("a.patch")).unwrap(), "new-a");
+        assert!(!dest.join("retired.patch").exists());
+        assert_eq!(std::fs::read_to_string(dest.join("notes.txt")).unwrap(), "keep");
+
+        // When only dest is in sources (e.g. REL where Resource == dest), nothing is pruned.
+        let (copied2, removed2) = sync_foundry_patches_from_sources(&dest, &[dest.clone()]).unwrap();
+        assert_eq!((copied2, removed2), (0, 0));
+        assert!(dest.join("a.patch").exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 

@@ -174,7 +174,8 @@ when nothing is running, so launch first.
 - Foundry batches run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail), never
   plain `cmd /c path`.
 - **Vendor patches track upstream HEAD** and are applied in filename order
-  (`single-model-load-sse` → `telemetry-sse`). Each one must apply **plainly** (`git apply`, no
+  (`memory-endpoint` → `memory-ledger` → `telemetry-sse`; `single-model-load-sse` is upstream via
+  PR #32398). Each one must apply **plainly** (`git apply`, no
   `--3way`): all four land on one dirty worktree, so the 3-way fallback dies with "does not match
   index" once an earlier patch touched the same file. `npm run check:patches` mirrors that loop in a
   throwaway `origin/master` worktree; a failed patch aborts Foundry configure (no silent unpatched

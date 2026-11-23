@@ -6,10 +6,9 @@
 //! {"model":"...","event":"status_change","data":{"status":"loaded",...}}
 //! ```
 //!
-//! Product launches use `-m` (single-model). Upstream only registers `/models/sse` in router mode;
-//! our foundry `server.cpp` patch exposes the same route for single-model cold boot (HTTP starts
-//! before `load_model`). Until that binary is rebuilt, connect attempts 404 and this task exits
-//! quietly — stderr phase parsing remains the fallback.
+//! Product launches use `-m` (single-model). Upstream natively exposes `/models/sse` in
+//! single-model mode (PR #32398; HTTP starts before `load_model`). On older binaries without it,
+//! connect attempts 404/503 and this task exits quietly — stderr phase parsing remains the fallback.
 
 use crate::engine_stack::SlotStatus;
 use crate::log_hub::LogHub;

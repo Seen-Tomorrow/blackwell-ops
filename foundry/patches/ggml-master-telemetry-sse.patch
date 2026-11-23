@@ -1,8 +1,8 @@
 diff --git a/tools/server/server-common.h b/tools/server/server-common.h
-index 05622849a..d8594efc2 100644
+index c1a0f4dca..c0cf9d88d 100644
 --- a/tools/server/server-common.h
 +++ b/tools/server/server-common.h
-@@ -505,6 +505,35 @@ struct server_slot_stats {
+@@ -523,6 +523,35 @@ struct server_slot_stats {
      json to_json() const;
  };
  
@@ -39,10 +39,10 @@ index 05622849a..d8594efc2 100644
  // unlike server_slot_stats, server_metrics is server-global and cumulative, not tied to a slot
  struct server_metrics {
 diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
-index 448f7912f..8c84dadef 100644
+index 0cf15be80..f2ccae09c 100644
 --- a/tools/server/server-context.cpp
 +++ b/tools/server/server-context.cpp
-@@ -29,6 +29,7 @@
+@@ -30,6 +30,7 @@
  #include <cinttypes>
  #include <deque>
  #include <exception>
@@ -50,7 +50,7 @@ index 448f7912f..8c84dadef 100644
  #include <memory>
  #include <filesystem>
  #include <random>
-@@ -1541,6 +1542,7 @@ private:
+@@ -1568,6 +1569,7 @@ private:
  
              slot.callback_on_release = [this](int id_slot) {
                  queue_tasks.pop_deferred_task(id_slot);
@@ -58,7 +58,7 @@ index 448f7912f..8c84dadef 100644
              };
  
              slot.callback_on_reset = [this](const server_slot & slot) {
-@@ -2430,6 +2432,18 @@ private:
+@@ -2373,6 +2375,18 @@ private:
          res->prompt          = slot.task->tokens.detokenize(ctx_tgt, true);
          res->response_fields = std::move(slot.task->params.response_fields);
  
@@ -77,7 +77,7 @@ index 448f7912f..8c84dadef 100644
          res->truncated             = slot.truncated;
          res->n_decoded             = slot.stats.n_gen;
          res->n_prompt_tokens       = slot.task->n_tokens();
-@@ -4035,8 +4049,13 @@ private:
+@@ -3977,8 +3991,13 @@ private:
                      if (slot.state == SLOT_STATE_STARTED) {
                          slot.stats.update_prompt_start();
  
@@ -91,7 +91,7 @@ index 448f7912f..8c84dadef 100644
                          SLT_TRC(slot, "new prompt, n_ctx_slot = %d, n_keep = %d, task.n_tokens = %d\n",
                                  slot.n_ctx, slot.task->params.n_keep, slot.task->n_tokens());
  
-@@ -4846,6 +4865,8 @@ private:
+@@ -4771,6 +4790,8 @@ private:
                  if (slot.task->params.stream && slot.task->params.return_progress) {
                      send_partial_response(slot, {}, true);
                  }
@@ -100,7 +100,7 @@ index 448f7912f..8c84dadef 100644
              }
  
              if (!is_inside_view(slot.i_batch)) {
-@@ -4881,6 +4902,8 @@ private:
+@@ -4806,6 +4827,8 @@ private:
                  // prompt evaluated for next-token prediction
                  slot.state = SLOT_STATE_GENERATING;
  
@@ -109,7 +109,7 @@ index 448f7912f..8c84dadef 100644
                  if (slot.can_speculate()) {
                      common_speculative_begin(spec.get(), slot.id, slot.prompt.tokens.get_text_tokens());
                  }
-@@ -4918,6 +4941,8 @@ private:
+@@ -4843,6 +4866,8 @@ private:
  
              slot.stats.update_gen_last();
  
@@ -118,7 +118,7 @@ index 448f7912f..8c84dadef 100644
              completion_token_output result;
              result.tok          = id;
              result.text_to_send = common_token_to_piece(slot.ctx_tgt, result.tok, accept_special_token(slot, result.tok));
-@@ -5037,6 +5062,8 @@ private:
+@@ -4962,6 +4987,8 @@ private:
  
              slot.stats.update_gen_last();
  
@@ -127,7 +127,7 @@ index 448f7912f..8c84dadef 100644
              // update how many tokens out of those tested were accepted
              slot.stats.n_draft_accepted += n_accepted;
              slot.stats.n_draft_verif_steps += 1;
-@@ -5212,6 +5239,77 @@ private:
+@@ -5137,6 +5164,77 @@ private:
              dst[i] += src[i];
          }
      }
@@ -206,28 +206,42 @@ index 448f7912f..8c84dadef 100644
  
  //
 diff --git a/tools/server/server-http.cpp b/tools/server/server-http.cpp
-index d56ceb46d..93b99074b 100644
+index d1f31e3ae..3ca69eb3e 100644
 --- a/tools/server/server-http.cpp
 +++ b/tools/server/server-http.cpp
-@@ -398,7 +398,9 @@ bool server_http_context::init_listener(const common_params & params) {
+@@ -399,6 +399,11 @@ bool server_http_context::init_listener(const common_params & params) {
+             if (req.path == "/models/sse") {
+                 return true; // reports the download and loading progress
              }
-             // Cold-boot progress stream must be reachable while weights load (single-model + router).
-             // Without this, GET /models/sse returns 503 "Loading model" and never streams progress.
--            if (req.path == "/models/sse") {
 +            // /events/sse is the same kind of long-lived stream: let it attach early and idle
 +            // on keep-alives instead of failing the connection.
-+            if (req.path == "/models/sse" || req.path == "/events/sse") {
-                 return true;
-             }
++            if (req.path == "/events/sse") {
++                return true;
++            }
              // no endpoints are allowed to be accessed when the server is not ready
+             // this is to prevent any data races or inconsistent states
+             res.status = 503;
 diff --git a/tools/server/server.cpp b/tools/server/server.cpp
-index 12b2c9b5b..a1ff4b00c 100644
+index 7b90c9fca..3463a20d9 100644
 --- a/tools/server/server.cpp
 +++ b/tools/server/server.cpp
-@@ -112,6 +112,206 @@ static server_http_res_ptr handle_single_model_load_sse(const server_http_req &
-     };
-     return res;
- }
+@@ -16,8 +16,12 @@
+ 
+ #include <algorithm>
+ #include <atomic>
++#include <chrono>
+ #include <clocale>
++#include <condition_variable>
++#include <deque>
+ #include <exception>
++#include <map>
+ #include <mutex>
+ #include <signal.h>
+ #include <thread> // for std::thread::hardware_concurrency
+@@ -47,6 +51,205 @@ struct server_run_opts {
+     bool resolve_model           = true; // download / resolve -hf and docker models; off when the caller did it already
+ };
+ 
 +//
 +// Engine telemetry fan-out (/events/sse).
 +//
@@ -427,11 +441,10 @@ index 12b2c9b5b..a1ff4b00c 100644
 +
 +} // namespace server_events
 +
-+
  // satisfies -Wmissing-declarations (used by llama command)
  int llama_server(int argc, char ** argv);
  
-@@ -285,6 +485,10 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
+@@ -221,6 +424,10 @@ static void server_register_routes(server_http_context & ctx_http, server_routes
      ctx_http.get ("/slots",                    ex_wrapper(routes.get_slots));
      ctx_http.post("/slots/:id_slot",           ex_wrapper(routes.post_slots));
  
