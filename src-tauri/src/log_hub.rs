@@ -668,11 +668,10 @@ impl LogHub {
                         }
                     }
 
-                    // Skip idle poll chatter before fusion parse (regex savings at steady state)
+                    // Skip idle poll chatter
                     if Self::is_idle_chatter(&cleaned) {
                         continue;
                     }
-                    crate::fusion::parse_and_route_log_event(slot_idx, &cleaned);
                     if stdout_only {
                         continue;
                     }

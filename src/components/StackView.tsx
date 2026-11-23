@@ -7,7 +7,7 @@ import TabPageHeader from "./TabPageHeader";
 import type { StackEntry } from "../lib/types";
 import { sanitizeAlias } from "../lib/types";
 import { getActiveStackSlots } from "../lib/engineStack";
-import { useFusionSlot } from "../hooks/useFusionData";
+import { useFusionSlot } from "../lib/fusionSlotStore";
 import { useSlotLogStore } from "../lib/logSlotStore";
 
 interface StackViewProps {

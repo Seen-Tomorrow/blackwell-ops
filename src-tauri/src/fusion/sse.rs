@@ -14,13 +14,13 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::fusion::brain::{EngineState, FusionConfig, FUSION_SHUTTING_DOWN};
 use crate::fusion::emit::{cache_fusion_snapshot, FusionEmitFingerprint, FusionUpdate, SlotCtxInfo};
 use crate::fusion::lifecycle::{
     FreezeInput, InferencePhase, RequestLifecycle, INTER_REQUEST_GAP_HOLD_MS,
     MIN_TG_PER_REQUEST_AVG_MS,
 };
 use crate::fusion::meter::{self, FusionMeterLane};
+use crate::fusion::{EngineState, FusionConfig, FUSION_SHUTTING_DOWN};
 use crate::log_hub::LogHub;
 
 /// Render tick — the same constant the poll brain and the frontend already share.
@@ -66,6 +66,12 @@ pub struct SseBrain {
     peak_wave: usize,
     /// Last-lane decode clock, latched once the whole wave has produced a token.
     wave_start: Option<Instant>,
+    /// Tokens already generated before `wave_start` opened (excluded from `avg_tps` numerator).
+    wave_token_base: u64,
+    /// Busy lane count when `wave_start` was latched (detects late-joining batches).
+    wave_lane_count: usize,
+    /// Upstream `t_wave_start` timestamp from `engine_events::aggregate` (detects wave advance).
+    wave_source_ts: Option<Instant>,
     /// Per-lane KV fill (prompt processed + generated) this request. The stream carries
     /// per-request counters, not session ones, so the fill is held between requests and cleared
     /// when the next request starts.
@@ -106,6 +112,9 @@ impl SseBrain {
             request_peak_tps: 0.0,
             peak_wave: 0,
             wave_start: None,
+            wave_token_base: 0,
+            wave_lane_count: 0,
+            wave_source_ts: None,
             slot_fill: HashMap::new(),
             session_tokens: 0,
             last_active_at: None,
@@ -120,12 +129,13 @@ impl SseBrain {
             self.meter_seq = self.meter_seq.wrapping_add(1);
         }
         self.req.phase = InferencePhase::PP;
-        self.req.log_request_open = true;
-        self.req.log_prefill_done = false;
         self.request_tokens = 0;
         self.request_peak_tps = 0.0;
         self.peak_wave = 0;
         self.wave_start = None;
+        self.wave_token_base = 0;
+        self.wave_lane_count = 0;
+        self.wave_source_ts = None;
         self.slot_fill.clear();
         self.engine_state = EngineState::Active;
     }
@@ -136,25 +146,32 @@ impl SseBrain {
         if self.request_peak_tps > self.req.peak_gen_tps_request {
             self.req.peak_gen_tps_request = self.request_peak_tps;
         }
+        let wave_tokens = self.request_tokens.saturating_sub(self.wave_token_base) as usize;
         self.req.freeze(FreezeInput {
-            live_tokens: self.request_tokens as usize,
-            peak_tokens: self.request_tokens as usize,
+            live_tokens: wave_tokens,
+            peak_tokens: wave_tokens,
             last_busy_slot_count: self.peak_wave,
             latched_peak: self.peak_wave,
             decode_wall_at: self.wave_start,
             tg_burst_started_at: self.wave_start,
         });
+        let gen_elapsed_ms = self
+            .wave_start
+            .map(|s| s.elapsed().as_millis() as u64)
+            .unwrap_or(0);
         self.session_tokens = self.session_tokens.saturating_add(self.request_tokens);
-        self.req.log_request_open = false;
         self.req.close();
+        self.req.request_elapsed_frozen_ms = gen_elapsed_ms;
         self.request_tokens = 0;
         self.request_peak_tps = 0.0;
         self.peak_wave = 0;
         self.wave_start = None;
+        self.wave_token_base = 0;
+        self.wave_lane_count = 0;
+        self.wave_source_ts = None;
         // The stream goes IDLE after the request; carry that into the update instead of leaving
         // the display stuck in PP/TG until the next request starts.
         self.req.phase = InferencePhase::Idle;
-        self.req.lp_phase = InferencePhase::Idle;
         self.engine_state = EngineState::Ready;
         self.just_closed = true;
     }
@@ -166,10 +183,11 @@ impl SseBrain {
             return 0.0;
         };
         let elapsed_ms = now.saturating_duration_since(start).as_millis() as u64;
-        if elapsed_ms < MIN_TG_PER_REQUEST_AVG_MS || self.request_tokens == 0 {
+        let wave_tokens = self.request_tokens.saturating_sub(self.wave_token_base);
+        if elapsed_ms < MIN_TG_PER_REQUEST_AVG_MS || wave_tokens == 0 {
             return 0.0;
         }
-        meter::clamp_display_tps(self.request_tokens as f64 / (elapsed_ms as f64 / 1000.0))
+        meter::clamp_display_tps(wave_tokens as f64 / (elapsed_ms as f64 / 1000.0))
     }
 
     /// Fold one snapshot into the lifecycle and the request-local latches.
@@ -216,22 +234,59 @@ impl SseBrain {
         if phase != InferencePhase::Idle {
             self.last_active_at = Some(now);
             if phase == InferencePhase::Tg {
-                self.req.log_prefill_done = true;
-            }
-
-            // Latch the wave clock: solo starts at its first token, parallel only when every busy
-            // lane has decoded (the aggregate already applied that rule).
-            if self.wave_start.is_none() {
-                if self.parallel <= 1 {
-                    self.wave_start = t.t_first_token;
-                } else if t.wave_ready {
-                    self.wave_start = t.t_wave_start;
+                if let Some(ms) = t
+                    .t_prefill_end
+                    .zip(t.t_request_start)
+                    .map(|(end, start)| end.saturating_duration_since(start).as_secs_f64() * 1000.0)
+                    .filter(|&ms| ms > 0.0)
+                {
+                    self.req.prefill_ms = Some(ms);
+                }
+                if let Some(ms) = t.decode_ttft_ms() {
+                    self.req.decode_ttft_ms = Some(ms);
+                }
+                if let Some(ms) = t.ttft_ms() {
+                    self.req.ttft_ms = Some(ms);
                 }
             }
 
             // Tokens this request: summed decoded, monotonic (lanes reset on release).
+            // Must be updated BEFORE snapshotting `wave_token_base` so pre-wave ramp tokens
+            // are excluded from the steady-state wave average.
             if t.gen_decoded > self.request_tokens {
                 self.request_tokens = t.gen_decoded;
+            }
+
+            // Latch the wave clock: solo starts at its first token, parallel only when every busy
+            // lane has decoded (and resets if a later batch enters PP or more lanes join).
+            if self.parallel <= 1 {
+                if self.wave_start.is_none() {
+                    self.wave_start = t.t_first_token;
+                }
+            } else if phase == InferencePhase::PP {
+                self.wave_start = None;
+                self.wave_token_base = 0;
+                self.wave_lane_count = 0;
+                self.wave_source_ts = None;
+                self.request_peak_tps = 0.0;
+                self.req.last_gen_tps = 0.0;
+                self.req.prefill_ms = None;
+                self.req.decode_ttft_ms = None;
+                self.req.ttft_ms = None;
+            } else if t.wave_ready {
+                if let Some(ws) = t.t_wave_start {
+                    if self.wave_start.is_none()
+                        || Some(ws) > self.wave_source_ts
+                        || busy > self.wave_lane_count
+                    {
+                        self.wave_start = Some(now);
+                        self.wave_source_ts = Some(ws);
+                        self.wave_token_base = self.request_tokens;
+                        self.wave_lane_count = busy;
+                        self.request_peak_tps = 0.0;
+                        self.req.last_gen_tps = 0.0;
+                    }
+                }
             }
 
             // Per-lane fill for the ctx bars: prompt evaluated + generated this request.
@@ -313,24 +368,38 @@ impl SseBrain {
         } else {
             self.req.last_gen_tps
         };
+        let parallel_tg_ready =
+            self.parallel <= 1 || (self.req.phase != InferencePhase::PP && self.wave_start.is_some());
         let gen_instant = match t {
-            Some(t) if open => meter::clamp_display_tps(t.gen_tps),
+            Some(t) if open && parallel_tg_ready => meter::clamp_display_tps(t.live_gen_tps()),
             _ => 0.0,
         };
 
-        let (ttft, prefill_ms, decode_ttft) = match t {
-            Some(t) => {
-                let ttft = t.ttft_ms().or(self.req.ttft_ms);
-                let prefill = t
-                    .t_prefill_end
-                    .zip(t.t_request_start)
-                    .map(|(end, start)| end.saturating_duration_since(start).as_secs_f64() * 1000.0)
-                    .or_else(|| t.last_request.as_ref().map(|r| r.prompt_ms))
-                    .or(self.req.prefill_ms);
-                let decode = t.decode_ttft_ms().or(self.req.decode_ttft_ms);
-                (ttft, prefill, decode)
+        let (ttft, prefill_ms, decode_ttft) = if self.req.phase == InferencePhase::PP {
+            (None, None, None)
+        } else {
+            match t {
+                Some(t) => {
+                    let ttft = self.req.ttft_ms.or_else(|| t.ttft_ms());
+                    let prefill = self.req.prefill_ms.or_else(|| {
+                        t.t_prefill_end
+                            .zip(t.t_request_start)
+                            .map(|(end, start)| {
+                                end.saturating_duration_since(start).as_secs_f64() * 1000.0
+                            })
+                            .or_else(|| {
+                                if self.parallel <= 1 {
+                                    t.last_request.as_ref().map(|r| r.prompt_ms)
+                                } else {
+                                    None
+                                }
+                            })
+                    });
+                    let decode = self.req.decode_ttft_ms.or_else(|| t.decode_ttft_ms());
+                    (ttft, prefill, decode)
+                }
+                None => (self.req.ttft_ms, self.req.prefill_ms, self.req.decode_ttft_ms),
             }
-            None => (self.req.ttft_ms, self.req.prefill_ms, self.req.decode_ttft_ms),
         };
 
         let ctx_per_slot = lanes
@@ -420,7 +489,6 @@ impl SseBrain {
             telemetry_source: "sse".to_string(),
             engine_state: self.engine_state.clone(),
             phase: self.req.phase,
-            prefill_tps_metrics: 0.0,
             prefill_tps_session: pp_rate,
             // The stream's PP rate is already the steady figure, so LIVE and AVG agree here.
             prefill_tps_instant: pp_rate,
@@ -430,7 +498,7 @@ impl SseBrain {
             gen_tps: gen_avg,
             gen_tps_session: gen_avg,
             gen_tps_instant: gen_instant,
-            gen_tokens_per_request_slots: if open {
+            gen_tokens_per_request_slots: if open && parallel_tg_ready {
                 self.request_tokens as usize
             } else {
                 0
@@ -440,23 +508,19 @@ impl SseBrain {
             ctx_fill_pct,
             ctx_total: self.ctx_total,
             ctx_per_slot,
-            request_elapsed_ms: self
-                .req
-                .request_start
-                .map(|start| start.elapsed().as_millis() as u64)
-                .unwrap_or(self.req.request_elapsed_frozen_ms),
+            request_elapsed_ms: if self.req.request_closed {
+                self.req.request_elapsed_frozen_ms
+            } else if let Some(start) = self.wave_start {
+                now.saturating_duration_since(start).as_millis() as u64
+            } else {
+                0
+            },
             ttft_ms: ttft,
             prefill_ms,
             decode_ttft_ms: decode_ttft,
             slot_ctx,
             parallel: self.parallel,
             unified_kv: self.unified_kv,
-            // No stderr: the log-derived comparison fields stay empty by design.
-            lp_prefill_progress: 0.0,
-            lp_prefill_tps: 0.0,
-            lp_prompt_tokens: 0,
-            lp_gen_tps: 0.0,
-            lp_phase: InferencePhase::Idle,
             spec_draft_accept_rate: if spec_draft > 0 {
                 Some(spec_acc as f64 / spec_draft as f64)
             } else {
@@ -467,9 +531,6 @@ impl SseBrain {
             spec_draft_accept_rate_last: spec_rate,
             spec_draft_accepted_last: spec_acc_last,
             spec_draft_generated_last: spec_gen_last,
-            // Draft family comes from stderr (`common_specu`); the stream has no equivalent.
-            spec_mode: None,
-            lp_reset_source: None,
             request_closed: self.req.request_closed,
             meter_lane: if parallel_lane {
                 FusionMeterLane::Parallel
@@ -571,7 +632,6 @@ impl SseBrain {
         let mut update = self.build_update(snapshot.as_ref(), &lanes, Instant::now());
         update.engine_state = EngineState::Ready;
         update.phase = InferencePhase::Idle;
-        update.lp_phase = InferencePhase::Idle;
         update.request_closed = true;
         update
     }
@@ -631,9 +691,6 @@ mod tests {
             ctx_total: 65536,
             parallel,
             unified_kv: true,
-            provider_id: "ggml-master".into(),
-            adapter: crate::fusion::adapters::FusionAdapterId::GgmlMaster,
-            has_log_belt: true,
         }
     }
 
@@ -733,5 +790,45 @@ mod tests {
         brain.request_tokens = 500;
         brain.close_request();
         assert_eq!(brain.session_tokens, 1500);
+    }
+
+    #[test]
+    fn wave_avg_excludes_prefill_ramp_tokens() {
+        let mut brain = SseBrain::new(&config(32));
+        brain.begin_request();
+        brain.wave_start = Some(Instant::now() - Duration::from_millis(1000));
+        brain.wave_token_base = 318;
+        brain.request_tokens = 318 + 866;
+        let tps = brain.avg_tps(Instant::now());
+        assert!((tps - 866.0).abs() < 40.0, "expected ~866, got {tps}");
+    }
+
+    #[test]
+    fn parallel_pp_ramp_gates_live_tg_and_resets_premature_wave_start() {
+        let port = 9996;
+        let mut brain = SseBrain::new(&FusionConfig {
+            port,
+            parallel: 32,
+            ..config(32)
+        });
+        let now = Instant::now();
+        // Batch 1 (slot 0) finishes PP and decodes while slot 1 is still in PP.
+        crate::engine_events::ingest_for_test(
+            port,
+            concat!(
+                "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":1,\"peak\":1,\"n_ctx\":2048,\"n_ctx_used\":0,\"seq\":1}\n\n",
+                "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"TG\",\"busy\":1,\"peak\":1,\"n_ctx\":2048,\"n_ctx_used\":625,\"seq\":2}\n\n",
+                "data: {\"type\":\"gen_progress\",\"slot\":0,\"decoded\":1,\"gen_ms\":50.0,\"tps\":20.0,\"seq\":3}\n\n",
+                "data: {\"type\":\"state\",\"slot\":1,\"phase\":\"PP\",\"busy\":2,\"peak\":2,\"n_ctx\":2048,\"n_ctx_used\":0,\"seq\":4}\n\n"
+            ),
+        );
+        let (snap, lanes) = brain.stream_view();
+        brain.observe(snap.as_ref(), &lanes, now);
+        let u = brain.build_update(snap.as_ref(), &lanes, now);
+        assert_eq!(u.phase, InferencePhase::PP);
+        assert_eq!(u.gen_tps_instant, 0.0, "ramp TG must not leak during PP");
+        assert_eq!(u.gen_tokens_per_request_slots, 0);
+        assert_eq!(u.request_elapsed_ms, 0, "TIME must stay 0 during PP ramp");
+        assert!(brain.wave_start.is_none());
     }
 }

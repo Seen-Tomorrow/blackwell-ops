@@ -21,16 +21,18 @@ export default function FoundryNavBadge() {
   const waiting = key === "waiting-confirm";
   const starting = Boolean(buildProgress) && !buildProgress?.buildId;
   const edge = buildProgress?.progress ?? null;
+  // A failed edge arrives before the process exits (in-flight compiles drain), so the
+  // phase can still read Building while the build is already dead.
+  const failedNow = failed || Boolean(edge?.failed);
   const compileActive =
     Boolean(buildProgress) &&
     isCompileStep(buildProgress?.step ?? "") &&
     !waiting &&
     !complete &&
-    !failed;
+    !failedNow;
   // Hooks must run unconditionally, before the idle early-return.
   const eta = useCompileEta(edge, compileActive);
   const elapsed = useCompileElapsed(compileStartedAt, compileActive, complete || failed);
-
   if (!buildProgress) {
     return (
       <span className="fnd-nav-badge fnd-nav-badge--idle">
@@ -46,7 +48,9 @@ export default function FoundryNavBadge() {
   const percent = complete
     ? 100
     : Math.max(0, Math.min(100, overallPercent(buildProgress.step, edge)));
-  const etaLabel = eta != null && eta > 0.5 ? formatEta(eta) : null;
+  // `useCompileEta` keeps its last number when it goes inactive; a failed build must
+  // not keep advertising a countdown.
+  const etaLabel = !failedNow && eta != null && eta > 0.5 ? formatEta(eta) : null;
   const queue = buildProgress.queuedEnvironments
     .map((queued) => ENV_META[normalizeBinaryProfile(queued)].label)
     .join(" + ");
@@ -62,12 +66,12 @@ export default function FoundryNavBadge() {
 
   const stage = complete
     ? "DONE"
-    : failed
+    : failedNow
       ? "FAILED"
       : waiting
         ? "REVIEW"
         : phaseLabel(buildProgress.step);
-  const tone = complete ? "done" : failed ? "error" : waiting ? "paused" : "active";
+  const tone = complete ? "done" : failedNow ? "error" : waiting ? "paused" : "active";
 
   return (
     <span

@@ -312,7 +312,6 @@ impl EngineStack {
         provider_display_name: String,
         backend_type: String,
         supports_fusion: bool,
-        fusion_adapter: crate::fusion::FusionAdapterId,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
         on_ready: Arc<dyn Fn() + Send + Sync>,
@@ -480,7 +479,6 @@ impl EngineStack {
                 );
             }
         }
-        crate::fusion::registry::register_slot_adapter(slot_idx, fusion_adapter);
 
         let stderr = child.stderr.take().ok_or_else(|| {
             format!("Failed to capture stderr for {}", binary_path.display())
@@ -527,7 +525,6 @@ impl EngineStack {
             log_hub.clone(),
             fire_ready,
             slot_arc.clone(),
-            fusion_adapter,
         );
 
         // Real model-load fraction from GET /models/sse (router, or single-model foundry patch).
@@ -744,9 +741,22 @@ impl EngineStack {
     async fn probe_readiness_source(
         client: &reqwest::Client,
         port: u16,
-        adapter: crate::fusion::FusionAdapterId,
     ) -> Option<&'static str> {
-        match crate::fusion::poll_slots_normalized(client, "127.0.0.1", port, adapter).await {
+        #[derive(serde::Deserialize)]
+        struct ReadinessSlot {
+            #[serde(default)]
+            is_processing: bool,
+        }
+        let url = format!("http://127.0.0.1:{port}/slots");
+        let slots_res = match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<Vec<ReadinessSlot>>()
+                .await
+                .map_err(|e| format!("Failed to parse /slots: {e}")),
+            Ok(resp) => Err(format!("HTTP {}", resp.status())),
+            Err(e) => Err(e.to_string()),
+        };
+        match slots_res {
             Ok(slots) => {
                 if !slots.is_empty() && slots.iter().all(|s| !s.is_processing) {
                     Some("GET /slots idle")
@@ -791,7 +801,6 @@ impl EngineStack {
         log_hub: LogHub,
         on_ready: Arc<dyn Fn() + Send + Sync>,
         slot_arc: Arc<parking_lot::Mutex<EngineSlot>>,
-        fusion_adapter: crate::fusion::FusionAdapterId,
     ) {
         tokio::spawn(async move {
             let client = match reqwest::Client::builder()
@@ -816,7 +825,7 @@ impl EngineStack {
                     }
                 }
 
-                let source = Self::probe_readiness_source(&client, port, fusion_adapter).await;
+                let source = Self::probe_readiness_source(&client, port).await;
 
                 if let Some(source) = source {
                     let still_loading = {

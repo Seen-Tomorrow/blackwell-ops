@@ -49,41 +49,30 @@ pub struct FreezeInput {
 pub struct RequestLifecycle {
     /// Display phase (PP/TG/IDLE) for the update.
     pub phase: InferencePhase,
-    /// Phase derived purely from log events.
-    pub lp_phase: InferencePhase,
     /// Authoritative request start.
     pub request_start: Option<Instant>,
-    /// Frozen wall-clock when `/slots` reports idle (timer must not run after the request ends).
+    /// Frozen wall-clock when request ends.
     pub request_elapsed_frozen_ms: u64,
-    /// Set on definitive request end — blocks `ensure_request_clock` until the next request.
+    /// Set on definitive request end.
     pub request_closed: bool,
     pub ttft_ms: Option<f64>,
     pub prefill_ms: Option<f64>,
     pub decode_ttft_ms: Option<f64>,
-    /// Log-driven request boundaries (belt for phase — survives multimodal `/slots` lag).
-    pub log_request_open: bool,
-    pub log_prefill_done: bool,
     /// TG clock: starts at the first generated token, not at phase detection.
     pub tg_start_time: Option<Instant>,
-    pub tg_start_n_decoded: usize,
     /// "Last known" hero value — persists across phase transitions.
     pub last_gen_tps: f64,
     /// Pinned hero AVG when `request_closed` (immune to post-end elapsed growth).
     pub frozen_request_gen_tps: f64,
     /// Pinned per-slot TG after freeze (system ÷ concurrent peak).
     pub frozen_gen_tps_per_slot: f64,
-    /// Concurrent peak captured at freeze (observe_wave zeroes the meter on idle).
+    /// Concurrent peak captured at freeze.
     pub frozen_concurrent_slots: usize,
-    /// Peak per-request gen tokens this wave (freeze fallback when `/slots` is empty).
+    /// Peak per-request gen tokens this wave.
     pub peak_gen_tokens_request: usize,
     /// Peak live gen TPS this wave — multi-slot drain undercounts `last_gen` near the end.
     pub peak_gen_tps_request: f64,
-    /// One-shot reset signals emitted to the frontend for visual feedback.
-    pub lp_reset_prompt: bool,
-    pub lp_reset_regression: bool,
-    /// Last poll where any slot reported `is_processing` (inter-request hold).
-    pub last_slot_busy_at: Option<Instant>,
-    /// Peak concurrent slots this request/wave — survives idle observe_wave zeroing.
+    /// Peak concurrent slots this request/wave.
     pub sticky_wave_peak: usize,
 }
 
@@ -109,56 +98,6 @@ impl RequestLifecycle {
         boundary
     }
 
-    /// Belt when logs/slots/metrics race — never reset an already-running clock (bench TTFT).
-    /// Returns true when it had to open the request (the caller bumps its meter boundary).
-    pub fn ensure_request_clock(&mut self) -> bool {
-        if self.request_closed {
-            return false;
-        }
-        if self.request_start.is_none() {
-            return self.begin_request();
-        }
-        false
-    }
-
-    /// `prefill_ms` is the prompt wall time; captures the decode TTFT split once.
-    pub fn capture_prefill_if_unset(&mut self) {
-        if self.prefill_ms.is_some() {
-            return;
-        }
-        if let Some(start) = self.request_start {
-            let ms = start.elapsed().as_secs_f64() * 1000.0;
-            if ms > 0.0 {
-                self.prefill_ms = Some(ms);
-                self.update_decode_ttft_from_split();
-            }
-        }
-    }
-
-    pub fn update_decode_ttft_from_split(&mut self) {
-        if self.decode_ttft_ms.is_some() {
-            return;
-        }
-        if let (Some(ttft), Some(prefill)) = (self.ttft_ms, self.prefill_ms) {
-            self.decode_ttft_ms = Some((ttft - prefill).max(0.0));
-        }
-    }
-
-    pub fn capture_ttft_if_unset(&mut self) {
-        if self.ttft_ms.is_some() {
-            return;
-        }
-        if let Some(start) = self.request_start {
-            let ms = start.elapsed().as_secs_f64() * 1000.0;
-            if ms > 0.0 {
-                self.ttft_ms = Some(ms);
-            }
-        } else if self.request_elapsed_frozen_ms > 0 {
-            self.ttft_ms = Some(self.request_elapsed_frozen_ms as f64);
-        }
-        self.update_decode_ttft_from_split();
-    }
-
     /// Definitive request end: freeze the elapsed clock and close the request.
     pub fn close(&mut self) {
         if let Some(start) = self.request_start.take() {
@@ -167,16 +106,6 @@ impl RequestLifecycle {
         self.tg_start_time = None;
         self.request_closed = true;
         // Keep last_gen_tps — frozen hero AVG after request end (do not zero).
-    }
-
-    pub fn within_inter_request_hold(&self, now: Instant) -> bool {
-        self.last_slot_busy_at
-            .map(|t| now.duration_since(t).as_millis() < INTER_REQUEST_GAP_HOLD_MS as u128)
-            .unwrap_or(false)
-    }
-
-    pub fn touch_slot_activity(&mut self, now: Instant) {
-        self.last_slot_busy_at = Some(now);
     }
 
     /// Freeze policy — pins the hero value and the concurrent denominator at request end.
@@ -244,32 +173,6 @@ impl RequestLifecycle {
 
         pin_src
     }
-
-    /// Bench phase boundary: fresh PP request, no frozen value from the previous run.
-    pub fn reset_for_bench(&mut self) {
-        self.phase = InferencePhase::PP;
-        self.lp_phase = InferencePhase::PP;
-        self.log_request_open = false;
-        self.log_prefill_done = false;
-        self.request_start = None;
-        self.request_elapsed_frozen_ms = 0;
-        self.request_closed = false;
-        self.frozen_request_gen_tps = 0.0;
-        self.frozen_gen_tps_per_slot = 0.0;
-        self.frozen_concurrent_slots = 0;
-        self.ttft_ms = None;
-        self.prefill_ms = None;
-        self.decode_ttft_ms = None;
-        self.tg_start_time = None;
-        self.tg_start_n_decoded = 0;
-        self.last_gen_tps = 0.0;
-        // One-shot belt so FE micro-stats (tok / PP / +1st) clear on consecutive benches.
-        self.lp_reset_prompt = true;
-        self.lp_reset_regression = false;
-        self.sticky_wave_peak = 0;
-        self.peak_gen_tokens_request = 0;
-        self.peak_gen_tps_request = 0.0;
-    }
 }
 
 #[cfg(test)]
@@ -300,27 +203,6 @@ mod tests {
         assert!(r.request_closed);
         assert_eq!(r.request_start, None);
         assert!(r.request_elapsed_frozen_ms >= 249, "got {}", r.request_elapsed_frozen_ms);
-        // ensure must not reopen a closed request (the trailing poll of a bench must not restart it)
-        r.ensure_request_clock();
-        assert!(r.request_closed);
-        assert_eq!(r.request_start, None);
-    }
-
-    #[test]
-    fn ttft_and_decode_split_are_captured_once() {
-        let mut r = open_request();
-        r.request_start = Some(Instant::now() - Duration::from_millis(120));
-        r.capture_ttft_if_unset();
-        let first = r.ttft_ms.expect("ttft");
-        assert!(first >= 119.0, "got {first}");
-        r.request_start = Some(Instant::now() - Duration::from_millis(400));
-        r.capture_ttft_if_unset();
-        assert_eq!(r.ttft_ms, Some(first), "ttft is a first-token latch");
-
-        r.prefill_ms = Some(80.0);
-        r.decode_ttft_ms = None;
-        r.update_decode_ttft_from_split();
-        assert!((r.decode_ttft_ms.unwrap() - (first - 80.0)).abs() < 1e-9);
     }
 
     #[test]
@@ -394,31 +276,5 @@ mod tests {
             tg_burst_started_at: None,
         });
         assert_eq!(r.peak_gen_tokens_request, 5000, "never rewinds the token latch");
-    }
-
-    #[test]
-    fn inter_request_hold_expires() {
-        let mut r = RequestLifecycle::default();
-        let now = Instant::now();
-        r.touch_slot_activity(now);
-        assert!(r.within_inter_request_hold(now + Duration::from_millis(500)));
-        assert!(!r.within_inter_request_hold(now + Duration::from_millis(1300)));
-        assert!(!r.within_inter_request_hold(now + Duration::from_secs(60)));
-    }
-
-    #[test]
-    fn reset_for_bench_drops_the_frozen_value() {
-        let mut r = open_request();
-        r.frozen_request_gen_tps = 640.0;
-        r.sticky_wave_peak = 16;
-        r.tg_start_time = Some(Instant::now());
-        r.reset_for_bench();
-        assert_eq!(r.phase, InferencePhase::PP);
-        assert_eq!(r.frozen_request_gen_tps, 0.0);
-        assert_eq!(r.sticky_wave_peak, 0);
-        assert_eq!(r.tg_start_time, None);
-        assert!(!r.request_closed);
-        assert_eq!(r.request_start, None);
-        assert!(r.lp_reset_prompt);
     }
 }

@@ -23,7 +23,8 @@ pub use batch::foundry_kill_all_children;
 pub use progress::BuildEdgeProgress;
 pub(crate) use artifacts::{copy_dir_contents, publish_artifacts_to_sacred};
 pub(crate) use batch::{
-    batch_script_text, clear_pids, kill_all_children, run_foundry_batch_streaming, with_child_pids,
+    batch_script_text, clear_pids, failure_detail, kill_all_children, run_foundry_batch_streaming,
+    with_child_pids,
 };
 pub(crate) use cmake::{
     check_foundry_core_binaries, cmd_escape_batch, dir_size_bytes, format_bytes_label,
@@ -1168,7 +1169,7 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String>
 
     let configure_heartbeat = spawn_configure_heartbeat(app_handle.clone());
 
-    let (cfg_status, cfg_stderr_lines) = match run_foundry_batch_streaming(
+    let cfg_outcome = match run_foundry_batch_streaming(
         &cfg_program,
         &cfg_raw_tail,
         &src_dir,
@@ -1188,16 +1189,22 @@ async fn stage_cmake_configure<'a>(ctx: &BuildCtx<'a>) -> Result<String, String>
     };
     configure_heartbeat.abort();
 
-    let Some(cfg_status) = cfg_status else {
+    let Some(cfg_status) = cfg_outcome.status else {
         clear_pids();
         clear_build_slot_if_matches(build_id, provider_id, app_handle).await;
         return Err("Build cancelled by user.".to_string());
     };
 
     if !cfg_status.success() {
-        let stderr_text = cfg_stderr_lines.join("\n");
+        // Configure errors land on stderr; stdout is only a fallback for failures that
+        // echo there instead (nothing useful in a "Configuring done" tail).
+        let detail = if cfg_outcome.stderr_lines.is_empty() {
+            cfg_outcome.failure_excerpt.join("\n")
+        } else {
+            cfg_outcome.stderr_lines.join("\n")
+        };
         ctx.rollback()
-            .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
+            .with_message(if detail.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", detail) })
             .execute().await;
 
         clear_pids();
@@ -1381,7 +1388,7 @@ async fn stage_compile<'a>(ctx: &BuildCtx<'a>) -> Result<bool, String> {
     // MSBuild/Ninja child (silent, still alive) is surfaced instead of hanging forever.
     let build_heartbeat = spawn_build_heartbeat(app_handle.clone());
 
-    let (build_status, stderr_text) = match run_foundry_batch_streaming(
+    let build_outcome = match run_foundry_batch_streaming(
         &build_program,
         &build_raw_tail,
         &src_dir,
@@ -1402,14 +1409,17 @@ async fn stage_compile<'a>(ctx: &BuildCtx<'a>) -> Result<bool, String> {
     };
     build_heartbeat.abort();
 
-    let Some(build_status) = build_status else {
+    let Some(build_status) = build_outcome.status else {
         clear_pids();
         foundry_console_end_session(app_handle, build_id);
         do_rollback(&cmake_build_output_dir).await;
         return Err("Build cancelled by user.".to_string());
     };
 
-    let stderr_joined = stderr_text.join("\n");
+    let stderr_joined = build_outcome.stderr_lines.join("\n");
+    // ninja prints `FAILED:` and the compiler diagnostics on stdout, so stderr alone
+    // used to reach the user as a bare "Build failed.".
+    let failure_text = failure_detail(&build_outcome.failure_excerpt, &stderr_joined);
     let mut recovered_tail_flake = false;
     if !build_status.success() {
         let precheck = check_foundry_core_binaries(&foundry_release_candidate_dirs(
@@ -1432,17 +1442,17 @@ async fn stage_compile<'a>(ctx: &BuildCtx<'a>) -> Result<bool, String> {
             }
         } else {
             ctx.rollback()
-                .with_message(if stderr_joined.is_empty() {
+                .with_message(if failure_text.is_empty() {
                     "Build failed.".into()
                 } else {
-                    format!("Build failed:\n{stderr_joined}")
+                    format!("Build failed:\n{failure_text}")
                 })
                 .execute()
                 .await;
 
             clear_pids();
             *CURRENT_BUILD.lock().await = None;
-            return Err(format!("Build failed.\nSTDERR: {stderr_joined}"));
+            return Err(format!("Build failed.\n{failure_text}"));
         }
     }
 

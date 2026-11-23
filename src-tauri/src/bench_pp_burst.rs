@@ -102,7 +102,6 @@ pub async fn cmd_bench_pp_burst(
         } else {
             measured_target
         };
-        crate::fusion::reset_bench_meters_for_port(port).await;
         crate::ipc_emit::emit_guarded(
             &app_handle,
             "bench-pp-progress",

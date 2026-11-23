@@ -21,6 +21,9 @@ use tokio::task::AbortHandle;
 /// Returned when the user hits STOP (UI treats as cancelled, not a hard failure).
 pub const STOPPED_ERR: &str = "Stopped";
 
+/// Streaming token progress callback: `(tokens_predicted_so_far, is_final_stop)`.
+pub type TokenProgressCb = Box<dyn FnMut(u64, bool) + Send>;
+
 struct PortStop {
     tx: watch::Sender<bool>,
     /// Kept alive so `send` cannot fail before waiters subscribe.
@@ -198,7 +201,12 @@ fn is_completion_result(v: &serde_json::Value) -> bool {
         || v.get("stop").and_then(|s| s.as_bool()) == Some(true)
 }
 
-fn take_sse_objects(buf: &mut String, last: &mut Option<serde_json::Value>) {
+fn take_sse_objects(
+    buf: &mut String,
+    last: &mut Option<serde_json::Value>,
+    seen_decoded: &mut u64,
+    mut progress: Option<&mut TokenProgressCb>,
+) {
     while let Some(pos) = buf.find('\n') {
         let mut line = buf[..pos].to_string();
         *buf = buf[pos + 1..].to_string();
@@ -214,6 +222,23 @@ fn take_sse_objects(buf: &mut String, last: &mut Option<serde_json::Value>) {
             continue;
         }
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
+            if let Some(cb) = progress.as_deref_mut() {
+                let is_stop = v.get("stop").and_then(|s| s.as_bool()) == Some(true);
+                if let Some(d) = v.get("tokens_predicted").and_then(|n| n.as_u64()).filter(|&d| d > 0) {
+                    *seen_decoded = (*seen_decoded).max(d);
+                    cb(*seen_decoded, is_stop);
+                } else if is_stop {
+                    cb(*seen_decoded, true);
+                } else if v.get("prompt_progress").is_none()
+                    && v
+                        .get("content")
+                        .and_then(|c| c.as_str())
+                        .is_some_and(|s| !s.is_empty())
+                {
+                    *seen_decoded += 1;
+                    cb(*seen_decoded, false);
+                }
+            }
             if is_completion_result(&v) {
                 *last = Some(v);
             }
@@ -221,16 +246,20 @@ fn take_sse_objects(buf: &mut String, last: &mut Option<serde_json::Value>) {
     }
 }
 
-async fn collect_sse_json(resp: reqwest::Response) -> Result<serde_json::Value, String> {
+async fn collect_sse_json(
+    resp: reqwest::Response,
+    mut progress: Option<TokenProgressCb>,
+) -> Result<serde_json::Value, String> {
     let mut buf = String::new();
     let mut last = None;
+    let mut seen_decoded = 0u64;
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("Request failed: {e}"))?;
         buf.push_str(&String::from_utf8_lossy(&chunk));
-        take_sse_objects(&mut buf, &mut last);
+        take_sse_objects(&mut buf, &mut last, &mut seen_decoded, progress.as_mut());
     }
-    take_sse_objects(&mut buf, &mut last);
+    take_sse_objects(&mut buf, &mut last, &mut seen_decoded, progress.as_mut());
     if !buf.trim().is_empty() {
         let data = buf.trim().strip_prefix("data:").map(str::trim).unwrap_or(buf.trim());
         if data != "[DONE]" {
@@ -246,6 +275,7 @@ async fn send_completion(
     client: reqwest::Client,
     url: String,
     body: serde_json::Value,
+    progress: Option<TokenProgressCb>,
 ) -> Result<serde_json::Value, String> {
     let stream = body.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
     let resp = client
@@ -264,7 +294,7 @@ async fn send_completion(
         return Err(friendly_bench_http_error(status, server_msg.as_deref()));
     }
     if stream {
-        collect_sse_json(resp).await
+        collect_sse_json(resp, progress).await
     } else {
         resp.json().await.map_err(|e| e.to_string())
     }
@@ -280,7 +310,24 @@ pub async fn post_json(
     let client = client.clone();
     let url = url.to_string();
     let body = body.clone();
-    race_stop(port, async move { send_completion(client, url, body).await }).await
+    race_stop(port, async move { send_completion(client, url, body, None).await }).await
+}
+
+/// POST JSON to llama-server with a streaming token progress callback.
+pub async fn post_json_with_progress(
+    client: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+    port: u16,
+    on_progress: TokenProgressCb,
+) -> Result<serde_json::Value, String> {
+    let client = client.clone();
+    let url = url.to_string();
+    let body = body.clone();
+    race_stop(port, async move {
+        send_completion(client, url, body, Some(on_progress)).await
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -372,7 +419,8 @@ mod tests {
              data: [DONE]\n",
         );
         let mut last = None;
-        take_sse_objects(&mut buf, &mut last);
+        let mut seen = 0u64;
+        take_sse_objects(&mut buf, &mut last, &mut seen, None);
         let v = last.expect("final SSE object");
         assert_eq!(v["tokens_predicted"], 64);
         assert_eq!(v["timings"]["predicted_ms"], 20.0);
@@ -385,10 +433,30 @@ mod tests {
              data: {\"tokens_evaluated\":8000,\"timings\":{\"prompt_ms\":40.0},\"stop\":true}\n",
         );
         let mut last = None;
-        take_sse_objects(&mut buf, &mut last);
+        let mut seen = 0u64;
+        take_sse_objects(&mut buf, &mut last, &mut seen, None);
         let v = last.expect("completion after progress");
         assert_eq!(v["tokens_evaluated"], 8000);
         assert!(v.get("prompt_progress").is_none());
+    }
+
+    #[test]
+    fn sse_progress_reports_monotonic_tokens_and_stop() {
+        let mut buf = String::from(
+            "data: {\"prompt_progress\":{\"total\":625,\"processed\":625}}\n\
+             data: {\"tokens_predicted\":1,\"content\":\"a\",\"stop\":false}\n\
+             data: {\"tokens_predicted\":2,\"content\":\"b\",\"stop\":false}\n\
+             data: {\"tokens_predicted\":2,\"timings\":{\"predicted_ms\":20.0},\"stop\":true}\n",
+        );
+        let mut last = None;
+        let mut seen = 0u64;
+        let events: Arc<Mutex<Vec<(u64, bool)>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_cb = Arc::clone(&events);
+        let mut cb: TokenProgressCb = Box::new(move |d, stop| {
+            events_cb.lock().unwrap().push((d, stop));
+        });
+        take_sse_objects(&mut buf, &mut last, &mut seen, Some(&mut cb));
+        assert_eq!(*events.lock().unwrap(), vec![(1, false), (2, false), (2, true)]);
     }
 }
 

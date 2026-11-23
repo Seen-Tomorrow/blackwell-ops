@@ -66,8 +66,8 @@ function shortEffort(level: string): string {
 }
 
 /** SSE carries acceptance totals but no draft family; fall back to the launch spec type. */
-function specModeLabelFor(detected: string | undefined, launchSpecType: string | undefined): string {
-  const raw = (detected ?? launchSpecType ?? "mtp").toLowerCase();
+function specModeLabelFor(launchSpecType: string | undefined): string {
+  const raw = (launchSpecType ?? "mtp").toLowerCase();
   if (raw.includes("dflash")) return "DFLASH2";
   if (raw.includes("dspark")) return "DSPARK";
   if (raw.includes("mtp")) return "MTP";
@@ -131,8 +131,6 @@ function fusionRequestInFlight(fusion: FusionUpdate): boolean {
     fusion.phase !== "IDLE"
     || fusion.engine_state === "ACTIVE"
     || tokens > 0
-    || fusion.logPhase === "TG"
-    || fusion.logPhase === "PP"
     || (fusion.busySlotCount ?? 0) > 0
   );
 }
@@ -141,9 +139,6 @@ function fusionRequestInFlight(fusion: FusionUpdate): boolean {
 function fusionNewPromptReset(fusion: FusionUpdate, latch: MicroStatsLatch): boolean {
   const seq = fusion.meterSeq ?? 0;
   if (seq > 0 && seq !== latch.lastMeterSeq) {
-    return true;
-  }
-  if (fusion.phaseResetSource === "prompt" || fusion.phaseResetSource === "regression") {
     return true;
   }
   const elapsed = fusion.requestElapsedMs ?? 0;
@@ -184,12 +179,12 @@ function updateMicroLatch(latch: MicroStatsLatch, fusion: FusionUpdate) {
     } else if (tokens > 0) {
       latch.genTokens = Math.max(latch.genTokens, tokens);
     }
-    // Early request: clear stale timings until backend reports new values.
-    if (elapsed < 400 && timing.prefillMs == null) latch.prefillMs = null;
-    if (elapsed < 400 && timing.decodeTtftMs == null) latch.decodeTtftMs = null;
+    // Early request or still in PP: clear stale timings until backend reports new values.
+    if ((elapsed < 400 || fusion.phase === "PP") && timing.prefillMs == null) latch.prefillMs = null;
+    if ((elapsed < 400 || fusion.phase === "PP") && timing.decodeTtftMs == null) latch.decodeTtftMs = null;
     if (timing.prefillMs != null) latch.prefillMs = timing.prefillMs;
     if (timing.decodeTtftMs != null) latch.decodeTtftMs = timing.decodeTtftMs;
-    latch.elapsedMs = formatMs(elapsed);
+    latch.elapsedMs = elapsed === 0 && fusion.phase === "PP" ? "--" : formatMs(elapsed);
     latch.lastElapsedRaw = elapsed;
     return;
   }
@@ -317,27 +312,6 @@ export default function FusionOverlay({
     setIsBenchWarmup(payload.phase === "warmup");
   }, [displayPort]);
 
-  // ── Quiet-mode toggle (silent models like DS4 emit no stderr PP/TG logs) ──
-  // Persisted per model so it re-applies on the next launch of the same model.
-  const quietKey = `fusion.quiet.${(modelName || displayAlias).trim().toLowerCase()}`;
-  const [quietMode, setQuietMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(quietKey) === "1";
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(quietKey, quietMode ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-    // Push the runtime flip to the backend so the live brain switches between
-    // log-belt (master/tom) and /slots-derived (quiet) PP + multi-slot TG math.
-    invoke("set_fusion_quiet_mode", { port: displayPort, quiet: quietMode }).catch(() => {});
-  }, [quietMode, quietKey, displayPort]);
-
   // ── Engine `-lv` lives in CONFIG → RUNTIME now (CLI; restart to apply) ──
 
   if (!supportsFusion) {
@@ -426,19 +400,9 @@ export default function FusionOverlay({
   const clampHeroTps = (n: number) => (n > 0 && n < MAX_HERO_TPS ? n : 0);
 
   const ppTpsAvg = clampHeroTps(fusion.prefillTpsSession ?? 0);
-  const ppTpsLive = clampHeroTps(Math.max(
-    fusion.prefillTpsInstant ?? 0,
-    fusion.logPrefillTps ?? 0,
-  ));
-  // Default hero mode is AVG, but AVG is 0 until a long wall / print_timing.
-  // Show the live /slots rate until AVG exists; print_timing then replaces it.
+  const ppTpsLive = clampHeroTps(fusion.prefillTpsInstant ?? 0);
   const ppTpsPick = heroTpsMode === "avg" && ppTpsAvg > 0 ? ppTpsAvg : ppTpsLive;
-  const ppTpsValue =
-    ppTpsPick > 0
-      ? ppTpsPick.toFixed(0)
-      : fusion.prefillTpsMetrics > 0
-        ? fusion.prefillTpsMetrics.toFixed(0)
-        : "--";
+  const ppTpsValue = ppTpsPick > 0 ? ppTpsPick.toFixed(0) : "--";
 
   // "both" sequence: hide PP hero only during TG; show live PP bar once PP bench starts.
   const suppressPrefillHero =
@@ -454,11 +418,7 @@ export default function FusionOverlay({
   const ppHeroActive = !suppressPrefillHero && (ppHeroTps != null ? ppHeroTps > 0 : ppTpsValue !== "--");
 
   const isParallelLane = fusion.meterLane === "parallel";
-  const tgTpsLive = clampHeroTps(
-    (fusion.genTpsInstant ?? 0) > 0
-      ? (fusion.genTpsInstant ?? 0)
-      : (fusion.logGenTps ?? 0),
-  );
+  const tgTpsLive = clampHeroTps(fusion.genTpsInstant ?? 0);
   // Prefer pinned genTps after request end (frozen) — genTpsSession can still spike briefly.
   const tgTpsAvgRaw = fusion.requestClosed
     ? (fusion.genTps ?? fusion.genTpsSession ?? 0)
@@ -531,7 +491,7 @@ export default function FusionOverlay({
       : null;
   // Draft family suffix — from `common_specu` log line; MTP is the fallback when only
   // the `print_timing draft acceptance` rate is seen (baked-in nextn emits no spec line).
-  const specModeLabel = specModeLabelFor(fusion.specMode, launchConfig?.specType);
+  const specModeLabel = specModeLabelFor(launchConfig?.specType);
   const mtpAcceptLabel = `ACC ${specModeLabel}`;
   const mtpAcceptTitle =
     fusion.specDraftAcceptedLast != null && fusion.specDraftGeneratedLast != null
@@ -546,14 +506,8 @@ export default function FusionOverlay({
   const isPrefillPhase =
     fusion.phase === "PP" ||
     (fusion.engine_state === "ACTIVE" && fusion.phase !== "TG");
-  const primaryPrefillProgress = Math.max(
-    fusion.prefillProgress ?? 0,
-    fusion.logPrefillProgress ?? 0,
-  );
-  const primaryPrefillTokens = Math.max(
-    fusion.prefillTokens ?? 0,
-    fusion.logPromptTokens ?? 0,
-  );
+  const primaryPrefillProgress = fusion.prefillProgress ?? 0;
+  const primaryPrefillTokens = fusion.prefillTokens ?? 0;
   const showPrefillProgress =
     !suppressPrefillHero && isPrefillPhase && (prefillTotal > 0 || primaryPrefillProgress > 0);
   const slotCol = fusionSlotColumnLayout(fusion.parallel);
@@ -642,18 +596,6 @@ export default function FusionOverlay({
               <span className="fusion-identity-rail__port">:{displayPort}</span>
               <button
                 type="button"
-                onClick={() => setQuietMode((q) => !q)}
-                title={
-                  quietMode
-                    ? "FULL mode - fully realtime GENERATION AND PREFILL data"
-                    : "FALLBACK mode for quiet models — not fully supported yet"
-                }
-                className={`fusion-ops-chip ${quietMode ? "fusion-ops-chip--quiet" : ""}`}
-              >
-                {quietMode ? "FALLBACK" : "FULL"}
-              </button>
-              <button
-                type="button"
                 onClick={handleStopEngine}
                 disabled={isStopping}
                 className={`fusion-ops-chip fusion-ops-chip--stop ${isStopping ? "is-stopping" : ""}`}
@@ -732,16 +674,10 @@ export default function FusionOverlay({
                         : "GENERATION"}
                   </span>
                   <span
-                    className={`fusion-instrument__source ${
-                      fusion.telemetrySource === "sse" ? "fusion-instrument__source--sse" : ""
-                    }`}
-                    title={
-                      fusion.telemetrySource === "sse"
-                        ? "Live feed: /events/sse stream from the engine. PP is steady-state: the 54 ms per-request setup is deducted so it compares with llama-bench"
-                        : "Live feed: poll fallback (/slots + /metrics + stderr). PP includes the per-request setup"
-                    }
+                    className="fusion-instrument__source fusion-instrument__source--sse"
+                    title="Live feed: /events/sse stream from the engine. PP is steady-state: the 54 ms per-request setup is deducted so it compares with llama-bench"
                   >
-                    {fusion.telemetrySource === "sse" ? "SSE" : "POLL"}
+                    SSE
                   </span>
                   <div className="fusion-mode-seg" role="group" aria-label="Hero TPS mode">
                     <button

@@ -47,14 +47,19 @@ export default function FoundryBuildView({ onOpenLog }: FoundryBuildViewProps) {
   const failed = key === "error";
   const starting = Boolean(buildProgress) && !buildProgress?.buildId;
   const compiling = isCompileStep(step);
-  const compileActive = compiling && !waiting && !complete && !failed;
+  const edge = buildProgress?.progress ?? null;
+  // A failed edge arrives before the process exits: in-flight CUDA compiles keep
+  // draining for minutes, so the phase is still Building while the build is dead.
+  const failedNow = failed || Boolean(edge?.failed);
+  const compileActive = compiling && !waiting && !complete && !failedNow;
   const env = normalizeBinaryProfile(buildProgress?.environment);
   const envLabel = ENV_META[env].label;
-  const edge = buildProgress?.progress ?? null;
   const counter = formatEdgeCounter(edge);
   const percent = Math.max(0, Math.min(100, overallPercent(step, edge)));
   const eta = useCompileEta(edge, compileActive);
-  const etaLabel = eta != null && eta > 0.5 ? formatEta(eta) : null;
+  // `useCompileEta` keeps its last number when it goes inactive; a failed build must
+  // not keep advertising a countdown.
+  const etaLabel = !failedNow && eta != null && eta > 0.5 ? formatEta(eta) : null;
   const elapsed = useCompileElapsed(compileStartedAt, compileActive, complete || failed);
   const queue = buildProgress?.queuedEnvironments ?? [];
   const queueLabel = queue
@@ -65,7 +70,7 @@ export default function FoundryBuildView({ onOpenLog }: FoundryBuildViewProps) {
     ? "STARTING"
     : complete
       ? "DONE"
-      : failed
+      : failedNow
         ? "FAILED"
         : waiting
           ? "REVIEW"
@@ -131,7 +136,7 @@ export default function FoundryBuildView({ onOpenLog }: FoundryBuildViewProps) {
             <span className="fnd-hero__counter">{counter ?? "—"}</span>
             {edge?.kind && <span className="fnd-hero__kind">{edge.kind}</span>}
             <span className="fnd-hero__eta">
-              {etaLabel ? `~${etaLabel} LEFT` : compileActive ? "ESTIMATING…" : "WAITING"}
+              {etaLabel ? `~${etaLabel} LEFT` : failedNow ? "FAILED" : compileActive ? "ESTIMATING…" : "WAITING"}
             </span>
             <span className="fnd-hero__timer">{elapsed}</span>
           </div>

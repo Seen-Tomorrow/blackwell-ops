@@ -77,7 +77,13 @@ export default function FusionMicroReadout({
       <span className={`fusion-micro-rule ${ruleClass}`} aria-hidden>
         |
       </span>
-      <Cell label="TIME" value={elapsedMs} live={live} className="fusion-micro-elapsed" />
+      <Cell
+        label="TIME"
+        value={elapsedMs}
+        live={live}
+        className="fusion-micro-elapsed"
+        title="Generation elapsed time (starts once all active slots finish prefill)"
+      />
       {mtpAcceptPct != null && (
         <>
           <span className={`fusion-micro-rule ${ruleClass}`} aria-hidden>

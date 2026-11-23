@@ -824,8 +824,8 @@ export interface FusionUpdate {
   slotIdx: number;
   port: number;
 
-  /** Live feed behind the prefill/gen meters: 'sse' = engine /events/sse stream, 'poll' = legacy path. */
-  telemetrySource?: 'sse' | 'poll';
+  /** Live feed behind the prefill/gen meters: 'sse' = engine /events/sse stream. */
+  telemetrySource?: 'sse';
 
   // Lifecycle (3 states)
   engine_state: 'LOADING' | 'READY' | 'ACTIVE';
@@ -833,10 +833,9 @@ export interface FusionUpdate {
   // Phase — fused from both sources
   phase: 'IDLE' | 'PP' | 'TG';
 
-  // Prefill TPS: prefillTpsSession = request avg (bench-aligned); prefillTpsMetrics = /metrics smoothed gauge
+  // Prefill TPS: prefillTpsSession = request avg (bench-aligned)
   prefillTpsSession: number;   // tokens / elapsed — same as bench tokens_evaluated / prompt_ms
   prefillTpsInstant?: number;  // per-poll / log chunk — hero LIVE mode
-  prefillTpsMetrics: number;   // llamacpp:prompt_tokens_seconds gauge (often lower; legacy fallback)
 
   // Primary prefill progress/tokens from /slots (real-time, catches short+long prompts, no 3s throttle)
   prefillProgress: number;    // 0→1 from n_prompt_tokens_processed / n_prompt_tokens
@@ -889,26 +888,7 @@ export interface FusionUpdate {
   parallel: number;
   unified_kv: boolean;
 
-  // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
-  /** Exact prefill progress 0→1 from "prompt processing, progress = X.XX" */
-  logPrefillProgress?: number;
-
-  /** Instantaneous PP tokens/s during prompt processing (engine's own calculation from log) */
-  logPrefillTps?: number;
-
-  /** n_tokens processed so far in current PP request (from print_timing line) */
-  logPromptTokens?: number;
-
-  /** tg = X t/s from generation print_timing line (may be delayed vs /slots real-time) */
-  logGenTps?: number;
-
-  /** Phase derived purely from log events (PP→TG via sampler_init, IDLE via stop_processing) */
-  logPhase?: 'IDLE' | 'PP' | 'TG';
-
-  /** Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line. */
-  phaseResetSource?: "prompt" | "regression";
-
-  /** Session cumulative MTP draft acceptance rate (0–1) from print_timing stderr. */
+  /** Session cumulative MTP draft acceptance rate (0–1). */
   specDraftAcceptRate?: number;
   specDraftAccepted?: number;
   specDraftGenerated?: number;
@@ -916,8 +896,6 @@ export interface FusionUpdate {
   specDraftAcceptRateLast?: number;
   specDraftAcceptedLast?: number;
   specDraftGeneratedLast?: number;
-  /** Speculative draft family — "mtp" | "dflash" | "dspark" (from `common_specu` log line). */
-  specMode?: 'mtp' | 'dflash' | 'dspark';
 }
 
 interface VramFitResult {

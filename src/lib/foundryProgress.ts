@@ -16,8 +16,14 @@ export interface EdgeProgress {
   total: number;
   /** Leaf name of the edge being compiled, e.g. `fattn-vec-instance-q8_0-f16.cu`. */
   label?: string | null;
-  /** Coarse kind from the backend: CUDA | CXX | C | LINK | GEN | OTHER. */
+  /** Coarse kind from the backend: CUDA | CXX | C | LINK | GEN | OTHER | FAILED. */
   kind?: string | null;
+  /**
+   * Backend saw ninja's `FAILED:` line. The build process can stay alive for minutes
+   * after it while in-flight compiles drain, so the phase is still `Building` — this
+   * keeps the chip from advertising whichever edge happened to start last.
+   */
+  failed?: boolean;
 }
 
 /** Edges of movement required before an ETA is meaningful. */

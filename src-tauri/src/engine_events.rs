@@ -118,6 +118,8 @@ pub struct SlotTelemetry {
     pub wave_ready: bool,
 }
 
+const LIVE_GEN_WINDOW: std::time::Duration = std::time::Duration::from_millis(1500);
+
 impl SlotTelemetry {
     /// Time from request start to the first generated token (aggregate: earliest lane).
     pub fn ttft_ms(&self) -> Option<f64> {
@@ -125,13 +127,13 @@ impl SlotTelemetry {
             return self.aggregate_ttft_ms;
         }
         let (start, first) = (self.t_request_start?, self.t_first_token?);
-        Some(first.duration_since(start).as_secs_f64() * 1000.0)
+        Some(first.saturating_duration_since(start).as_secs_f64() * 1000.0)
     }
 
     /// Time from prompt end to the first generated token.
     pub fn decode_ttft_ms(&self) -> Option<f64> {
         let (end, first) = (self.t_prefill_end?, self.t_first_token?);
-        Some(first.duration_since(end).as_secs_f64() * 1000.0)
+        Some(first.saturating_duration_since(end).as_secs_f64() * 1000.0)
     }
 
     /// Prefill TPS from the slot clock. `prompt_progress` counts the cached prefix in `processed`,
@@ -155,9 +157,19 @@ impl SlotTelemetry {
     /// A two-sample delta aliases badly when a whole ubatch lands between ticks (a 1024-token
     /// step at 25 ms reads as ~40k tok/s for one frame). A trailing window smooths that without
     /// inventing data, and returns 0 until the span is long enough to mean anything.
-    #[allow(dead_code)] // split step 5: the SSE reader will switch to this window
     pub fn gen_tps_window(&self, window: std::time::Duration) -> f64 {
         window_rate(&self.gen_samples, window)
+    }
+
+    /// Live decode rate: prefers the trailing 1.5s sample window, falling back to
+    /// the engine's cumulative `gen_tps` when fewer than 2 samples are in the window.
+    pub fn live_gen_tps(&self) -> f64 {
+        let windowed = self.gen_tps_window(LIVE_GEN_WINDOW);
+        if windowed > 0.0 {
+            windowed
+        } else {
+            self.gen_tps
+        }
     }
 }
 
@@ -319,6 +331,8 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
     let mut busy_lanes = 0usize;
     let mut all_busy_decoded = true;
     let mut wave_start: Option<Instant> = None;
+    let mut earliest_start: Option<Instant> = None;
+    let mut latest_prefill_end: Option<Instant> = None;
 
     for lane in &lanes {
         out.n_ctx += lane.n_ctx;
@@ -328,7 +342,9 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
         out.pp_total += lane.pp_total;
         out.pp_time_ms = out.pp_time_ms.max(lane.pp_time_ms);
         out.gen_decoded += lane.gen_decoded;
-        out.gen_tps += lane.gen_tps;
+        if lane.phase == "TG" {
+            out.gen_tps += lane.live_gen_tps();
+        }
         out.spec_accepted_total += lane.spec_accepted_total;
         out.spec_draft_total += lane.spec_draft_total;
         out.seq = out.seq.max(lane.seq);
@@ -338,6 +354,12 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
         }
         if lane.phase == "PP" || lane.phase == "TG" {
             busy_lanes += 1;
+            if let Some(t) = lane.t_request_start {
+                earliest_start = Some(earliest_start.map_or(t, |cur: Instant| cur.min(t)));
+            }
+            if let Some(t) = lane.t_prefill_end {
+                latest_prefill_end = Some(latest_prefill_end.map_or(t, |cur: Instant| cur.max(t)));
+            }
             match lane.t_first_token {
                 Some(t) => wave_start = Some(wave_start.map_or(t, |cur: Instant| cur.max(t))),
                 None => all_busy_decoded = false,
@@ -363,6 +385,11 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
     // still-prefilling lane means the clock has not started yet.
     out.wave_ready = busy_lanes > 0 && all_busy_decoded;
     out.t_wave_start = if out.wave_ready { wave_start } else { None };
+    if out.phase == "TG" {
+        out.t_request_start = earliest_start;
+        out.t_prefill_end = latest_prefill_end;
+        out.t_first_token = out.t_wave_start;
+    }
     Some(out)
 }
 
@@ -562,11 +589,17 @@ fn apply(port: u16, evt: &EngineEvent) {    let slot = match evt {
             entry.n_ctx_used = *n_ctx_used;
             entry.seq = *seq;
             if phase == "PP" && !was_pp {
-                // new request: timestamps belong to this one
+                // new request: timestamps and counters belong to this one
                 entry.t_request_start = Some(now);
                 entry.t_prefill_end = None;
                 entry.t_first_token = None;
                 entry.request_closed = false;
+                entry.pp_processed = 0;
+                entry.pp_cache = 0;
+                entry.pp_total = 0;
+                entry.pp_time_ms = 0.0;
+                entry.gen_decoded = 0;
+                entry.gen_tps = 0.0;
                 // a two-request-old decode sample must not leak into this request's window
                 entry.gen_samples.clear();
                 opened_wave = true;
@@ -580,6 +613,7 @@ fn apply(port: u16, evt: &EngineEvent) {    let slot = match evt {
                 entry.pp_time_ms = 0.0;
                 entry.gen_decoded = 0;
                 entry.gen_tps = 0.0;
+                entry.gen_samples.clear();
             }
         }
         EngineEvent::PromptProgress {
@@ -963,5 +997,64 @@ mod tests {
             apply(9101, &evt);
         }
         assert!(!slot_snapshot(9101, 0).unwrap().request_closed);
+    }
+
+    #[test]
+    fn aggregate_uses_windowed_live_rate_over_cumulative_slot_tps() {
+        let port = 9600;
+        let mut buf = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":100,\"seq\":1}\n\n",
+            "data: {\"type\":\"gen_progress\",\"slot\":0,\"decoded\":10,\"gen_ms\":5000.0,\"tps\":2.0,\"seq\":2}\n\n",
+            "data: {\"type\":\"state\",\"slot\":1,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":100,\"seq\":3}\n\n",
+            "data: {\"type\":\"gen_progress\",\"slot\":1,\"decoded\":10,\"gen_ms\":5000.0,\"tps\":2.0,\"seq\":4}\n\n"
+        ));
+        for evt in take_frames(&mut buf) {
+            apply(port, &evt);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        let mut buf2 = String::from(concat!(
+            "data: {\"type\":\"gen_progress\",\"slot\":0,\"decoded\":14,\"gen_ms\":5080.0,\"tps\":2.7,\"seq\":5}\n\n",
+            "data: {\"type\":\"gen_progress\",\"slot\":1,\"decoded\":14,\"gen_ms\":5080.0,\"tps\":2.7,\"seq\":6}\n\n"
+        ));
+        for evt in take_frames(&mut buf2) {
+            apply(port, &evt);
+        }
+        let agg = aggregate(port).expect("aggregate");
+        assert!(
+            agg.gen_tps > 40.0,
+            "expected windowed live rate >> cumulative 5.4, got {}",
+            agg.gen_tps
+        );
+    }
+
+    #[test]
+    fn aggregate_populates_wave_prefill_and_first_token_only_after_pp() {
+        let port = 9601;
+        let mut buf = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"PP\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":1}\n\n",
+            "data: {\"type\":\"state\",\"slot\":0,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":50,\"seq\":2}\n\n",
+            "data: {\"type\":\"gen_progress\",\"slot\":0,\"decoded\":1,\"gen_ms\":10.0,\"tps\":20.0,\"seq\":3}\n\n",
+            "data: {\"type\":\"state\",\"slot\":1,\"phase\":\"PP\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":0,\"seq\":4}\n\n"
+        ));
+        for evt in take_frames(&mut buf) {
+            apply(port, &evt);
+        }
+        let agg_pp = aggregate(port).expect("aggregate during PP");
+        assert_eq!(agg_pp.phase, "PP");
+        assert_eq!(agg_pp.t_prefill_end, None);
+        assert_eq!(agg_pp.t_first_token, None);
+
+        let mut buf2 = String::from(concat!(
+            "data: {\"type\":\"state\",\"slot\":1,\"phase\":\"TG\",\"busy\":2,\"peak\":2,\"n_ctx\":4096,\"n_ctx_used\":50,\"seq\":5}\n\n",
+            "data: {\"type\":\"gen_progress\",\"slot\":1,\"decoded\":1,\"gen_ms\":10.0,\"tps\":20.0,\"seq\":6}\n\n"
+        ));
+        for evt in take_frames(&mut buf2) {
+            apply(port, &evt);
+        }
+        let agg_tg = aggregate(port).expect("aggregate in TG");
+        assert_eq!(agg_tg.phase, "TG");
+        assert!(agg_tg.t_request_start.is_some());
+        assert!(agg_tg.t_prefill_end.is_some());
+        assert!(agg_tg.t_first_token.is_some());
     }
 }

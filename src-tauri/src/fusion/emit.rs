@@ -9,9 +9,9 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::fusion::brain::EngineState;
 use crate::fusion::lifecycle::InferencePhase;
 use crate::fusion::meter::FusionMeterLane;
+use crate::fusion::EngineState;
 
 // ── Per-slot CTX info emitted to frontend ────────────────────────────
 
@@ -62,10 +62,6 @@ pub struct FusionUpdate {
 
     // Phase — fused from both sources
     pub phase: InferencePhase,
-
-    // ── Prefill metrics (primary source = /metrics for TPS; /slots for progress/tokens — log parser is secondary/debug) ────────────────
-    #[serde(rename = "prefillTpsMetrics")]
-    pub prefill_tps_metrics: f64,
 
     /// Request-average prefill TPS (tokens processed / wall elapsed) — matches bench `tokens_evaluated / prompt_ms`.
     #[serde(rename = "prefillTpsSession")]
@@ -135,22 +131,6 @@ pub struct FusionUpdate {
     pub parallel: i64,
     pub unified_kv: bool,
 
-    // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
-    #[serde(rename = "logPrefillProgress")]
-    pub lp_prefill_progress: f64,       // exact 0→1 from "prompt processing, progress = X.XX"
-
-    #[serde(rename = "logPrefillTps")]
-    pub lp_prefill_tps: f64,            // instantaneous tokens/s during PP (engine's own calc)
-
-    #[serde(rename = "logPromptTokens")]
-    pub lp_prompt_tokens: usize,        // n_tokens processed so far in current PP request
-
-    #[serde(rename = "logGenTps")]
-    pub lp_gen_tps: f64,               // tg = X t/s from generation print_timing line
-
-    #[serde(rename = "logPhase")]
-    pub lp_phase: InferencePhase,       // phase derived purely from log events (PP→TG via sampler_init)
-
     /// Session cumulative MTP draft acceptance rate (accepted / generated), 0–1.
     #[serde(rename = "specDraftAcceptRate", skip_serializing_if = "Option::is_none")]
     pub spec_draft_accept_rate: Option<f64>,
@@ -158,22 +138,15 @@ pub struct FusionUpdate {
     pub spec_draft_accepted: u64,
     #[serde(rename = "specDraftGenerated")]
     pub spec_draft_generated: u64,
-    /// Last completed request draft acceptance (from print_timing line).
+    /// Last completed request draft acceptance.
     #[serde(rename = "specDraftAcceptRateLast", skip_serializing_if = "Option::is_none")]
     pub spec_draft_accept_rate_last: Option<f64>,
     #[serde(rename = "specDraftAcceptedLast", skip_serializing_if = "Option::is_none")]
     pub spec_draft_accepted_last: Option<usize>,
     #[serde(rename = "specDraftGeneratedLast", skip_serializing_if = "Option::is_none")]
     pub spec_draft_generated_last: Option<usize>,
-    /// Speculative draft family — "mtp" | "dflash" | "dspark" (from `common_specu` log line).
-    #[serde(rename = "specMode", skip_serializing_if = "Option::is_none")]
-    pub spec_mode: Option<String>,
 
-    /// Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line.
-    #[serde(rename = "phaseResetSource", skip_serializing_if = "Option::is_none")]
-    pub lp_reset_source: Option<&'static str>,  // Some("prompt") or Some("regression")
-
-    /// Wall clock + hero AVG/LIVE must not tick after request end (bench HTTP return, stop processing, idle tail).
+    /// Wall clock + hero AVG/LIVE must not tick after request end.
     #[serde(rename = "requestClosed")]
     pub request_closed: bool,
 
@@ -206,7 +179,6 @@ pub struct FusionEmitFingerprint {
     pub prefill_tokens_total: u32,
     pub prefill_tps_session_centi: u32,
     pub prefill_tps_instant_centi: u32,
-    pub prefill_tps_metrics_centi: u32,
     pub gen_tps_deci: u32,
     pub gen_tps_session_deci: u32,
     pub gen_tps_instant_deci: u32,
@@ -219,11 +191,6 @@ pub struct FusionEmitFingerprint {
     pub prefill_ms: u64,
     pub decode_ttft_ms: u64,
     pub slot_ctx_hash: u64,
-    pub log_progress_milli: u32,
-    pub log_pp_tps_centi: u32,
-    pub log_prompt_tokens: u32,
-    pub log_gen_tps_deci: u32,
-    pub log_phase_tag: u8,
     pub spec_draft_accept_rate_milli: u32,
     pub spec_draft_accepted: u64,
     pub spec_draft_generated: u64,
@@ -242,7 +209,6 @@ impl FusionEmitFingerprint {
             prefill_tokens_total: u.prefill_tokens_total.min(u32::MAX as usize) as u32,
             prefill_tps_session_centi: (u.prefill_tps_session * 100.0).round() as u32,
             prefill_tps_instant_centi: (u.prefill_tps_instant * 100.0).round() as u32,
-            prefill_tps_metrics_centi: (u.prefill_tps_metrics * 100.0).round() as u32,
             gen_tps_deci: (u.gen_tps * 10.0).round() as u32,
             gen_tps_session_deci: (u.gen_tps_session * 10.0).round() as u32,
             gen_tps_instant_deci: (u.gen_tps_instant * 10.0).round() as u32,
@@ -268,11 +234,6 @@ impl FusionEmitFingerprint {
             prefill_ms: u.prefill_ms.map(|v| v.round() as u64).unwrap_or(0),
             decode_ttft_ms: u.decode_ttft_ms.map(|v| v.round() as u64).unwrap_or(0),
             slot_ctx_hash: hash_slot_ctx(&u.slot_ctx),
-            log_progress_milli: (u.lp_prefill_progress * 1000.0).round() as u32,
-            log_pp_tps_centi: (u.lp_prefill_tps * 100.0).round() as u32,
-            log_prompt_tokens: u.lp_prompt_tokens.min(u32::MAX as usize) as u32,
-            log_gen_tps_deci: (u.lp_gen_tps * 10.0).round() as u32,
-            log_phase_tag: phase_tag(&u.lp_phase),
             spec_draft_accept_rate_milli: u
                 .spec_draft_accept_rate
                 .map(|r| (r * 1000.0).round() as u32)
@@ -341,15 +302,6 @@ pub fn remove_fusion_snapshot(slot_idx: usize) {
 #[tauri::command]
 pub fn get_fusion_snapshots() -> Vec<FusionUpdate> {
     FUSION_SNAPSHOT_CACHE.lock().values().cloned().collect()
-}
-
-/// Map an engine port → the slot_idx of its last emitted snapshot (used by brain registry ops).
-pub fn find_slot_idx_for_port(port: u16) -> Option<usize> {
-    FUSION_SNAPSHOT_CACHE
-        .lock()
-        .values()
-        .find(|u| u.port == port)
-        .map(|u| u.slot_idx)
 }
 
 /// Clear the whole snapshot cache (app shutdown).

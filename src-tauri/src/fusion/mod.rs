@@ -1,44 +1,117 @@
-//! Fusion metrics — per-provider adapters + provider-agnostic brain core.
-//!
-//! Tuning a new engine fork: add `src/fusion/adapters/<id>.rs`, register in
-//! `adapters/mod.rs`, set `spawn_profile.fusion_adapter` in factory JSON (or
-//! `apply_spawn_profile_overrides` for derived providers like ggml-tom).
+//! Fusion telemetry — SSE-only brain (`SseBrain`) driven by `/events/sse`.
 
-pub mod adapters;
-pub mod brain;
 pub mod emit;
 pub mod lifecycle;
-pub mod log;
 pub mod meter;
-pub mod poller;
-pub mod registry;
-pub mod slotstate;
 pub mod sse;
 
-pub use adapters::FusionAdapterId;
-pub use brain::{
-    freeze_request_meters_for_port, reset_bench_meters_for_port, set_quiet_mode_for_port,
-    start_brain, stop_all_brains, stop_brain, FusionConfig,
-};
-pub use poller::SlotData;
-pub use registry::resolve_adapter;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::LazyLock;
 
-/// Parse a log line with the slot's registered adapter and route to its brain.
-pub fn parse_and_route_log_event(slot_idx: usize, line: &str) {
-    let adapter = registry::slot_adapter(slot_idx);
-    if let Some(ev) = adapter.parse_log_line(line) {
-        brain::route_log_event(slot_idx, ev);
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+
+use crate::log_hub::LogHub;
+
+pub(crate) static FUSION_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+
+const BRAIN_STOP_JOIN_MS: u64 = 750;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum EngineState {
+    Loading,
+    Ready,
+    Active,
+}
+
+#[derive(Clone)]
+pub struct FusionConfig {
+    pub alias: String,
+    pub slot_idx: usize,
+    pub port: u16,
+    pub ctx_total: usize,
+    pub parallel: i64,
+    pub unified_kv: bool,
+}
+
+struct BrainHandle {
+    cancel: CancellationToken,
+    join: JoinHandle<()>,
+}
+
+static BRAIN_REGISTRY: LazyLock<Mutex<HashMap<usize, BrainHandle>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+async fn stop_brain_handle(handle: BrainHandle) {
+    let abort = handle.join.abort_handle();
+    handle.cancel.cancel();
+    if tokio::time::timeout(
+        std::time::Duration::from_millis(BRAIN_STOP_JOIN_MS),
+        handle.join,
+    )
+    .await
+    .is_err()
+    {
+        abort.abort();
     }
 }
 
-/// Poll /slots and normalize with the provider adapter.
-pub async fn poll_slots_normalized(
-    client: &reqwest::Client,
-    host: &str,
-    port: u16,
-    adapter: FusionAdapterId,
-) -> Result<Vec<SlotData>, String> {
-    let mut slots = poller::poll_slots_on(client, host, port).await?;
-    adapter.normalize_slots(&mut slots);
-    Ok(slots)
+/// Start the SSE fusion brain for an engine slot if `/events/sse` is supported.
+pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
+    let sse_capable = crate::engine_events::probe(config.port).await;
+    let old = BRAIN_REGISTRY.lock().remove(&config.slot_idx);
+    if let Some(handle) = old {
+        stop_brain_handle(handle).await;
+    }
+
+    if !sse_capable {
+        log::info!(
+            "[fusion] slot={} port={} sse_capable=false — fusion off",
+            config.slot_idx,
+            config.port
+        );
+        emit::remove_fusion_snapshot(config.slot_idx);
+        return;
+    }
+
+    crate::engine_events::restart(config.port);
+    log::info!(
+        "[fusion] slot={} port={} brain=Sse",
+        config.slot_idx,
+        config.port
+    );
+    let idx = config.slot_idx;
+    let (join, cancel) = sse::SseBrain::spawn(log_hub, config);
+    BRAIN_REGISTRY.lock().insert(idx, BrainHandle { cancel, join });
+}
+
+/// Stop the fusion brain for a specific slot.
+pub async fn stop_brain(slot_idx: usize) {
+    let entry = BRAIN_REGISTRY.lock().remove(&slot_idx);
+    if let Some(handle) = entry {
+        stop_brain_handle(handle).await;
+    }
+    emit::remove_fusion_snapshot(slot_idx);
+}
+
+/// Stop all fusion brains. Call on app shutdown.
+pub async fn stop_all_brains() {
+    FUSION_SHUTTING_DOWN.store(true, Ordering::Release);
+    let entries: Vec<BrainHandle> = BRAIN_REGISTRY.lock().drain().map(|(_, v)| v).collect();
+    let mut joins = Vec::with_capacity(entries.len());
+    for handle in entries {
+        joins.push(tokio::spawn(async move {
+            stop_brain_handle(handle).await;
+        }));
+    }
+    for j in joins {
+        let _ = j.await;
+    }
+    emit::clear_snapshots();
+    log::info!("[fusion] stop_all_brains complete (shutting_down=true, brains joined/aborted)");
+    crate::session_log::append_session_line("[fusion] stop_all_brains complete");
 }

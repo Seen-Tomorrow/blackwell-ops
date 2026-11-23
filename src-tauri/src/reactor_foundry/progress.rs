@@ -26,6 +26,9 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, OnceLock};
 
+/// Coarse `kind` value once ninja has reported a failed edge.
+const FAILED_KIND: &str = "FAILED";
+
 /// Compile-stage edge progress, carried on `foundry-progress` and `foundry_status`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuildEdgeProgress {
@@ -33,8 +36,13 @@ pub struct BuildEdgeProgress {
     pub total: u32,
     /// Leaf name of the edge's input/output, e.g. `fattn-vec-instance-q8_0-f16.cu`.
     pub label: Option<String>,
-    /// Coarse edge kind: `CUDA` | `CXX` | `C` | `LINK` | `GEN` | `OTHER`.
+    /// Coarse edge kind: `CUDA` | `CXX` | `C` | `LINK` | `GEN` | `OTHER` | `FAILED`.
     pub kind: Option<String>,
+    /// A `FAILED:` edge has been reported. The build process can stay alive for minutes
+    /// after it while in-flight CUDA compiles drain, so the phase is still `Building`;
+    /// without this the chip keeps advertising whichever edge happened to start last.
+    #[serde(default)]
+    pub failed: bool,
 }
 
 /// Split a counter line into `(done, total, tail_after_counter)`.
@@ -112,6 +120,51 @@ fn classify(tail: &str) -> (Option<String>, Option<String>) {
     (kind.map(str::to_string), label)
 }
 
+/// `Some(label)` when the line ends the build for display purposes: ninja's
+/// `FAILED: <target>` names the edge, `ninja: build stopped` closes the run.
+fn failure_marker(line: &str) -> Option<Option<String>> {
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("FAILED:") {
+        let target = rest.trim();
+        let leaf = target.rsplit(['\\', '/']).next().unwrap_or(target);
+        return Some((leaf.len() > 2 && leaf.contains('.')).then(|| leaf.to_string()));
+    }
+    trimmed.starts_with("ninja: build stopped").then_some(None)
+}
+
+fn empty_progress() -> BuildEdgeProgress {
+    BuildEdgeProgress {
+        done: 0,
+        total: 0,
+        label: None,
+        kind: None,
+        failed: false,
+    }
+}
+
+/// Fold any streamed line. A failure marker wins over the counter: it freezes the
+/// number, keeps the failing edge as the label, and flips the chip to FAILED.
+fn fold(prev: Option<BuildEdgeProgress>, line: &str) -> Option<BuildEdgeProgress> {
+    if let Some(label) = failure_marker(line) {
+        let already_failed = matches!(&prev, Some(p) if p.failed);
+        let mut next = prev.unwrap_or_else(empty_progress);
+        next.failed = true;
+        next.kind = Some(FAILED_KIND.to_string());
+        match label {
+            Some(label) => next.label = Some(label),
+            // `build stopped` without a prior `FAILED:` line means the edge that
+            // failed never named itself — drop the stale label instead of lying.
+            None if !already_failed => next.label = None,
+            None => {}
+        }
+        return Some(next);
+    }
+    if matches!(&prev, Some(p) if p.failed) {
+        return prev;
+    }
+    apply(prev, line)
+}
+
 /// Fold one streamed line into the running progress value.
 ///
 /// Monotonic within a run (`total` unchanged). A different `total` means a *new*
@@ -137,6 +190,7 @@ fn apply(prev: Option<BuildEdgeProgress>, line: &str) -> Option<BuildEdgeProgres
         total,
         label: label.or(carried_label),
         kind: kind.or(carried_kind),
+        failed: false,
     })
 }
 
@@ -147,14 +201,14 @@ fn store() -> &'static Mutex<Option<BuildEdgeProgress>> {
 }
 
 /// Record one drained pipe line. Cheap reject for the overwhelming majority of
-/// lines (warnings, compiler notes) that cannot carry a counter.
+/// lines (warnings, compiler notes) that cannot carry a counter or a failure.
 pub(crate) fn record_line(line: &str) {
-    if !line.as_bytes().contains(&b'[') {
+    if !line.as_bytes().contains(&b'[') && failure_marker(line).is_none() {
         return;
     }
     match store().lock() {
         Ok(mut guard) => {
-            let next = apply(guard.take(), line);
+            let next = fold(guard.take(), line);
             *guard = next;
         }
         Err(e) => log::error!("[foundry] edge progress mutex poisoned: {e}"),
@@ -182,7 +236,7 @@ pub(crate) fn reset() {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply, inspect_edge, BuildEdgeProgress};
+    use super::{apply, fold, inspect_edge, BuildEdgeProgress};
 
     fn counter(line: &str) -> Option<(u32, u32)> {
         inspect_edge(line).map(|(done, total, _, _)| (done, total))
@@ -271,6 +325,7 @@ mod tests {
             total: 416,
             label: None,
             kind: None,
+            failed: false,
         };
         // A second ninja invocation with a different denominator must not pin at 100%.
         let s = apply(Some(first), "[1/12] Building CXX object x.obj").expect("progress");
@@ -289,7 +344,7 @@ mod tests {
         assert!(apply(None, "[0/1] Re-running CMake...").is_none());
     }
 
-    /// The frontend reads these four keys directly; a rename here must fail a test
+    /// The frontend reads these five keys directly; a rename here must fail a test
     /// rather than silently blank the bar.
     #[test]
     fn wire_shape_matches_the_frontend_contract() {
@@ -298,6 +353,7 @@ mod tests {
             total: 9,
             label: Some("x.cu".into()),
             kind: Some("CUDA".into()),
+            failed: false,
         })
         .expect("serialize");
 
@@ -305,5 +361,50 @@ mod tests {
         assert_eq!(value["total"], 9);
         assert_eq!(value["label"], "x.cu");
         assert_eq!(value["kind"], "CUDA");
+        assert_eq!(value["failed"], false);
+    }
+
+    #[test]
+    fn failed_edge_replaces_the_running_cuda_label() {
+        let running = apply(None, CUDA);
+        let s = fold(running, "FAILED: src/CMakeFiles/llama.dir/Release/llama-quant.cpp.obj ")
+            .expect("progress");
+        assert!(s.failed);
+        assert_eq!(s.kind.as_deref(), Some("FAILED"));
+        assert_eq!(s.label.as_deref(), Some("llama-quant.cpp.obj"));
+        // The counter is kept as the honest high-water mark.
+        assert_eq!((s.done, s.total), (404, 416));
+    }
+
+    #[test]
+    fn counters_freeze_after_a_failed_edge() {
+        let s = fold(None, "FAILED: src/x.cpp.obj");
+        let s = fold(s, "[410/416] Building CXX object y.obj").expect("progress");
+        assert_eq!((s.done, s.total), (0, 0));
+        assert_eq!(s.label.as_deref(), Some("x.cpp.obj"));
+    }
+
+    #[test]
+    fn build_stopped_without_a_failed_edge_drops_the_stale_label() {
+        let running = apply(None, CUDA);
+        let s = fold(running, "ninja: build stopped: subcommand failed.").expect("progress");
+        assert!(s.failed);
+        assert_eq!(s.kind.as_deref(), Some("FAILED"));
+        assert_eq!(s.label, None);
+    }
+
+    #[test]
+    fn failure_before_the_first_counter_still_marks_progress() {
+        let s = fold(None, "ninja: build stopped: subcommand failed.").expect("progress");
+        assert!(s.failed);
+        assert_eq!(s.kind.as_deref(), Some("FAILED"));
+        assert_eq!(s.total, 0);
+    }
+
+    #[test]
+    fn failed_flag_defaults_false_when_absent_on_the_wire() {
+        let value: BuildEdgeProgress =
+            serde_json::from_value(serde_json::json!({"done": 1, "total": 2})).expect("deserialize");
+        assert!(!value.failed);
     }
 }

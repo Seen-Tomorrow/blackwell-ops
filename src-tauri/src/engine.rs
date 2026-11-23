@@ -749,13 +749,6 @@ pub async fn launch_engine(
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path, &config);
 
     let supports_fusion = template.spawn_profile.supports_fusion;
-    let fusion_adapter = fusion::resolve_adapter(
-        &backend_type,
-        provider_opt2
-            .map(|p| p.template_type.as_str())
-            .unwrap_or(""),
-        Some(template.spawn_profile.fusion_adapter.as_str()),
-    );
     let mut cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     crate::fit_scanner::apply_default_fit_target(&mut cmd_args);
     // A device that already hosts another process cannot be planned by `--fit` (it reads CUDA's
@@ -877,7 +870,7 @@ pub async fn launch_engine(
         crate::engine_stack::clear_slot_ready(slot_idx);
         let result = EngineStack::load_slot(
             slot_idx, reservation, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
-            provider_display_name.clone(), backend_type.clone(), supports_fusion, fusion_adapter,
+            provider_display_name.clone(), backend_type.clone(), supports_fusion,
             &app.stack,
             app.log_hub.clone(),
             make_on_ready(
@@ -1032,7 +1025,6 @@ pub async fn launch_engine(
         let fusion_port = slot_port;
         let fusion_parallel = config.get_parallel();
         let fusion_unified_kv = config.get_unified_kv();
-        let fusion_provider_id = backend_type.clone();
 
         tokio::spawn(async move {
             fusion::start_brain(
@@ -1044,9 +1036,6 @@ pub async fn launch_engine(
                     ctx_total: ctx_size_int,
                     parallel: fusion_parallel,
                     unified_kv: fusion_unified_kv,
-                    provider_id: fusion_provider_id,
-                    adapter: fusion_adapter,
-                    has_log_belt: fusion_adapter.has_log_belt(),
                 },
             ).await;
         });

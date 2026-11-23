@@ -621,7 +621,6 @@ async fn main() {
             bench_pp_burst::cmd_bench_pp_burst,
             bench_cancel::cmd_cancel_bench,
             fusion::emit::get_fusion_snapshots,
-            fusion::brain::set_fusion_quiet_mode,
             debug_flags::get_debug_flags,
             session_log::get_session_log_status,
             session_log::set_session_log_enabled,

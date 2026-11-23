@@ -8,6 +8,7 @@
 //! (HTTP wall minus max per-feed prefill — prefills overlap, must not sum prompt_ms).
 //! Per-slot engine decode rate is stored in `per_request_gen_tps` (~ITL / req ms).
 
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::bench_cancel::{self, post_json, release_all_slots, BenchPortGuard};
@@ -142,6 +143,89 @@ async fn engine_slot_count(client: &reqwest::Client, port: u16) -> usize {
     1
 }
 
+#[derive(Debug, Clone, Copy)]
+struct WaveWindowSample {
+    wave_tokens: u64,
+    wave_ms: f64,
+    ramp_ms: f64,
+}
+
+/// Tracks steady-state parallel decode: opens when every concurrent feed has produced
+/// its first token and closes when the first feed finishes, excluding staggered prefill
+/// ramps and end-of-wave drain tails.
+struct ParallelWaveTracker {
+    expected: usize,
+    launch_start: Instant,
+    per_feed_decoded: Vec<u64>,
+    started_count: usize,
+    any_finished: bool,
+    wave_start: Option<Instant>,
+    start_tokens: Vec<u64>,
+    wave_end: Option<Instant>,
+    end_tokens: Vec<u64>,
+}
+
+impl ParallelWaveTracker {
+    fn new(expected: usize, launch_start: Instant) -> Self {
+        Self {
+            expected,
+            launch_start,
+            per_feed_decoded: vec![0; expected],
+            started_count: 0,
+            any_finished: false,
+            wave_start: None,
+            start_tokens: Vec::new(),
+            wave_end: None,
+            end_tokens: Vec::new(),
+        }
+    }
+
+    fn record(&mut self, feed_idx: usize, decoded: u64, is_stop: bool, now: Instant) {
+        if feed_idx >= self.expected {
+            return;
+        }
+        let prev = self.per_feed_decoded[feed_idx];
+        if decoded > prev {
+            self.per_feed_decoded[feed_idx] = decoded;
+            if prev == 0 {
+                self.started_count += 1;
+            }
+        }
+        if self.wave_start.is_none() && !self.any_finished && self.started_count == self.expected {
+            self.wave_start = Some(now);
+            self.start_tokens = self.per_feed_decoded.clone();
+        }
+        if is_stop {
+            self.any_finished = true;
+            if self.wave_start.is_some() && self.wave_end.is_none() {
+                self.wave_end = Some(now);
+                self.end_tokens = self.per_feed_decoded.clone();
+            }
+        }
+    }
+
+    fn sample(&self) -> Option<WaveWindowSample> {
+        let (start, end) = (self.wave_start?, self.wave_end?);
+        let wave_ms = end.saturating_duration_since(start).as_secs_f64() * 1000.0;
+        let wave_tokens: u64 = self
+            .end_tokens
+            .iter()
+            .zip(&self.start_tokens)
+            .map(|(e, s)| e.saturating_sub(*s))
+            .sum();
+        let ramp_ms = start.saturating_duration_since(self.launch_start).as_secs_f64() * 1000.0;
+        if wave_ms >= 500.0 && wave_tokens >= self.expected as u64 {
+            Some(WaveWindowSample {
+                wave_tokens,
+                wave_ms,
+                ramp_ms,
+            })
+        } else {
+            None
+        }
+    }
+}
+
 async fn run_one_completion(
     client: &reqwest::Client,
     url: &str,
@@ -159,26 +243,35 @@ async fn run_measured_completions(
     n_predict: usize,
     parallel_requests: usize,
     port: u16,
-) -> Result<(Vec<RunStats>, f64), String> {
+) -> Result<(Vec<RunStats>, f64, Option<WaveWindowSample>), String> {
     let n = parallel_requests.max(1);
     if n == 1 {
         let body = bench_body(prompt, n_predict, None);
         let stats = run_one_completion(client, url, &body, port).await?;
-        return Ok((vec![stats], 0.0));
+        return Ok((vec![stats], 0.0, None));
     }
 
     bench_session_log(&format!("[BENCH_TG] launching parallel×{n} completion feeds"));
     let wall_start = Instant::now();
+    let tracker = Arc::new(Mutex::new(ParallelWaveTracker::new(n, wall_start)));
     let mut set = JoinSet::new();
 
     for i in 0..n {
         let client = client.clone();
         let url = url.to_string();
         let prompt = prompt.to_string();
+        let tracker = tracker.clone();
         set.spawn(async move {
             let req_start = Instant::now();
             let body = bench_body(&prompt, n_predict, Some(i));
-            let result = run_one_completion(&client, &url, &body, port).await;
+            let cb: bench_cancel::TokenProgressCb = Box::new(move |decoded, is_stop| {
+                if let Ok(mut t) = tracker.lock() {
+                    t.record(i, decoded, is_stop, Instant::now());
+                }
+            });
+            let result = bench_cancel::post_json_with_progress(&client, &url, &body, port, cb)
+                .await
+                .map(|parsed| stats_from_completion(&parsed));
             (i, req_start, result)
         });
     }
@@ -215,12 +308,13 @@ async fn run_measured_completions(
     }
 
     let wall_ms = wall_start.elapsed().as_secs_f64() * 1000.0;
+    let wave_sample = tracker.lock().ok().and_then(|t| t.sample());
     bench_session_log(&format!(
         "[BENCH_TG] parallel×{n} wall {:.0} ms (sum of per-feed wall times would be {:.0} ms if serial)",
         wall_ms,
         runs.len() as f64 * (wall_ms / runs.len().max(1) as f64)
     ));
-    Ok((runs, wall_ms))
+    Ok((runs, wall_ms, wave_sample))
 }
 
 /// Concurrent multi-slot headline TG.
@@ -233,6 +327,7 @@ fn aggregate_parallel_runs(
     runs: &[RunStats],
     wall_ms: f64,
     parallel_requests: usize,
+    wave_window: Option<WaveWindowSample>,
 ) -> RunStats {
     if runs.is_empty() {
         return RunStats {
@@ -270,9 +365,19 @@ fn aggregate_parallel_runs(
         0.0
     };
 
-    // Prefer sum(engine gen_tps) — matches print_timing eval × N.
-    // Else tokens/max(predicted_ms). HTTP wall only if engine timings missing.
-    let (system_gen_tps, decode_window_ms, src) = if sum_engine_gen_tps > 0.0 {
+    let steady_wave_tps = wave_window.and_then(|w| {
+        if w.wave_ms >= 500.0 && w.wave_tokens >= parallel_requests as u64 {
+            Some(((w.wave_tokens as f64 / w.wave_ms) * 1000.0, w))
+        } else {
+            None
+        }
+    });
+
+    // Prefer steady_wave (all feeds decoding simultaneously, excludes staggered PP ramp).
+    // Else sum(engine gen_tps), then tokens/max(predicted_ms), then HTTP wall.
+    let (system_gen_tps, decode_window_ms, src) = if let Some((tps, w)) = steady_wave_tps {
+        (tps, w.wave_ms, "steady_wave")
+    } else if sum_engine_gen_tps > 0.0 {
         let win = if max_predicted_ms > 1.0 {
             max_predicted_ms
         } else {
@@ -287,8 +392,16 @@ fn aggregate_parallel_runs(
         (0.0, wall_ms.max(1.0), "none")
     };
 
+    let wave_log = match steady_wave_tps {
+        Some((tps, w)) => format!(
+            "wave {:.1} (tok={} ms={:.0} ramp={:.0})",
+            tps, w.wave_tokens, w.wave_ms, w.ramp_ms
+        ),
+        None => "wave -".to_string(),
+    };
+
     bench_session_log(&format!(
-        "[BENCH_TG] parallel×{} | headline {:.1} TPS src={src} | sum_engine {:.1} | max_pred_win {:.1} (ms={:.0}) | wall_dec {:.1} | wall_raw {:.1} | per-req avg {:.1} | max_p_ms={:.0} wall_ms={:.0} | g_tok={}",
+        "[BENCH_TG] parallel×{} | headline {:.1} TPS src={src} | {wave_log} | sum_engine {:.1} | max_pred_win {:.1} (ms={:.0}) | wall_dec {:.1} | wall_raw {:.1} | per-req avg {:.1} | max_p_ms={:.0} wall_ms={:.0} | g_tok={}",
         parallel_requests,
         system_gen_tps,
         sum_engine_gen_tps,
@@ -386,7 +499,6 @@ pub async fn cmd_burst_bench(
         };
         let run_parallel = if is_warmup { 1 } else { parallel_requests };
 
-        crate::fusion::reset_bench_meters_for_port(port).await;
         crate::ipc_emit::emit_guarded(
             &app_handle,
             "bench-tg-progress",
@@ -411,11 +523,12 @@ pub async fn cmd_burst_bench(
         )
         .await
         {
-            Ok((runs, wall_ms)) => {
+            Ok((runs, wall_ms, wave_sample)) => {
                 let summary = if run_parallel > 1 {
-                    let avg_gen = runs.iter().map(|r| r.gen_tps).sum::<f64>() / runs.len() as f64;
-                    measured_per_request_gen_tps = Some(avg_gen);
-                    let agg = aggregate_parallel_runs(&runs, wall_ms, run_parallel);
+                    let agg = aggregate_parallel_runs(&runs, wall_ms, run_parallel, wave_sample);
+                    if !runs.is_empty() {
+                        measured_per_request_gen_tps = Some(agg.gen_tps / runs.len() as f64);
+                    }
                     measured_aggregate_gen_tps = Some(agg.gen_tps);
                     agg
                 } else {
@@ -441,8 +554,6 @@ pub async fn cmd_burst_bench(
                     summary.prompt_ms,
                     summary.predicted_ms,
                 ));
-
-                crate::fusion::freeze_request_meters_for_port(port).await;
 
                 if !is_warmup {
                     measured_parallel = run_parallel;
@@ -584,7 +695,7 @@ mod tests {
             .collect();
         // ~11s total-time-like wall (PP+TG) — old path reported ~379.
         let wall_ms = 11_050.0;
-        let agg = aggregate_parallel_runs(&runs, wall_ms, 8);
+        let agg = aggregate_parallel_runs(&runs, wall_ms, 8, None);
         let expected_sum: f64 = runs.iter().map(|r| r.gen_tps).sum();
         assert!(
             (agg.gen_tps - expected_sum).abs() < 0.5,
@@ -621,8 +732,62 @@ mod tests {
                 predicted_ms: 8100.0,
             },
         ];
-        let agg = aggregate_parallel_runs(&runs, 12_000.0, 2);
+        let agg = aggregate_parallel_runs(&runs, 12_000.0, 2, None);
         // 1024 / 8100 * 1000 ≈ 126.4
         assert!((agg.gen_tps - 126.4).abs() < 1.0, "got {}", agg.gen_tps);
+    }
+
+    #[test]
+    fn wave_tracker_excludes_prefill_ramp_and_drain_tail() {
+        use std::time::Duration;
+        let launch = Instant::now();
+        let mut tracker = ParallelWaveTracker::new(32, launch);
+        // Slots 0..30 start decoding during staggered 5.3s prefill ramp, emitting 10 tokens each.
+        for i in 0..31 {
+            tracker.record(i, 10, false, launch + Duration::from_millis(600 + (i as u64) * 150));
+        }
+        assert!(tracker.sample().is_none(), "wave must not open before slot 31 decodes");
+        // Slot 31 emits its first token at t=5800ms -> wave opens.
+        let t_open = launch + Duration::from_millis(5800);
+        tracker.record(31, 1, false, t_open);
+        // Steady-state decode for 10.0s at 26.7 tok/s/slot = 267 tokens per slot -> 8544 tokens total.
+        let t_close = t_open + Duration::from_millis(10_000);
+        for i in 0..31 {
+            tracker.record(i, 277, false, t_close - Duration::from_millis(10));
+        }
+        tracker.record(31, 268, true, t_close);
+
+        let sample = tracker.sample().expect("steady wave sample");
+        assert_eq!(sample.wave_tokens, 31 * 267 + 267);
+        assert!((sample.wave_ms - 10_000.0).abs() < 1.0);
+        assert!((sample.ramp_ms - 5800.0).abs() < 1.0);
+        let tps = (sample.wave_tokens as f64 / sample.wave_ms) * 1000.0;
+        assert!((tps - 854.4).abs() < 1.0, "expected ~854.4, got {tps}");
+    }
+
+    #[test]
+    fn wave_tracker_returns_none_when_feed_finishes_before_wave_opens() {
+        use std::time::Duration;
+        let launch = Instant::now();
+        let mut tracker = ParallelWaveTracker::new(4, launch);
+        tracker.record(0, 16, true, launch + Duration::from_millis(100));
+        tracker.record(1, 16, false, launch + Duration::from_millis(200));
+        tracker.record(2, 16, false, launch + Duration::from_millis(300));
+        tracker.record(3, 16, false, launch + Duration::from_millis(400));
+        assert!(tracker.sample().is_none());
+    }
+
+    #[test]
+    fn parallel_aggregate_prefers_steady_wave_over_ramp_contaminated_sum_engine() {
+        // Simulate x32 where sum_engine is dragged down to 640 by prefill ramp, while steady_wave is 854.
+        let runs: Vec<RunStats> = (0..32).map(|_| slot(512, 25_600.0, 2_000.0)).collect();
+        let wave = Some(WaveWindowSample {
+            wave_tokens: 8544,
+            wave_ms: 10_000.0,
+            ramp_ms: 5_800.0,
+        });
+        let agg = aggregate_parallel_runs(&runs, 28_000.0, 32, wave);
+        assert!((agg.gen_tps - 854.4).abs() < 0.5, "got {}", agg.gen_tps);
+        assert!((agg.predicted_ms - 10_000.0).abs() < 1.0);
     }
 }

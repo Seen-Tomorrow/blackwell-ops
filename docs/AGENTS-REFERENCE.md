@@ -416,6 +416,20 @@ copy step — it is what made the panel show an old build while Foundry had a ne
 
 **Foundry batch spawn** — Configure/build write `_build_cfg_*.bat` / `_build_run_*.bat` under `work/` then run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail). Do not spawn those batches with plain `cmd /c path` — install dirs with spaces fail before cmake starts (see **Windows paths with spaces** above).
 
+**Build failure text comes from stdout.** Ninja prints `FAILED: <target>` and the compiler
+diagnostics on **stdout**; stderr is normally empty, and an empty-stderr failure used to reach the
+UI as a bare "Build failed." while the real line scrolled away. `run_foundry_batch_streaming`
+returns `BatchResult { failure_excerpt }` (the `FAILED:` block, or a stdout tail when none was
+printed). Compile builds its message through `failure_detail` (excerpt first, stderr fallback);
+configure still prefers stderr because CMake reports there, with the same excerpt as fallback.
+Never derive a compile failure message from stderr alone.
+
+**A failed edge is not the end of the process.** Ninja stops scheduling on the first failed edge
+but lets in-flight CUDA compiles drain — minutes of wall clock during which the phase is still
+`Building`. `progress.rs` flips `BuildEdgeProgress::failed` on the `FAILED:` line, replaces the
+label with the failing target and the kind with `FAILED`, and freezes the counter. The build chip
+and hero read that flag; do not go back to showing the last started edge as "the" failure.
+
 **A pack that ships must be ISA-portable.** CPU mode is the profile's choice, not a mandatory
 flag: `GGML_NATIVE=ON` auto-detects the build host (MSVC runs `FindSIMD.cmake` try_compile probes)
 and is correct — and 1× — for a build that stays on that machine; `GGML_CPU_ALL_VARIANTS=ON` +

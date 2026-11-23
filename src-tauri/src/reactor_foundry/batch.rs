@@ -5,11 +5,93 @@
 //! for cancel/teardown. `foundry_kill_all_children` is re-exported from `mod.rs`
 //! so `crate::reactor_foundry::foundry_kill_all_children` keeps working.
 
+use std::collections::VecDeque;
 use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::{BUILD_CANCELLED, CHILD_PIDS, BuildState, emit_build_batch, progress};
+
+/// Outcome of one configure/build batch.
+///
+/// `failure_excerpt` is the actionable stdout block: ninja prints `FAILED:` and the
+/// compiler diagnostics on **stdout**, so a failure with empty stderr used to reach the
+/// UI as a bare "Build failed." while the real line scrolled away in the log.
+pub(crate) struct BatchResult {
+    pub(crate) status: Option<std::process::ExitStatus>,
+    pub(crate) stderr_lines: Vec<String>,
+    pub(crate) failure_excerpt: Vec<String>,
+}
+
+/// Keep the failing target plus its first diagnostics, skip the compiler command line
+/// (hundreds of chars, never the answer), and stop when the next edge starts.
+const FAILURE_BLOCK_MAX_LINES: usize = 10;
+const FAILURE_BLOCK_MAX_LINE_CHARS: usize = 320;
+const FAILURE_BLOCK_MAX_CHARS: usize = 1600;
+/// Last stdout lines kept as a fallback when a failure printed no `FAILED:` block.
+const STDOUT_TAIL_LINES: usize = 12;
+
+/// Streaming collector for ninja `FAILED:` blocks (pure, so it is testable).
+#[derive(Default)]
+pub(crate) struct FailureBlock {
+    lines: Vec<String>,
+    chars: usize,
+    /// Candidate lines left in the current block; 0 = outside a block.
+    remaining: usize,
+}
+
+impl FailureBlock {
+    /// Feed one stdout line. Starts on `FAILED:`, ends at the next edge counter.
+    pub(crate) fn push(&mut self, line: &str) {
+        let trimmed = line.trim();
+        if trimmed.starts_with("FAILED:") {
+            self.remaining = FAILURE_BLOCK_MAX_LINES;
+        } else if self.remaining == 0 {
+            return;
+        } else if progress::inspect_edge(line).is_some() {
+            self.remaining = 0;
+            return;
+        }
+        if trimmed.is_empty() {
+            return;
+        }
+        self.remaining = self.remaining.saturating_sub(1);
+        if trimmed.len() > FAILURE_BLOCK_MAX_LINE_CHARS || self.chars >= FAILURE_BLOCK_MAX_CHARS {
+            return;
+        }
+        self.chars += trimmed.len();
+        self.lines.push(trimmed.to_string());
+    }
+
+    pub(crate) fn take(&mut self) -> Vec<String> {
+        self.remaining = 0;
+        self.chars = 0;
+        std::mem::take(&mut self.lines)
+    }
+}
+
+/// Last non-empty stdout lines, fallback for failures that print no ninja block.
+fn push_tail(tail: &mut VecDeque<String>, line: &str) {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.len() > FAILURE_BLOCK_MAX_LINE_CHARS {
+        return;
+    }
+    tail.push_back(trimmed.to_string());
+    while tail.len() > STDOUT_TAIL_LINES {
+        tail.pop_front();
+    }
+}
+
+/// Per-pipe captures; all optional so the configure and compile stages share one path.
+#[derive(Default)]
+pub(crate) struct DrainCapture {
+    /// stderr: every line, for flake detection and the error message.
+    pub stderr_lines: Option<Arc<Mutex<Vec<String>>>>,
+    /// stdout: ninja `FAILED:` block, for the error message.
+    pub failure: Option<Arc<Mutex<FailureBlock>>>,
+    /// stdout: tail fallback when no `FAILED:` block was printed.
+    pub tail: Option<Arc<Mutex<VecDeque<String>>>>,
+}
 
 // ── PID Tracking ─────────────────────────────────────────────────────
 
@@ -113,7 +195,7 @@ fn is_suppressed_vendor_noise(line: &str) -> bool {
 pub(crate) fn drain_pipe_lines_blocking(
     pipe: impl std::io::Read + Send + 'static,
     log_buffer: Arc<Mutex<Vec<String>>>,
-    stderr_capture: Option<Arc<Mutex<Vec<String>>>>,
+    capture: DrainCapture,
     as_err: bool,
 ) {
     use std::io::{BufRead, BufReader};
@@ -129,6 +211,16 @@ pub(crate) fn drain_pipe_lines_blocking(
         // Ninja `[N/M]` edge counters — the only real progress signal in the compile
         // stage. Recorded here because every streamed line already passes through.
         progress::record_line(&line);
+        if let Some(failure) = &capture.failure {
+            if let Ok(mut block) = failure.lock() {
+                block.push(&line);
+            }
+        }
+        if let Some(tail) = &capture.tail {
+            if let Ok(mut tail) = tail.lock() {
+                push_tail(&mut tail, &line);
+            }
+        }
         if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
             if as_err {
                 if is_genuine_error_line(&line) {
@@ -141,7 +233,7 @@ pub(crate) fn drain_pipe_lines_blocking(
             }
         }
         if as_err {
-            if let Some(ref cap) = stderr_capture {
+            if let Some(ref cap) = capture.stderr_lines {
                 if let Some(mut err_buf) = try_lock_log_buf(cap) {
                     err_buf.push(line);
                 }
@@ -165,7 +257,7 @@ pub(crate) async fn run_foundry_batch_streaming(
     app_handle: &tauri::AppHandle,
     state: &BuildState,
     timeout: Option<std::time::Duration>,
-) -> Result<(Option<std::process::ExitStatus>, Vec<String>), String> {
+) -> Result<BatchResult, String> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
@@ -213,14 +305,39 @@ pub(crate) async fn run_foundry_batch_streaming(
     let log_buffer_flush = log_buffer.clone();
     let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stderr_for_stream = stderr_capture.clone();
+    let failure_block: Arc<Mutex<FailureBlock>> = Arc::new(Mutex::new(FailureBlock::default()));
+    let failure_for_stream = failure_block.clone();
+    let stdout_tail: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+    let tail_for_stream = stdout_tail.clone();
 
     let out_thread = std::thread::spawn({
         let log_buffer = log_buffer.clone();
-        move || drain_pipe_lines_blocking(stdout, log_buffer, None, false)
+        move || {
+            drain_pipe_lines_blocking(
+                stdout,
+                log_buffer,
+                DrainCapture {
+                    failure: Some(failure_for_stream),
+                    tail: Some(tail_for_stream),
+                    ..Default::default()
+                },
+                false,
+            )
+        }
     });
     let err_thread = std::thread::spawn({
         let log_buffer = log_buffer.clone();
-        move || drain_pipe_lines_blocking(stderr, log_buffer, Some(stderr_for_stream), true)
+        move || {
+            drain_pipe_lines_blocking(
+                stderr,
+                log_buffer,
+                DrainCapture {
+                    stderr_lines: Some(stderr_for_stream),
+                    ..Default::default()
+                },
+                true,
+            )
+        }
     });
 
     let flush_done = Arc::new(AtomicBool::new(false));
@@ -291,7 +408,40 @@ pub(crate) async fn run_foundry_batch_streaming(
         .map(|mut buf| buf.drain(..).collect::<Vec<String>>())
         .unwrap_or_default();
 
-    Ok((status, stderr_lines))
+    let failure_excerpt = if status.as_ref().map(|s| !s.success()).unwrap_or(false) {
+        collect_failure_excerpt(&failure_block, &stdout_tail)
+    } else {
+        Vec::new()
+    };
+
+    Ok(BatchResult {
+        status,
+        stderr_lines,
+        failure_excerpt,
+    })
+}
+
+/// User-facing failure detail: the stdout `FAILED:` excerpt when there is one, else
+/// stderr. Both stages share this so neither can regress to a bare "failed.".
+pub(crate) fn failure_detail(excerpt: &[String], stderr: &str) -> String {
+    if !excerpt.is_empty() {
+        excerpt.join("\n")
+    } else {
+        stderr.trim().to_string()
+    }
+}
+
+/// The `FAILED:` block if ninja printed one, else the stdout tail. Both drains have
+/// been joined by the caller, so the locks are uncontended here.
+fn collect_failure_excerpt(
+    failure: &Mutex<FailureBlock>,
+    tail: &Mutex<VecDeque<String>>,
+) -> Vec<String> {
+    let block = failure.lock().map(|mut b| b.take()).unwrap_or_default();
+    if !block.is_empty() {
+        return block;
+    }
+    tail.lock().map(|t| t.iter().cloned().collect()).unwrap_or_default()
 }
 pub(crate) fn track_pid(pid: u32) {
     with_child_pids(|pids| pids.push(pid));
@@ -374,5 +524,144 @@ mod noise_tests {
              or disable this warning with GGML_CCACHE=OFF"
         ));
         assert!(!is_suppressed_vendor_noise("-- Found CUDAToolkit: 13.4"));
+    }
+}
+
+#[cfg(test)]
+mod failure_capture_tests {
+    use super::{FailureBlock, STDOUT_TAIL_LINES, push_tail};
+    use std::collections::VecDeque;
+
+    const FAILED: &str =
+        r"FAILED: src/CMakeFiles/llama.dir/Release/llama-quant.cpp.obj ";
+    const ERROR: &str =
+        r"src\llama-quant.cpp(1674): error C2131: expression did not evaluate to a constant";
+    const NOTE: &str =
+        r"src\llama-quant.cpp(1674): note: failure was caused by reading a value";
+
+    /// The regression this exists for: the real error is on stdout, so an empty
+    /// stderr used to surface as a bare "Build failed." with a stale progress label.
+    #[test]
+    fn keeps_the_failing_edge_and_its_diagnostics() {
+        let command = format!(
+            r"C:\toolchain\sccache.exe C:\toolchain\cl.exe /nologo {}",
+            "x".repeat(400)
+        );
+        let mut block = FailureBlock::default();
+        block.push(r"[379/499] Building CUDA object ...\mmq-instance-nvfp4.cu.obj");
+        block.push(FAILED);
+        block.push(&command);
+        block.push(ERROR);
+        block.push(NOTE);
+        block.push(r"[380/499] Building CXX object tools\server\x.cpp.obj");
+        block.push("line after the block must not be kept");
+
+        let lines = block.take();
+        assert_eq!(lines.len(), 3);
+        assert!(lines[0].starts_with("FAILED:"));
+        assert!(lines[0].ends_with("llama-quant.cpp.obj"));
+        assert!(lines[1].contains("error C2131"));
+        assert!(lines[2].contains("note:"));
+    }
+
+    #[test]
+    fn skips_the_compiler_command_line() {
+        let mut block = FailureBlock::default();
+        block.push(FAILED);
+        block.push(&"C".repeat(super::FAILURE_BLOCK_MAX_LINE_CHARS + 80));
+        block.push(ERROR);
+
+        let lines = block.take();
+        assert_eq!(lines.len(), 2, "long command line must be dropped: {lines:?}");
+    }
+
+    #[test]
+    fn ignores_lines_before_any_failed_marker() {
+        let mut block = FailureBlock::default();
+        block.push(r"[12/20] Building CXX object a.obj");
+        block.push(ERROR);
+        assert!(block.take().is_empty());
+    }
+
+    #[test]
+    fn tail_keeps_only_the_last_lines() {
+        let mut tail = VecDeque::new();
+        for i in 0..(STDOUT_TAIL_LINES + 8) {
+            push_tail(&mut tail, &format!("line {i}"));
+        }
+        assert_eq!(tail.len(), STDOUT_TAIL_LINES);
+        assert_eq!(tail.front().map(String::as_str), Some("line 8"));
+        assert_eq!(tail.back().map(String::as_str), Some("line 19"));
+    }
+
+    #[test]
+    fn tail_skips_blank_and_absurdly_long_lines() {
+        let mut tail = VecDeque::new();
+        push_tail(&mut tail, "   ");
+        push_tail(&mut tail, &"x".repeat(super::FAILURE_BLOCK_MAX_LINE_CHARS + 1));
+        push_tail(&mut tail, "real line");
+        assert_eq!(tail.len(), 1);
+        assert_eq!(tail[0], "real line");
+    }
+
+    #[test]
+    fn failure_detail_prefers_the_stdout_excerpt() {
+        let excerpt = vec![
+            "FAILED: a.obj".to_string(),
+            "a.cpp(1): error C2131: x".to_string(),
+        ];
+        let text = super::failure_detail(&excerpt, "stderr echo noise");
+        assert!(text.contains("FAILED: a.obj"));
+        assert!(text.contains("error C2131"));
+        assert!(!text.contains("stderr echo noise"));
+    }
+
+    #[test]
+    fn failure_detail_falls_back_to_stderr_then_empty() {
+        assert_eq!(super::failure_detail(&[], "cl.exe failed"), "cl.exe failed");
+        assert_eq!(super::failure_detail(&[], "  "), "");
+    }
+
+    /// End-to-end over a real pipe: the drain must both stream every line to the log
+    /// and keep the `FAILED:` block for the error message.
+    #[test]
+    fn drain_extracts_the_failed_block_from_stdout() {
+        use super::drain_pipe_lines_blocking;
+        use std::io::Cursor;
+        use std::sync::{Arc, Mutex};
+
+        let stream = format!(
+            concat!(
+                "[378/499] Building CUDA object ggml\\...\\mmq-instance-nvfp4.cu.obj\r\n",
+                "FAILED: src/CMakeFiles/llama.dir/Release/llama-quant.cpp.obj \r\n",
+                "C:\\toolchain\\sccache.exe C:\\toolchain\\cl.exe /nologo {}\r\n",
+                "src\\llama-quant.cpp(1674): error C2131: expression did not evaluate to a constant\r\n",
+                "[379/499] Building CXX object tools\\server\\x.cpp.obj\r\n",
+            ),
+            "x".repeat(400)
+        );
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let failure = Arc::new(Mutex::new(FailureBlock::default()));
+        let tail = Arc::new(Mutex::new(VecDeque::new()));
+
+        drain_pipe_lines_blocking(
+            Cursor::new(stream),
+            log.clone(),
+            super::DrainCapture {
+                failure: Some(failure.clone()),
+                tail: Some(tail.clone()),
+                ..Default::default()
+            },
+            false,
+        );
+
+        let excerpt = failure.lock().expect("failure lock").take();
+        assert_eq!(excerpt.len(), 2, "got: {excerpt:?}");
+        assert_eq!(
+            excerpt[0],
+            r"FAILED: src/CMakeFiles/llama.dir/Release/llama-quant.cpp.obj"
+        );
+        assert!(excerpt[1].contains("error C2131"));
+        assert_eq!(log.lock().expect("log lock").len(), 5);
     }
 }
