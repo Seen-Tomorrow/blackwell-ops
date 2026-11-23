@@ -529,38 +529,26 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     ? Math.max(0, (hostMeasuredGb ?? 0) - (hostAlreadyIncludesEngram ? engramNeedGb : 0))
     : (hostMeasuredGb ?? 0) + (engramNeedGb > 0 && !hostAlreadyIncludesEngram ? engramNeedGb : 0);
   let effectiveCacheGb = 0;
-  if (cpuExperts) {
-    if (autoCache) {
-      const auto = computeAutoMoeCacheGb({
-        perGpuBaseGb,
-        gpuAvailableGb: gpuAvailable,
-        hostExpertsGb,
-        targetIdx: tgt,
-        splitWeights: input.layerSplitMib,
-      });
-      effectiveCacheGb = auto.totalCacheGb;
-      perGpuLoad = perGpuBaseGb.map((gb, i) => gb + auto.perGpuCacheGb[i]);
-    } else {
-      effectiveCacheGb = Math.max(0, input.moeCacheMib ?? 0) / 1024;
-      const activeSum = perGpuBaseGb.reduce((sum, gb) => sum + Math.max(0, gb), 0);
-      perGpuLoad =
-        effectiveCacheGb > 0
-          ? activeSum > 0.05
-            ? perGpuBaseGb.map((gb) => (gb > 0.1 ? gb + (effectiveCacheGb * gb) / activeSum : gb))
-            : perGpuBaseGb.map((gb, i) => (i === tgt ? gb + effectiveCacheGb : gb))
-          : perGpuBaseGb;
-    }
+  const addProportionalCache = (base: number[], cacheGb: number): number[] => {
+    if (!(cacheGb > 0)) return base;
+    const activeSum = base.reduce((sum, gb) => sum + Math.max(0, gb), 0);
+    return activeSum > 0.05
+      ? base.map((gb) => (gb > 0.1 ? gb + (cacheGb * gb) / activeSum : gb))
+      : base.map((gb, i) => (i === tgt ? gb + cacheGb : gb));
+  };
+  if (cpuExperts && autoCache) {
+    const auto = computeAutoMoeCacheGb({
+      perGpuBaseGb,
+      gpuAvailableGb: gpuAvailable,
+      hostExpertsGb,
+      targetIdx: tgt,
+      splitWeights: input.layerSplitMib,
+    });
+    effectiveCacheGb = auto.totalCacheGb;
+    perGpuLoad = perGpuBaseGb.map((gb, i) => gb + auto.perGpuCacheGb[i]);
   } else {
     effectiveCacheGb = Math.max(0, input.moeCacheMib ?? 0) / 1024;
-    if (effectiveCacheGb > 0) {
-      const activeSum = perGpuBaseGb.reduce((sum, gb) => sum + Math.max(0, gb), 0);
-      perGpuLoad =
-        activeSum > 0.05
-          ? perGpuBaseGb.map((gb) => (gb > 0.1 ? gb + (effectiveCacheGb * gb) / activeSum : gb))
-          : perGpuBaseGb.map((gb, i) => (i === tgt ? gb + effectiveCacheGb : gb));
-    } else {
-      perGpuLoad = perGpuBaseGb;
-    }
+    perGpuLoad = addProportionalCache(perGpuBaseGb, effectiveCacheGb);
   }
   const gpuProjectionGb = perGpuLoad.reduce((sum, gb) => sum + gb, 0);
 
@@ -667,10 +655,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   const heroText = cpuExpertsSummary;
 
-  const layerText =
-    learnedGb != null
-      ? `${gpuProjectionGb.toFixed(1)} GB GPU measured — ${splitHint}`
-      : `${gpuProjectionGb.toFixed(1)} GB GPU measured — ${splitHint}`;
+  const layerText = `${gpuProjectionGb.toFixed(1)} GB GPU measured — ${splitHint}`;
 
   const validatedVramMib = isProbeSource ? Math.round(gpuProjectionGb * 1024) : undefined;
   const validatedHostMib = !isProbeSource
@@ -791,7 +776,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
                 ? "VRAM spread across GPUs — offload decided at load"
                 : "engine might use some RAM at launch",
         showRamBar: cpuExperts ? hostExpertsGb > 0.05 : ramNeedGb > 0.05 || hostEngramGb > 0.05,
-        moeRamBar: false,
         kvSpillRiskText: cpuExperts && autoCache && fits && fitsAllCards ? undefined : insets.vramInset,
         offloadWarningText: cpuExperts && !overSystemMemory ? undefined : insets.ramInset,
       },

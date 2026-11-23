@@ -949,8 +949,6 @@ interface UiTemplate {
   ramLayerText: string;
   /** Whether to show the RAM bar + layer text at all */
   showRamBar?: boolean;
-  /** MOE_OPTIMAL expert weights — orange hatched RAM bar. */
-  moeRamBar?: boolean;
   /** Inset label on RAM bar (right end, need-hero size). Host offload / system fail. */
   offloadWarningText?: string | null;
   /** Inset label on VRAM bar (right end, need-hero size). Tight free / spill / no-fit. */

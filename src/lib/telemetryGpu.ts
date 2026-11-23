@@ -129,7 +129,6 @@ export function vramManifestSnapshotEqual(
     || prevUi.heroSubtext !== nextUi.heroSubtext
     || prevUi.gpuLayerText !== nextUi.gpuLayerText
     || prevUi.ramLayerText !== nextUi.ramLayerText
-    || prevUi.moeRamBar !== nextUi.moeRamBar
   ) {
     return false;
   }

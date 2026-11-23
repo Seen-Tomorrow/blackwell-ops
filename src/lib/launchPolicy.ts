@@ -85,11 +85,10 @@ export const JOE_FULL_AUTO_DEFAULTS: Readonly<Record<string, string | number>> =
   vision: "off",
   flash_attn: "on",
   reasoning_preserve: "off",
-  offload_mode: "regular",
 });
 
 /** Topology keys FIT owns in Full Auto — never from Assisted chrome. */
-const FIT_OWNED_TOPOLOGY_KEYS = Object.freeze(["device", "split", "offload_mode"] as const);
+const FIT_OWNED_TOPOLOGY_KEYS = Object.freeze(["device", "split"] as const);
 
 const LAUNCH_POLICIES: Readonly<Record<LaunchPolicyId, LaunchPolicy>> = Object.freeze({
   full_auto: Object.freeze({
@@ -258,11 +257,6 @@ export function mergeLaunchValues(input: {
     }
   }
 
-  // Full Auto: force FIT topology markers (values may be overwritten by FIT builder)
-  if (policy.topology === "fit_owned") {
-    out.offload_mode = "regular";
-  }
-
   return out;
 }
 
@@ -297,7 +291,6 @@ export function seedFullAutoProfile(input: {
   }
 
   // Never seed Full Auto with Assisted topology chrome
-  out.offload_mode = "regular";
   delete out.device;
   delete out.split;
 

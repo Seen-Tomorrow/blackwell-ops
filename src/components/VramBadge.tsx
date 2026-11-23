@@ -173,7 +173,7 @@ type AttachmentKind = keyof typeof ATTACHMENT_FACE_COPY;
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
-  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode,
+  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib,
   hideFitProbe = false, draftOnly = false, attachmentKind = null, incomplete = null, onRestage, restageStatus = null, className,
   placementActive = false,
   snapLogOpen = false,
@@ -931,13 +931,11 @@ export default function VramBadge({
                     <div className="vram-fc-bar__track">
                       <div
                         className={`vram-fc-bar__fill vram-fc-bar__fill--bevel ${
-                          t.moeRamBar || offloadMode === "moe_optimal"
-                            ? "bg-orange-hatched"
-                            : ramNeedTone === "hot"
-                              ? "ram-fill--hot"
-                              : ramNeedTone === "warn" || ramNeedTone === "caution"
-                                ? "ram-fill--warn"
-                                : "ram-fill--ok"
+                          ramNeedTone === "hot"
+                            ? "ram-fill--hot"
+                            : ramNeedTone === "warn" || ramNeedTone === "caution"
+                              ? "ram-fill--warn"
+                              : "ram-fill--ok"
                         }`}
                         style={{ width: `${ramUsagePct}%` }}
                       />

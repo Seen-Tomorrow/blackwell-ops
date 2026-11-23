@@ -160,7 +160,6 @@ import {
   SPEC_PROFILE_DFLASH,
   DFLASH_DRAFT_MODEL,
   MTP_DRAFT_MODEL,
-  stripObsoleteSpecParams,
   activeBoostMethodFromParams,
   cliSpecTypeForMethod,
   specShareFields,
@@ -771,9 +770,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [gpus.length, userEditedParams]);
 
   const allParamsResolved = useMemo(() => {
-    const cleaned = stripObsoleteSpecParams(userEditedParams);
-    // Repair mtp_*/dflash_* if an older migrate pinned them into SYSTEM.
-    const { params: migrated } = migrateCatalogParams(cleaned);
+    const { params: migrated } = migrateCatalogParams(userEditedParams);
     const defs = deviceParam ? [deviceParam, ...migrated] : [...migrated];
     const gpuValues = gpus.map((g) => `GPU-${g.index}`);
     return defs
@@ -857,13 +854,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const hasSplitParam = providerHasParamKey(allParamsResolved, "split");
   const softLaunchForecast = shouldSoftLaunchOnForecast(currentProvider);
-
-  useEffect(() => {
-    if (!fullAutoMode) return;
-    if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
-      updateParam("offload_mode", "regular");
-    }
-  }, [fullAutoMode, config["offload_mode"], updateParam]);
 
   // Custom: on provider switch, reset topology to solo (starter pack defaults often leave split=layer → ALL GPUs).
   // User can change split/device after; we only reset when the provider id changes.
@@ -1049,10 +1039,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               cpu_moe: "on",
               moe_cache_auto: "on",
               split: gpus.length > 1 ? "layer" : "none",
-              offload_mode: "regular",
             }
           : fullAutoMode
-            ? { cpu_moe: "off", offload_mode: "regular" }
+            ? { cpu_moe: "off" }
             : {}),
     };
   }, [autoDecision?.plan.specType, autoOverdriveActive, config, effectiveBackendType, fullAutoFixed, fullAutoMode, gpus.length, modelIsMoe, speedBoost]);
@@ -3253,7 +3242,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         supportsFusion={supportsFusion}
         engineStatus={selectedSlotIdx != null && selectedSlotIdx >= 0 ? stack.find((s) => s.idx === selectedSlotIdx)?.status : undefined}
         booterProps={booterProps}
-        offloadMode={config["offload_mode"]}
         draftOnly={modelIsDraftOnly}
         attachmentKind={modelAttachmentKind}
         incomplete={modelIncomplete}

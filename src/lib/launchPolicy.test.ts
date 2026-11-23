@@ -310,27 +310,16 @@ describe("§8 leakage cases", () => {
     expect(keys).toContain("temp");
   });
 
-  it("6: Full Auto topology is fit_owned (offload forced regular; device/split not from Assisted)", () => {
+  it("6: Full Auto topology is fit_owned (device/split not from Assisted)", () => {
     const policy = getLaunchPolicy("full_auto");
     expect(policy.topology).toBe("fit_owned");
-    const merged = mergeLaunchValues({
-      policy,
-      factoryDefaults,
-      profileValues: {
-        device: "GPU-1",
-        split: "layer",
-        offload_mode: "moe_optimal",
-      },
-    });
-    expect(merged.offload_mode).toBe("regular");
     // device/split may still be in bag; FIT builder ignores them in fullAutoMode
     const seeded = seedFullAutoProfile({
-      legacyValues: { device: "GPU-1", split: "layer", offload_mode: "moe_optimal" },
+      legacyValues: { device: "GPU-1", split: "layer" },
       factoryDefaults,
     });
     expect(seeded.device).toBeUndefined();
     expect(seeded.split).toBeUndefined();
-    expect(seeded.offload_mode).toBe("regular");
   });
 });
 

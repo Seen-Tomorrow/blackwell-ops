@@ -80,7 +80,7 @@ function formatCacheRam(value: ParamValue): string {
   return n >= 1024 ? `${Math.round(n / 1024)}G` : `${n}M`;
 }
 
-export function SamplerTask({
+function SamplerTask({
   defs,
   config,
   onChange,
@@ -346,5 +346,3 @@ export function CockpitInstruments({
     </div>
   );
 }
-
-export default CockpitInstruments;

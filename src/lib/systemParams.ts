@@ -24,7 +24,6 @@ export const ENGINE_ONLY_PARAM_KEYS = new Set(["device"]);
 /** User-editable in catalog; values/defaults apply — group/reorder/hide do not. */
 export const SYSTEM_CATALOG_PARAM_KEYS = new Set([
   "split",
-  "offload_mode",
   "base_port",
   /** CTX lives in CockpitCtxStrip / docked cockpit — never chip rows. */
   "ctx",

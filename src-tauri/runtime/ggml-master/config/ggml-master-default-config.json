@@ -814,30 +814,6 @@
       ]
     },
     {
-      "default": "regular",
-      "dock": "runtime",
-      "flag": null,
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "offload_mode",
-      "label": "OFFLOAD-MODE",
-      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
-      "pattern": "",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": {
-        "moe_optimal": [
-          "--n-cpu-moe",
-          "8"
-        ]
-      },
-      "ui_group": "SYSTEM",
-      "values": [
-        "regular",
-        "moe_optimal"
-      ]
-    },
-    {
       "default": "none",
       "dock": "runtime",
       "flag": "--split-mode",
@@ -938,6 +914,6 @@
       "4"
     ]
   },
-  "templateVersion": 64,
+  "templateVersion": 65,
   "template_type": "ggml-llama"
 }

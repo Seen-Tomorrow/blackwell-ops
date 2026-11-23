@@ -66,14 +66,6 @@ export const SPEC_PROFILE_PARAM_KEYS = [
  * `spec_draft_model` is deliberately NOT here. It is the CLI alias the launch writes
  * (`SPEC_CLI_DRAFT`) and what Rust reads for `-md` — a live key, not a legacy one.
  */
-const OBSOLETE_SPEC_PARAM_KEYS = [
-  "spec_type",
-  "spec_draft_n_max",
-  "spec_draft_n_min",
-  "spec_draft_p_min",
-] as const;
-
-const OBSOLETE_SET = new Set<string>(OBSOLETE_SPEC_PARAM_KEYS);
 const PROFILE_KEY_SET = new Set<string>(SPEC_PROFILE_PARAM_KEYS);
 
 function isSpecProfileGroup(group: string | undefined | null): boolean {
@@ -84,10 +76,6 @@ function isSpecProfileGroup(group: string | undefined | null): boolean {
 
 export function isSpecProfileParamKey(key: string): boolean {
   return PROFILE_KEY_SET.has(key);
-}
-
-export function isObsoleteSpecParamKey(key: string): boolean {
-  return OBSOLETE_SET.has(key);
 }
 
 export function groupForBoostMethod(method: SpecBoostMethod): SpecProfileGroup | null {
@@ -303,9 +291,4 @@ export function cockpitProfileKnobRows(
       };
     })
     .filter((r) => r.values.length > 0);
-}
-
-/** Drop bag keys no template row defines, so a stale chip cannot reach the CLI. */
-export function stripObsoleteSpecParams<T extends { key: string }>(params: T[]): T[] {
-  return params.filter((p) => !isObsoleteSpecParamKey(p.key));
 }

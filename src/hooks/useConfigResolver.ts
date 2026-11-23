@@ -10,11 +10,9 @@ import type { ModelEntry, UserEditedTemplateParam } from "../lib/types";
 import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/paramConfigResolve";
 import {
   isSpecProfileParamKey,
-  isObsoleteSpecParamKey,
   DFLASH_DRAFT_MODEL,
   MTP_DRAFT_MODEL,
   SPEC_PROFILE_PARAM_KEYS,
-  stripObsoleteSpecParams,
 } from "../lib/specProfiles";
 import { discardStagedDraftPairing, getStagedDraftValues, stageDraftValue } from "../lib/specDraft";
 import {
@@ -93,10 +91,7 @@ export function useConfigResolver({
   const policyIdRef = useRef(policyId);
   policyIdRef.current = policyId;
 
-  const cleanedParams = useMemo(
-    () => stripObsoleteSpecParams(userEditedParams),
-    [userEditedParams],
-  );
+  const cleanedParams = userEditedParams;
 
   const paramsFingerprint = useMemo(
     () => paramsVisibilityFingerprint(cleanedParams),
@@ -206,7 +201,6 @@ export function useConfigResolver({
 
   const updateParam = useCallback(
     (key: string, value: unknown) => {
-      if (isObsoleteSpecParamKey(key)) return;
       const normalizedValue = normalizeValue(value);
       setConfig((prev) => ({ ...prev, [key]: normalizedValue }));
 
@@ -236,7 +230,6 @@ export function useConfigResolver({
     (patch: Record<string, unknown>) => {
       const normalized: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(patch)) {
-        if (isObsoleteSpecParamKey(k)) continue;
         normalized[k] = normalizeValue(v);
       }
       setConfig((prev) => ({ ...prev, ...normalized }));

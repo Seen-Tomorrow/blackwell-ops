@@ -90,7 +90,7 @@ pub fn catalog_exclusions_from_downloads(
     batches: &HashMap<String, QuantDownloadBatch>,
 ) -> CatalogScanExclusions {
     let mut dest_paths = HashSet::new();
-    let mut shard_groups = HashSet::new();
+    let shard_groups = HashSet::new();
 
     // Only a task that is WRITING bytes today hides its own destination: a finished file
     // never exists mid-write (the manager renames from `.part`), so this is belt and

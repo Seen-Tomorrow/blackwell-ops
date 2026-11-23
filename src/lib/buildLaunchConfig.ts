@@ -242,7 +242,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
   // Keep full merged for FIT topology reads when user_chrome (device/split from profile)
   const fitConfig =
     policy.topology === "fit_owned"
-      ? { ...filteredConfig, offload_mode: "regular" }
+      ? filteredConfig
       : { ...merged, ...filteredConfig };
 
   const fullAutoMode = policy.id === "full_auto";

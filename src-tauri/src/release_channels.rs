@@ -17,7 +17,6 @@ pub const MANIFEST_ASSET: &str = "channel.json";
 pub const TAG_APP: &str = "app";
 pub const TAG_FULL: &str = "full";
 pub const TAG_ENGINES: &str = "engines";
-pub const TAG_TOOLCHAIN: &str = "toolchain";
 pub const TAG_LINK: &str = "link";
 
 #[derive(Deserialize)]
@@ -38,6 +37,7 @@ pub struct ChannelRow {
     #[serde(default)]
     pub title: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub prerelease: bool,
 }
 
@@ -103,6 +103,7 @@ pub struct ChannelRelease {
     pub size_bytes: u64,
     pub sha256: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub published_at: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,

@@ -54,7 +54,7 @@ function resolveFitLaunchExtraKeys(opts: {
   return [...keys];
 }
 
-const FIT_PANEL_CHROME_SCROLL_SKIP = new Set(["device", "split", "base_port", "offload_mode"]);
+const FIT_PANEL_CHROME_SCROLL_SKIP = new Set(["device", "split", "base_port"]);
 
 /** Scroll-area params under AUTO FIT — whitelist minus GpuAssign / dock chrome. */
 function filterParamsForFitLaunchDisplay(

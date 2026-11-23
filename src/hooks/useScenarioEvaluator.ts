@@ -412,7 +412,7 @@ function emitScenarioConsole(
 
   const fa = uiTemplate ? 'on' : 'off';
   const ep = engineConfig.extra_params || {};
-  lines.push(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload_mode"]}`);
+  lines.push(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa}`);
 
   // Emit to Blackwell Output Console Scenarios tab via IPC (fire-and-forget)
   void invoke("emit_to_blackwell_console", {
@@ -1076,7 +1076,6 @@ export function useScenarioEvaluator({
         batch: typeof curConfig.batch === "number" ? curConfig.batch : parseInt(String(curConfig.batch), 10) || 2048,
         ubatch: typeof curConfig.ubatch === "number" ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
         flashAttn: curConfig["flash_attn"]?.toLowerCase() !== "off",
-        offloadMode: "regular",
         cpuMoe: cpuMoeFlag(curConfig) === "1",
       });
 

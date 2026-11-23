@@ -387,7 +387,6 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
         gpu_components_mib: Some(gpu_components),
         host_components_mib,
         fitted_ngl: None,
-        fit_attempts: Vec::new(),
     })
 }
 
@@ -502,8 +501,6 @@ pub struct FitScanRaw {
     pub host_components_mib: Option<GpuComponentMib>,
     /// Optional fitted ngl from free-aware fit logs.
     pub fitted_ngl: Option<i32>,
-    /// Every fit attempt the binary printed, in order - the same shape the launch records.
-    pub fit_attempts: Vec<crate::launch_memory_parse::FitAttempt>,
 }
 
 #[derive(Debug, Clone)]
@@ -772,9 +769,7 @@ pub async fn scan_single_anchor(
         ));
     }
 
-    if let Some(mut raw) = adapter.parse_scan_output(&stdout, &stderr) {
-        let combined = format!("{stdout}\n{stderr}");
-
+    if let Some(raw) = adapter.parse_scan_output(&stdout, &stderr) {
         return Ok(raw);
     }
 
@@ -945,51 +940,6 @@ fn is_memory_breakdown_header(line: &str) -> bool {
             || (lower.contains("total") && lower.contains("free") && lower.contains("self")))
 }
 
-/// Trailing unaccounted MiB after the SELF paren: `... (2395 = 500 + 1632 + 263) + 133`
-#[cfg(test)]
-fn extract_unaccounted_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
-    let last_close = line.rfind(')')?;
-    let after = line[last_close + 1..].trim();
-    let plus_idx = after.rfind('+')?;
-    extract_number(after[plus_idx + 1..].trim())
-}
-
-/// Sum of positive per-GPU `unaccounted` from the last complete memory breakdown table.
-/// Engine definition: `unaccounted = total - free - self` (accounting residual, NOT split tax).
-/// Values are often negative during --fit; do not surface in forecast UI.
-#[cfg(test)]
-pub fn parse_last_breakdown_unaccounted_mib(output: &str) -> Option<f64> {
-    let mut last_sum: Option<f64> = None;
-    let mut in_table = false;
-    let mut table_sum = 0.0_f64;
-
-    for line in output.lines() {
-        if is_memory_breakdown_header(line) {
-            table_sum = 0.0;
-            in_table = true;
-            continue;
-        }
-        if !in_table || !line.contains('|') {
-            continue;
-        }
-        let lower = line.to_lowercase();
-        if lower.contains("cuda") {
-            if let Some(v) = extract_unaccounted_mib_from_cuda_breakdown_line(line) {
-                if v > 0.0 {
-                    table_sum += v;
-                }
-            }
-        } else if lower.contains("host") && !lower.contains("cuda") {
-            if table_sum > 0.5 {
-                last_sum = Some(table_sum);
-            }
-            in_table = false;
-        }
-    }
-
-    last_sum
-}
-
 /// SELF MiB from a CUDA row: `... (2395 = 500 + 1632 + 263) ...`
 fn extract_self_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
     let last_open = line.rfind('(')?;
@@ -1117,7 +1067,6 @@ pub async fn fit_scan_model(
     batch: u32,
     _ubatch: u32,
     _flash_attn: bool,
-    _offload_mode: String,
     // full (default) | low_vram — free-aware spill probe (manual RE-PROBE LOW VRAM).
     cpu_moe: Option<bool>,
     app: tauri::State<'_, AppContext>,

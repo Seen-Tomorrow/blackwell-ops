@@ -107,7 +107,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     supportsFusion,
     engineStatus,
     booterProps,
-    offloadMode,
     draftOnly = false,
     incomplete = null,
     onRestage,
@@ -502,7 +501,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
               vramTargetMib={booterProps.vramTargetMib}
               modelLayerTotal={booterProps.modelLayerTotal}
               gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
-              offloadMode={offloadMode}
               draftOnly={draftOnly}
               incomplete={incomplete}
               onRestage={onRestage}
@@ -641,7 +639,6 @@ export interface EngineGpuForecastProps {
   supportsFusion: boolean;
   engineStatus?: string;
   booterProps: EngineGpuBooterProps;
-  offloadMode?: string;
   /** External draft pack — full-face draft explanation, no FIT. */
   draftOnly?: boolean;
   /** Finish an interrupted set from its Hub pairing. */

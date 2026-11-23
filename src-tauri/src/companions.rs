@@ -891,11 +891,6 @@ fn repo_id_for(model_path: &str) -> Option<String> {
     }
     // Configured model roots are the reliable anchor: the first two components below a
     // root are <author>/<repo>, whether or not a quant folder follows.
-    // Compare separator- and case-insensitively: configured roots are stored with
-    // whichever separators the user typed, the model path comes back from the walk.
-    fn norm(path: &str) -> String {
-        path.replace('/', "\\").to_ascii_lowercase()
-    }
     let cfg = crate::config::load_config();
     let roots: Vec<String> = crate::config::get_model_paths(&cfg)
         .into_iter()

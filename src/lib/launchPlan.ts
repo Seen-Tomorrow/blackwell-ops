@@ -74,7 +74,6 @@ const CAPTURE_KEYS = [
   "temp",
   "top_p",
   "split",
-  "offload_mode",
   "base_port",
   "device",
   // Boost / speculative pack (natural panel knobs — both BRAIN and WORKER)

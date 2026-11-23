@@ -92,11 +92,10 @@ export function buildAutoVramLaunchParams(opts: {
   const params: Record<string, unknown> = {
     __auto_vram: true,
     __memory_mode: memoryMode ?? (fullAutoMode ? "full_auto" : "assisted"),
-    ...(fullAutoMode ? { offload_mode: "regular" } : {}),
   };
   for (const key of launchKeys) {
     if (key === "split") continue;
-    if (fullAutoMode && (key === "device" || key === "split" || key === "offload_mode")) continue;
+    if (fullAutoMode && (key === "device" || key === "split")) continue;
     const value = paramDefs?.length
       ? resolveVisibleParamValue(key, config, paramDefs)
       : config[key];
