@@ -138,6 +138,7 @@ type LinkUpdateInfo = {
   name: string | null;
   url: string | null;
   sizeBytes: number | null;
+  sha256?: string | null;
   publishedAt: string | null;
 };
 
@@ -664,7 +665,7 @@ export default function App() {
   }, [networkEnabled]);
 
   const installUpdate = useCallback(async () => {
-    if (!updateInfo?.url || !updateInfo.name) return;
+    if (!updateInfo?.url || !updateInfo.name || !updateInfo.sha256) return;
     setError(null);
     setNotice(null);
     setUpdateBusy(true);
@@ -672,6 +673,7 @@ export default function App() {
       await invoke("link_update_install", {
         url: updateInfo.url,
         name: updateInfo.name,
+        sha256: updateInfo.sha256,
       });
       setNotice("Update started. OYM Link will close and relaunch.");
     } catch (e) {

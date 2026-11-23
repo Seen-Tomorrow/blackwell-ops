@@ -190,7 +190,8 @@ fn service_dir() -> Option<PathBuf> {
 }
 
 const LINK_UPDATE_REPO: &str = "Seen-Tomorrow/blackwell-ops";
-const LINK_UPDATE_PREFIX: &str = "LINK_OYM-Link-";
+const LINK_CHANNEL_TAG: &str = "link";
+const LINK_UPDATE_PREFIX: &str = "OYM_link_";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Serialize, Deserialize)]
@@ -250,6 +251,7 @@ struct LinkUpdateInfo {
     name: Option<String>,
     url: Option<String>,
     size_bytes: Option<u64>,
+    sha256: Option<String>,
     published_at: Option<String>,
 }
 
@@ -284,15 +286,13 @@ async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String>
     tauri::async_runtime::spawn_blocking(move || {
         write_update_state("checking", current_build, None, None, None);
         let endpoint = format!(
-            "https://api.github.com/repos/{LINK_UPDATE_REPO}/releases/tags/link-v{CLIENT_VERSION}"
+            "https://github.com/{LINK_UPDATE_REPO}/releases/download/{LINK_CHANNEL_TAG}/channel.json"
         );
         let output = run_curl(&[
             "-L".into(),
             "--fail".into(),
             "--silent".into(),
             "--show-error".into(),
-            "-H".into(),
-            "Accept: application/vnd.github+json".into(),
             "-H".into(),
             "User-Agent: OYM-Link-Updater".into(),
             endpoint,
@@ -303,37 +303,14 @@ async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String>
                 String::from_utf8_lossy(&output.stderr).trim()
             ));
         }
-        let release: Value = serde_json::from_slice(&output.stdout)
-            .map_err(|error| format!("parse GitHub release: {error}"))?;
-        let published_at = release
-            .get("published_at")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        let mut best: Option<(u64, String, String, u64)> = None;
-        if let Some(assets) = release.get("assets").and_then(Value::as_array) {
-            for asset in assets {
-                let name = asset.get("name").and_then(Value::as_str).unwrap_or("");
-                let Some(build) = name
-                    .strip_prefix(LINK_UPDATE_PREFIX)
-                    .and_then(|rest| rest.strip_suffix(".7z"))
-                    .and_then(|digits| digits.parse::<u64>().ok())
-                else {
-                    continue;
-                };
-                let url = asset
-                    .get("browser_download_url")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                if url.is_empty() {
-                    continue;
-                }
-                let size = asset.get("size").and_then(Value::as_u64).unwrap_or(0);
-                if best.as_ref().is_none_or(|(best_build, ..)| build > *best_build) {
-                    best = Some((build, name.to_string(), url.to_string(), size));
-                }
-            }
+        let manifest: Value = serde_json::from_slice(&output.stdout)
+            .map_err(|error| format!("parse channel.json: {error}"))?;
+        if manifest.get("schemaVersion").and_then(Value::as_u64) != Some(1)
+            || manifest.get("channel").and_then(Value::as_str) != Some(LINK_CHANNEL_TAG)
+        {
+            return Err("invalid link channel.json header".into());
         }
-        let Some((latest_build, name, url, size_bytes)) = best else {
+        let Some(latest) = manifest.get("latest") else {
             write_update_state("idle", current_build, None, None, None);
             return Ok(LinkUpdateInfo {
                 available: false,
@@ -342,9 +319,38 @@ async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String>
                 name: None,
                 url: None,
                 size_bytes: None,
-                published_at,
+                sha256: None,
+                published_at: None,
             });
         };
+        let Some(latest_build) = latest.get("build").and_then(Value::as_u64) else {
+            return Err("link channel.json missing latest.build".into());
+        };
+        let name = latest
+            .get("asset")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let sha256 = latest
+            .get("sha256")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !name.starts_with(LINK_UPDATE_PREFIX)
+            || !name.ends_with(".7z")
+            || sha256.len() != 64
+            || !sha256.chars().all(|c| c.is_ascii_hexdigit())
+        {
+            return Err("invalid link channel.json latest entry".into());
+        }
+        let size_bytes = latest.get("sizeBytes").and_then(Value::as_u64).unwrap_or(0);
+        let published_at = latest
+            .get("publishedAt")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let url = format!(
+            "https://github.com/{LINK_UPDATE_REPO}/releases/download/{LINK_CHANNEL_TAG}/{name}"
+        );
         write_update_state(
             if latest_build > current_build { "available" } else { "idle" },
             current_build,
@@ -359,6 +365,7 @@ async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String>
             name: Some(name),
             url: Some(url),
             size_bytes: Some(size_bytes),
+            sha256: Some(sha256),
             published_at,
         })
     })
@@ -366,18 +373,48 @@ async fn link_update_check(current_build: u64) -> Result<LinkUpdateInfo, String>
     .map_err(|error| format!("update check task: {error}"))?
 }
 
+fn verify_file_sha256(path: &std::path::Path, expected_hex: &str) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).map_err(|e| format!("open update archive: {e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| format!("read update archive: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let actual = format!("{:x}", hasher.finalize());
+    if !actual.eq_ignore_ascii_case(expected_hex) {
+        return Err(format!(
+            "SHA-256 mismatch (expected {expected_hex}, got {actual})"
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn link_update_install(
     app: AppHandle,
     url: String,
     name: String,
+    sha256: String,
 ) -> Result<(), String> {
-    if !url.starts_with("https://github.com/") && !url.starts_with("https://objects.githubusercontent.com/")
-    {
-        return Err("refusing a non-GitHub update URL".into());
+    let expected_prefix = format!(
+        "https://github.com/{LINK_UPDATE_REPO}/releases/download/{LINK_CHANNEL_TAG}/"
+    );
+    if !url.starts_with(&expected_prefix) {
+        return Err("refusing a non-channel update URL".into());
     }
     if !name.starts_with(LINK_UPDATE_PREFIX) || !name.ends_with(".7z") {
         return Err("unexpected update asset name".into());
+    }
+    let expected_sha = sha256.trim().to_ascii_lowercase();
+    if expected_sha.len() != 64 || !expected_sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("invalid update sha256".into());
     }
     let app_handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -402,6 +439,12 @@ async fn link_update_install(
                 "update download failed: {}",
                 String::from_utf8_lossy(&download.stderr).trim()
             ));
+        }
+        write_update_state("verifying", 0, None, Some(&name), None);
+        if let Err(err) = verify_file_sha256(&archive, &expected_sha) {
+            let _ = std::fs::remove_file(&archive);
+            write_update_state("error", 0, None, Some(&name), Some(&err));
+            return Err(err);
         }
         let app_dir = std::env::current_exe()
             .map_err(|e| format!("current exe: {e}"))?

@@ -16,6 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "release-channels.ps1")
 $sevenZip = Join-Path $root "src-tauri/bin/7z.exe"
 if (-not (Test-Path -LiteralPath $sevenZip)) {
     throw "Bundled 7z.exe not found: $sevenZip"
@@ -39,7 +40,7 @@ if ($Build -le 0) {
 if (-not $Output) {
     $outDir = Join-Path $root ".majestic-out"
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-    $Output = Join-Path $outDir "LINK_OYM-Link-$Build.7z"
+    $Output = Join-Path $outDir (New-ChannelAssetName -Tag 'link' -Version "b$Build")
 }
 if (-not [IO.Path]::IsPathRooted($Output)) {
     $Output = Join-Path $root $Output
