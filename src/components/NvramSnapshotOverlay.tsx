@@ -52,46 +52,96 @@ function isEmptyCell(cell: NvramMatrixCell | undefined): boolean {
 
 /** Which block a matrix row belongs to. Order follows the backend's emission order. */
 function groupOf(scope: string): { key: string; label: string } {
-  if (scope.startsWith("gpu")) return { key: "gpu", label: "GPU" };
+  if (scope.startsWith("gpu") || scope === "ram") {
+    return { key: "memory", label: "MEMORY BREAKDOWN" };
+  }
   if (scope.startsWith("slot")) return { key: "engine", label: "ENGINE" };
   if (scope.startsWith("learned")) return { key: "learned", label: "MEASURED LAUNCHES" };
-  if (scope.startsWith("ui.bars")) return { key: "bars", label: "FORECAST · BARS" };
-  if (scope.startsWith("ui.plan")) return { key: "plan", label: "FORECAST · PLAN" };
   if (scope.startsWith("ui")) return { key: "forecast", label: "FORECAST" };
   return { key: "other", label: "OTHER" };
 }
 
-/** `gpu0` → `GPU 0`; `learned ctx=262144 kv=…` → `CTX 262,144`. */
-/** Block order: the live states first, the measured archive last. */
+/** Block order: live memory & engine first, forecast next, measured archive last. */
 const GROUP_RANK: Record<string, number> = {
-  gpu: 0,
+  memory: 0,
   engine: 1,
   forecast: 2,
-  bars: 3,
-  plan: 4,
-  learned: 5,
-  other: 6,
+  learned: 3,
+  other: 4,
 };
 
 function rowLabel(scope: string, field: string): { primary: string; secondary: string | null } {
   const gpu = /^gpu(\d+)$/.exec(scope);
   if (gpu) return { primary: field, secondary: `GPU ${gpu[1]}` };
+  if (scope === "ram") return { primary: field, secondary: "SYSTEM RAM" };
   const slot = /^slot(\d+)$/.exec(scope);
-  if (slot) return { primary: field, secondary: `ENGINE ${slot[1]}` };
+  if (slot) {
+    const slotFieldMap: Record<string, string> = {
+      ctx: "context",
+      parallel: "slots",
+      split: "split mode",
+      vram: "reported VRAM",
+    };
+    const bufGpu = /^gpu(\d+)$/.exec(field);
+    const primary = bufGpu ? `GPU ${bufGpu[1]} buffers` : (slotFieldMap[field] ?? field);
+    return { primary, secondary: `ENGINE ${slot[1]}` };
+  }
+  if (scope === "ui") {
+    const uiFieldMap: Record<string, string> = {
+      need: "VRAM need",
+      ramNeed: "RAM need",
+      "plan.total": "Model total",
+      "plan.boundary": "Split layer",
+      "plan.ts": "Multi-GPU split",
+      source: "Forecast source",
+      fits: "Fits",
+      placement: "Placement",
+    };
+    return { primary: uiFieldMap[field] ?? field, secondary: null };
+  }
+  if (scope === "ui.bars") {
+    const card = /^card(\d+)$/.exec(field);
+    if (card) return { primary: "planned", secondary: `GPU ${card[1]}` };
+    return { primary: field, secondary: "FORECAST" };
+  }
   if (scope.startsWith("learned")) {
     const ctx = /ctx=(\d+)/.exec(scope);
     const kv = /kv=([a-z0-9_]+)/i.exec(scope);
     const ub = /ubatch=(\d+)/.exec(scope);
-    // The label names what the row was *measured at*: the ubatch matters because the compute term
-    // is fitted from the family and a row's own operating point anchors it.
     const parts = [
       ctx ? `CTX ${Number(ctx[1]).toLocaleString("en-US")}` : "LEARNED",
       kv ? kv[1] : null,
       ub ? `ub ${Number(ub[1]).toLocaleString("en-US")}` : null,
     ].filter(Boolean);
-    return { primary: field, secondary: parts.join(" · ") };
+    const learnedField = field === "vram" ? "VRAM" : field === "host" ? "host RAM" : field;
+    return { primary: learnedField, secondary: parts.join(" · ") };
   }
   return { primary: field, secondary: null };
+}
+
+function formatCellText(row: NvramMatrixRow, cell: NvramMatrixCell | undefined): string {
+  const raw = cellText(cell);
+  if (row.scope === "ui" && row.field === "plan.ts" && cell?.text) {
+    const m = /^\[([^\]]+)\]$/.exec(cell.text.trim());
+    if (m) {
+      const nums = m[1].split(",").map((s) => Number(s.trim()));
+      if (nums.length > 0 && nums.every((n) => Number.isFinite(n) && n >= 0)) {
+        const sum = nums.reduce((a, b) => a + b, 0);
+        if (sum > 0.9 && sum < 1.1) {
+          return nums.map((n) => `${Math.round(n * 100)}%`).join(" / ");
+        }
+      }
+    }
+  }
+  if (row.scope === "ui" && row.field === "fits") {
+    if (raw === "true") return "yes";
+    if (raw === "false") return "no";
+  }
+  if (row.scope === "ui" && row.field === "placement") {
+    if (raw === "true") return "manual";
+    if (raw === "false") return "auto";
+  }
+  return raw;
 }
 
 /**
@@ -239,8 +289,8 @@ export default function NvramSnapshotOverlay({
                       {row.cells.map((cell, i) => {
                         const delta = i > 0 ? deltaText(row.cells[i - 1], cell) : null;
                         return (
-                          <td key={i} className="vram-snap-ov__cell">
-                            <span className="vram-snap-ov__val">{cellText(cell)}</span>
+                          <td key={i} className="vram-snap-ov__cell" title={cell?.text ?? undefined}>
+                            <span className="vram-snap-ov__val">{formatCellText(row, cell)}</span>
                             {delta ? (
                               <span
                                 className="vram-snap-ov__delta"

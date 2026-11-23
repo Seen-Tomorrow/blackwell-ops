@@ -67,6 +67,8 @@ pub struct EngineSnap {
     /// Measured launch inventory for this slot; `null` while nothing has loaded.
     pub vram_mib: Option<f64>,
     pub gpu_breakdown_mib: Option<Vec<f64>>,
+    #[serde(default)]
+    pub cpu_moe: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +78,13 @@ pub struct CalSnap {
     pub samples: usize,
     pub driver_model: String,
     pub last_taken_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RamSnap {
+    pub total_mib: u64,
+    pub used_mib: u64,
+    pub free_mib: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +99,8 @@ pub struct NvramSnapshot {
     /// Empty with `gpu_error` set when NVML is unavailable — never a fake zero-device list.
     pub gpus: Vec<GpuSnap>,
     pub gpu_error: Option<String>,
+    #[serde(default)]
+    pub ram: Option<RamSnap>,
     pub engines: Vec<EngineSnap>,
     pub learned: Vec<crate::vram_learn::LearnedRowView>,
     pub calibration: Vec<CalSnap>,
@@ -186,6 +197,9 @@ fn record_calibration_pair(ready: &NvramSnapshot) {
         grew.push((gpu.index, (gpu.used_mib - pre_gpu.used_mib) as f64, gpu));
     }
     for engine in &ready.engines {
+        if engine.cpu_moe {
+            continue;
+        }
         let Some(breakdown) = engine.gpu_breakdown_mib.as_ref() else {
             continue;
         };
@@ -304,6 +318,18 @@ pub async fn capture(app: &AppHandle, path: Option<PathBuf>, phase: &str) -> Res
         None => (Vec::new(), Some("nvml unavailable".to_string())),
     };
 
+    let ram = {
+        let mut sys = sysinfo::System::new();
+        sys.refresh_memory();
+        let total_mib = sys.total_memory() / (1024 * 1024);
+        let free_mib = sys.available_memory() / (1024 * 1024);
+        (total_mib > 0).then_some(RamSnap {
+            total_mib,
+            used_mib: total_mib.saturating_sub(free_mib),
+            free_mib,
+        })
+    };
+
     let engines = {
         let stack = ctx.stack.lock().await;
         let mut out = Vec::new();
@@ -328,6 +354,7 @@ pub async fn capture(app: &AppHandle, path: Option<PathBuf>, phase: &str) -> Res
                 // 0 is the stack's "nothing measured" default, not a measurement.
                 vram_mib: (slot.vram_mib > 0.0).then_some(slot.vram_mib),
                 gpu_breakdown_mib: slot.gpu_breakdown_mib.clone(),
+                cpu_moe: slot.cpu_moe,
             });
         }
         out
@@ -359,6 +386,7 @@ pub async fn capture(app: &AppHandle, path: Option<PathBuf>, phase: &str) -> Res
         },
         gpus,
         gpu_error,
+        ram,
         engines,
         learned,
         calibration,
@@ -494,6 +522,10 @@ fn snapshot_cells(snap: &NvramSnapshot) -> Vec<(String, String, &'static str, Ma
         let scope = format!("gpu{}", gpu.index);
         number!(scope.clone(), "used".into(), "MiB", Some(gpu.used_mib as f64));
         number!(scope.clone(), "free".into(), "MiB", Some(gpu.free_mib as f64));
+    }
+    if let Some(ram) = snap.ram.as_ref() {
+        number!("ram".into(), "used".into(), "MiB", Some(ram.used_mib as f64));
+        number!("ram".into(), "free".into(), "MiB", Some(ram.free_mib as f64));
     }
     // Before the load starts the slot still carries the *previous* launch's knobs (a pre-launch
     // capture showed ctx 32,768 against a 256K config, which read as a +229,376 delta). Only the
@@ -1189,6 +1221,7 @@ mod tests {
                 utilization_gpu: 0,
             }],
             gpu_error: None,
+            ram: None,
             engines: vec![],
             learned: vec![],
             calibration: vec![],
@@ -1206,6 +1239,19 @@ mod tests {
         assert_eq!(row.delta, None);
         assert_eq!(row.note.as_deref(), Some("before unknown"));
         assert!(row.is_interesting());
+    }
+
+    #[test]
+    fn snapshot_cells_emits_system_ram_when_present() {
+        let mut snap = snapshot(1000, "[0.5,0.5]");
+        snap.ram = Some(RamSnap {
+            total_mib: 256_000,
+            used_mib: 64_000,
+            free_mib: 192_000,
+        });
+        let cells = snapshot_cells(&snap);
+        assert!(cells.iter().any(|(s, f, u, c)| s == "ram" && f == "used" && *u == "MiB" && c.number == Some(64_000.0)));
+        assert!(cells.iter().any(|(s, f, u, c)| s == "ram" && f == "free" && *u == "MiB" && c.number == Some(192_000.0)));
     }
 
     #[test]
