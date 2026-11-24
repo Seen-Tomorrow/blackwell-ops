@@ -1623,43 +1623,6 @@ fn remove_stray_toolchain_roots_at_app_root(app_root: &std::path::Path) -> Resul
     Ok(())
 }
 
-/// Move flat-layout payloads that landed at app_root into toolchain/ (legacy bad extracts).
-fn consolidate_stray_toolchain_into_toolchain_dir(app_root: &std::path::Path) -> Result<(), String> {
-    let tc = toolchain_dir();
-    std::fs::create_dir_all(&tc)
-        .map_err(|e| format!("Failed to create toolchain dir: {}", e))?;
-    for name in STRAY_TOOLCHAIN_ROOTS {
-        let src = app_root.join(name);
-        if !src.exists() {
-            continue;
-        }
-        let dst = tc.join(name);
-        if dst.exists() {
-            if src.is_file() && dst.is_file() {
-                std::fs::remove_file(&dst).map_err(|e| {
-                    format!("Failed to replace {}: {}", dst.display(), e)
-                })?;
-            } else {
-                continue;
-            }
-        }
-        std::fs::rename(&src, &dst).map_err(|e| {
-            format!(
-                "Failed to move {} into toolchain ({}): {}",
-                src.display(),
-                dst.display(),
-                e
-            )
-        })?;
-        log::info!(
-            "[toolchain] Consolidated {} -> {}",
-            src.display(),
-            dst.display()
-        );
-    }
-    Ok(())
-}
-
 /// Replaces the entire portable tree before extract (clean upgrade).
 pub fn prepare_toolchain_upgrade(_pack: &str) -> Result<(), String> {
     let app_root = crate::config::app_root_dir();
@@ -1846,7 +1809,7 @@ pub fn finalize_toolchain_install(archive_path: &std::path::Path, pack: &str) ->
 
     let extract_dest = resolve_toolchain_extract_dest(archive_path, &app_root)?;
     extract_toolchain_archive(archive_path, &extract_dest)?;
-    consolidate_stray_toolchain_into_toolchain_dir(&app_root)?;
+    let _ = app_root;
     verify_toolchain_install(&def)?;
 
     // The packs carry the tree, not the manifest, so without this a completed install still
@@ -1873,7 +1836,7 @@ pub fn finalize_toolchain_install(archive_path: &std::path::Path, pack: &str) ->
 
 pub fn install_info(driver_major: Option<u32>) -> Result<ToolchainInstallInfo, String> {
     let app_root = crate::config::app_root_dir();
-    let _ = consolidate_stray_toolchain_into_toolchain_dir(&app_root);
+    let _ = app_root;
     let tc_dir = toolchain_dir();
     let checks = check_all_profiles()?;
     let profiles_ready = checks.iter().filter(|c| c.ready).count();

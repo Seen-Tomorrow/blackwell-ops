@@ -434,12 +434,9 @@ pub struct ProviderConfig {
     /// Custom providers — fusion / metrics / verbose opt-ins.
     #[serde(default, rename = "customCapabilities", skip_serializing_if = "CustomProviderCapabilities::is_default")]
     pub custom_capabilities: CustomProviderCapabilities,
-    #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
-    pub config_column_count: Option<u8>,
-    #[serde(default, rename = "configColumnWidths", skip_serializing_if = "Vec::is_empty")]
-    pub config_column_widths: Vec<f64>,
-    #[serde(default, rename = "groupColumn", skip_serializing_if = "HashMap::is_empty")]
-    pub group_column: HashMap<String, u32>,
+    /// True only when the user actually edited template params/groups in the editor.
+    #[serde(default, rename = "userCustomizedTemplate", skip_serializing_if = "std::ops::Not::not")]
+    pub user_customized_template: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _original_id: Option<String>,
     #[serde(default)]

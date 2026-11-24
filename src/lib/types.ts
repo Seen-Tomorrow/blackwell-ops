@@ -341,12 +341,7 @@ export interface ProviderConfig {
    * Flag-driven — not inferred from group name. Empty → frontend seeds defaults.
    */
   protectedGroups?: string[];
-  /** Below-zone column layout (1–3). */
-  configColumnCount?: 1 | 2 | 3;
-  /** Below-zone column width fractions (sum = 1). */
-  configColumnWidths?: number[];
-  /** Per-group below-zone column index. */
-  groupColumn?: Record<string, number>;
+  userCustomizedTemplate?: boolean;
   _original_id?: string;
   git_url?: string;
   branch?: string;
@@ -398,8 +393,6 @@ export interface SpawnProfile {
   fit_style?: string;
   /** When false, hide tensor (and row) from SPLIT chips — provider lacks stable tensor+FIT. */
   tensor_split?: boolean;
-  /** Param keys visible in Auto VRAM / fallback essentials. */
-  simple_param_keys?: string[];
   /** Param keys shown in Essentials view (panel filter only). */
   essentialParamKeys?: string[];
 }
@@ -742,6 +735,8 @@ export interface GpuInfo {
   pcie_rx_mib_per_s?: number;
   /** PCIe traffic out of the GPU, MiB/s. */
   pcie_tx_mib_per_s?: number;
+  /** Current graphics/core clock, MHz. */
+  core_clock_mhz?: number;
   /** Current memory clock, MHz. */
   mem_clock_mhz?: number;
   /** NVML clock-throttle reasons bitmask (0x40 HW thermal, 0x20 SW thermal, 0x80 power brake, 0x8 HW slowdown, 0x4 power cap, 0x200 board limit). */

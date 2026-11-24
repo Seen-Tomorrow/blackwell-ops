@@ -87,9 +87,6 @@ pub struct SpawnProfile {
     /// `ggml_fit_params` (--fit on + --fit-ctx) | `none`
     #[serde(default)]
     pub fit_style: String,
-    /// Param keys shown in Auto VRAM mode.
-    #[serde(default)]
-    pub simple_param_keys: Vec<String>,
     /// Param keys shown in Essentials view (engine config panel filter).
     #[serde(default, rename = "essentialParamKeys")]
     pub essential_param_keys: Vec<String>,
@@ -130,7 +127,6 @@ impl Default for SpawnProfile {
             help_flag_max_indent: default_help_flag_max_indent(),
             auto_vram: false,
             fit_style: String::new(),
-            simple_param_keys: Vec::new(),
             essential_param_keys: Vec::new(),
             tensor_split: true,
         }
@@ -450,7 +446,6 @@ impl ProviderTemplate {
                 help_flag_max_indent: default_help_flag_max_indent(),
                 auto_vram: false,
                 fit_style: String::new(),
-                simple_param_keys: Vec::new(),
                 essential_param_keys: Vec::new(),
                 tensor_split: true,
             },
@@ -1117,8 +1112,8 @@ impl ProviderTemplate {
     ) {
         if let Some(ref sp) = param.sub_params {
             if let Some(entry_args) = Self::sub_params_entry(sp, value) {
-                for arg in Self::repair_quoted_arg_fragments(entry_args) {
-                    args.push(arg);
+                for arg in entry_args {
+                    args.push(arg.clone());
                 }
             }
         }

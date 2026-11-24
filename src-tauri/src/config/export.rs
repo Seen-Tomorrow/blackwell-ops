@@ -278,8 +278,7 @@ pub fn export_provider_factory_template(
             "groupOrder": [],
             "params": [],
             "spawn_profile": {
-                "essentialParamKeys": [],
-                "simple_param_keys": []
+                "essentialParamKeys": []
             }
         });
         let seed_txt = serde_json::to_string_pretty(&seed)
@@ -367,12 +366,9 @@ pub fn export_provider_factory_template(
         // Full spawn_profile for forks: backfill from ggml-master when stub/missing
         // (EXPORT used to only write essentialParamKeys → empty fit_style / flags).
         let mut sp = ensure_complete_spawn_profile_map(obj.get("spawn_profile"));
+        sp.remove("simple_param_keys");
         sp.insert(
             "essentialParamKeys".to_string(),
-            serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
-        );
-        sp.insert(
-            "simple_param_keys".to_string(),
             serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
         );
         obj.insert(
@@ -394,6 +390,8 @@ pub fn export_provider_factory_template(
         .find(|m| m.id == input.provider_id)
     {
         meta.template_version = new_tv;
+        meta.user_customized_template = false;
+        meta.excluded_param_keys.clear();
         for p in &mut meta.user_edited_template_params {
             p.essential = None;
         }
@@ -438,13 +436,44 @@ pub fn export_provider_factory_template(
 }
 
 #[tauri::command]
-pub fn reset_provider_user_config(provider_id: String) -> Result<(), String> {
-    let path = provider_user_config_path(&provider_id);
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
-        log::info!("[config] Deleted user config for '{}' — will regenerate from factory on next load", provider_id);
+pub fn reset_provider_user_config(
+    provider_id: String,
+    app: tauri::State<'_, crate::engine::AppContext>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+        if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+            let factory_key = resolve_merge_template_key(
+                &p.id,
+                &p.template_type,
+                p.factory_provided,
+            )
+            .unwrap_or_else(|| p.id.clone());
+            p.user_edited_template_params = params_for_provider(&factory_key);
+            p.excluded_param_keys.clear();
+            p.group_order.clear();
+            p.protected_groups.clear();
+            apply_factory_meta_defaults(p, &factory_key);
+            p.template_version = factory_template_version_for_provider(
+                &p.id,
+                &p.template_type,
+                p.factory_provided,
+            );
+            p.user_customized_template = false;
+            p.needs_template_attention = false;
+            Some(p.clone())
+        } else {
+            None
+        }
+    };
+    if let Some(p) = updated {
+        save_provider_user_config(&p)?;
+        log::info!("[config] Reset '{}' to factory v{} (preserved binary/Foundry state)", provider_id, p.template_version);
     } else {
-        log::warn!("[config] No user config found at {} for '{}'", path.display(), provider_id);
+        let path = provider_user_config_path(&provider_id);
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+        }
     }
     Ok(())
 }

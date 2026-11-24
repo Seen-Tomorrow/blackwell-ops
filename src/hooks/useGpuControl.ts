@@ -548,8 +548,6 @@ export function useGpuControl({ pollDevices = true }: { pollDevices?: boolean } 
       handleResetAll,
       handleResetGpu,
       handleSetDriverModel,
-      /** @deprecated use handleResetAll */
-      handleReset: handleResetAll,
       patchActivePreset,
     }),
     [

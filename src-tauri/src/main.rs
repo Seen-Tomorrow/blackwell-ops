@@ -81,6 +81,7 @@ mod pi_code;
 mod external_agents;
 mod gateway_cmds;
 mod gpu_control;
+mod nvml_oc;
 mod sidecar_elevate;
 
 // Command modules (extracted from main.rs; the single generate_handler! below is
@@ -178,6 +179,9 @@ async fn main() {
     // CLI branch before anything Tauri-shaped: `--nvram-diff a.json b.json` compares two NVRAM
     // snapshots and exits (no window, no app state). See `nvram_snapshot`.
     if let Some(code) = nvram_snapshot::run_cli() {
+        std::process::exit(code);
+    }
+    if let Some(code) = nvml_oc::run_cli() {
         std::process::exit(code);
     }
     // First: no modal crash dialogs for us or any helper binary we spawn.
@@ -310,14 +314,6 @@ async fn main() {
                 "[startup] load_config_with_app: {:.0}ms",
                 t_config.elapsed().as_secs_f64() * 1000.0
             );
-            let had_legacy_hf = !app_config.hf_token.is_empty();
-            if let Err(e) = secrets::migrate_legacy_hf_token(&mut app_config) {
-                log::warn!("[secrets] Legacy HF token migration failed: {e}");
-            } else if had_legacy_hf {
-                if let Err(e) = config::save_config(&mut app_config) {
-                    log::warn!("[secrets] Failed to clear legacy hf_token from config: {e}");
-                }
-            }
             // SWAP store: derived from the DEFAULT model path on first run, then
             // PERSISTED as an explicit extras path. Without this, changing the default
             // later would silently start a second model_EXTRAS folder and split the

@@ -15,7 +15,6 @@ import {
 } from "./lib/events";
 import {
   KEYS,
-  migrateLegacyStorageKeys,
   readStorage,
   resetSetupGuideState,
 } from "./lib/storage";
@@ -33,8 +32,6 @@ window.addEventListener("beforeunload", () => {
   });
   void invoke("frontend_will_unload").catch(() => {});
 });
-
-migrateLegacyStorageKeys();
 
 if (__BUILD_MODE__ === "dev") {
   document.documentElement.classList.add("app-build--dev");

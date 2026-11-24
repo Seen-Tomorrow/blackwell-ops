@@ -15,7 +15,6 @@ import {
   resolveSmartBatchPush,
   seedFullAutoProfile,
 } from "./launchPolicy";
-import { migrateCatalogOverrideStore } from "./launchProfiles";
 import { buildLaunchConfig, factoryDefaultsFromParams, type BuildLaunchConfigInput } from "./buildLaunchConfig";
 import { pickHighNumeric } from "./multiAgentBooster";
 
@@ -320,36 +319,6 @@ describe("§8 leakage cases", () => {
     });
     expect(seeded.device).toBeUndefined();
     expect(seeded.split).toBeUndefined();
-  });
-});
-
-describe("migrateCatalogOverrideStore", () => {
-  it("copies flat bag to assisted; seeds slim full_auto", () => {
-    const flat = { load_mode: "mlock", temp: 1.0, parallel: 4, batch: 16384 };
-    const store = migrateCatalogOverrideStore({
-      raw: flat,
-      factoryDefaults,
-      preferredActive: "full_auto",
-    });
-    expect(store.version).toBe(2);
-    expect(store.profiles.assisted_full.load_mode).toBe("mlock");
-    expect(store.profiles.assisted_full.temp).toBe(1.0);
-    expect(store.profiles.full_auto.load_mode).toBe("mmap");
-    expect(store.profiles.full_auto.parallel).toBe(4);
-    expect(store.profiles.full_auto.temp).not.toBe(1.0);
-  });
-
-  it("is idempotent on v2", () => {
-    const once = migrateCatalogOverrideStore({
-      raw: { load_mode: "mlock", parallel: 2 },
-      factoryDefaults,
-    });
-    const twice = migrateCatalogOverrideStore({
-      raw: once,
-      factoryDefaults,
-    });
-    expect(twice.profiles.full_auto.load_mode).toBe(once.profiles.full_auto.load_mode);
-    expect(twice.profiles.assisted_full.load_mode).toBe("mlock");
   });
 });
 

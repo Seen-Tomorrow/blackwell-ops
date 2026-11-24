@@ -102,16 +102,6 @@ pub fn apply_meta_overrides(
                 .collect();
         }
     }
-    // User-owned column preferences only — the factory no longer seeds layout.
-    if meta.config_column_count.is_some() {
-        provider.config_column_count = meta.config_column_count;
-    }
-    if !meta.config_column_widths.is_empty() {
-        provider.config_column_widths = meta.config_column_widths.clone();
-    }
-    if !meta.group_column.is_empty() {
-        provider.group_column = meta.group_column.clone();
-    }
 }
 
 /// Load all per-provider user configs from disk.

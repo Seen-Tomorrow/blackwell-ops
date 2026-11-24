@@ -1,7 +1,6 @@
-//! Factory-template <-> user-param merge logic.
+//! Factory-template helpers: version lookup, deduplication, binary resolution, and backup.
 
 use crate::config::*;
-
 
 pub fn json_val_key(v: &serde_json::Value) -> String {
     if let Some(n) = v.as_f64() {
@@ -26,7 +25,7 @@ pub fn factory_template_version_for_provider(
         .unwrap_or(1)
 }
 
-/// Resolve which runtime folder supplies the factory template for merge.
+/// Resolve which runtime folder supplies the factory template.
 pub fn resolve_merge_template_key(
     provider_id: &str,
     template_type: &str,
@@ -61,228 +60,23 @@ pub fn dedupe_user_params_by_key(
     out
 }
 
-/// Merge user params against the correct factory template for this provider.
-pub fn merge_template_for_provider(
-    provider_id: &str,
-    template_type: &str,
-    factory_provided: bool,
-    user_edited: &[crate::types::UserEditedTemplateParam],
-    excluded_keys: &[String],
-) -> Vec<crate::types::UserEditedTemplateParam> {
-    let template_key = resolve_merge_template_key(provider_id, template_type, factory_provided);
-    let merged = merge_template_into_user_params_by_key(template_key.as_deref(), user_edited, excluded_keys);
-    dedupe_user_params_by_key(merged)
-}
-
-
-fn template_sub_params_to_map(
-    sp: &serde_json::Value,
-) -> Option<std::collections::HashMap<String, Vec<String>>> {
-    sp.as_object().map(|obj| {
-        obj.iter()
-            .filter_map(|(k, v)| {
-                v.as_array().map(|arr| (
-                        k.clone(),
-                        arr.iter()
-                            .filter_map(|el| el.as_str().map(String::from))
-                            .collect(),
-                    ))
-            })
-            .collect()
-    })
-}
-
-fn is_numeric_literal_value(v: &serde_json::Value) -> bool {
-    if v.is_number() {
-        return true;
+/// Best-effort backup of a customized user config before resetting to a new factory `templateVersion`.
+pub fn backup_customized_user_config(provider_id: &str, old_version: u32) {
+    let src = provider_user_config_path(provider_id);
+    if !src.is_file() {
+        return;
     }
-    v.as_str()
-        .map(|s| {
-            let t = s.trim();
-            !t.is_empty() && t.parse::<f64>().is_ok() && t.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-')
-        })
-        .unwrap_or(false)
-}
-
-fn values_all_numeric(values: &[serde_json::Value]) -> bool {
-    values.len() >= 2 && values.iter().all(is_numeric_literal_value)
-}
-
-/// Preserve factory JSON order for string enums; numeric lists keep user/saved order.
-fn reorder_values_to_template(
-    values: &[serde_json::Value],
-    tmpl_values: &[serde_json::Value],
-) -> Vec<serde_json::Value> {
-    if values.is_empty() || tmpl_values.is_empty() || values_all_numeric(values) {
-        return values.to_vec();
+    let backup_dir = config_dir().join("backups");
+    if let Err(e) = std::fs::create_dir_all(&backup_dir) {
+        log::warn!("[config] Failed to create backup dir {}: {e}", backup_dir.display());
+        return;
     }
-    let mut ordered = Vec::with_capacity(values.len());
-    let mut placed = std::collections::HashSet::new();
-    for tv in tmpl_values {
-        let key = json_val_key(tv);
-        if let Some(v) = values.iter().find(|v| json_val_key(v) == key) {
-            ordered.push(v.clone());
-            placed.insert(key);
-        }
+    let dst = backup_dir.join(format!("{provider_id}-v{old_version}.json"));
+    if let Err(e) = std::fs::copy(&src, &dst) {
+        log::warn!("[config] Failed to backup {} -> {}: {e}", src.display(), dst.display());
+    } else {
+        log::info!("[config] Backed up customized user config -> {}", dst.display());
     }
-    for v in values {
-        let key = json_val_key(v);
-        if !placed.contains(&key) {
-            ordered.push(v.clone());
-            placed.insert(key);
-        }
-    }
-    ordered
-}
-
-pub fn merge_user_params_with_template(
-    template: &crate::templates::ProviderTemplate,
-    user_edited: &[crate::types::UserEditedTemplateParam],
-    excluded_keys: &[String],
-) -> Vec<crate::types::UserEditedTemplateParam> {
-    let excluded: std::collections::HashSet<&str> = excluded_keys.iter().map(|k| k.as_str()).collect();
-    let tmpl_map: std::collections::HashMap<_, _> = template
-        .params
-        .iter()
-        .map(|p| (p.key.as_str(), p))
-        .collect();
-
-    let mut merged = Vec::with_capacity(user_edited.len());
-
-    for user_param in user_edited {
-        let mut m = user_param.clone();
-        if let Some(tmpl) = tmpl_map.get(user_param.key.as_str()) {
-            // ── Values: user-owned catalog. Empty means the user deleted every value.
-            // Never backfill from the template; only keep the user's order aligned. ──
-            if !m.values.is_empty() && !tmpl.values.is_empty() {
-                m.values = reorder_values_to_template(&m.values, &tmpl.values);
-            }
-
-            // ── factoryDefault: always sync from fresh template — keeps bubble styling correct ──
-            m.factory_default = tmpl.default.clone();
-
-            // ── defaultValue: if current value still in merged array → keep. If orphaned → force reset to new factory default. ──
-            let user_default_key = json_val_key(&m.default_value);
-            if !m.values.is_empty() && !m.values.iter().any(|v| json_val_key(v) == user_default_key) {
-                log::warn!("[config] Param '{}' default '{:?}' no longer in values — resetting to factory default {:?}",
-                    m.key, m.default_value, tmpl.default);
-                m.default_value = tmpl.default.clone();
-            }
-
-            // ── Structural fields: sync from template (source of truth) ──
-            // label: preserve user rename from ConfigPage — backfill only when empty
-            if m.label.is_empty() {
-                m.label = tmpl.label.clone();
-            }
-            if m.flag.is_none() || m.flag.as_deref().is_some_and(|s| s.is_empty()) {
-                m.flag = tmpl.flag.clone();
-            }
-            if m.flag_pair.is_empty() && !tmpl.flag_pair.is_empty() {
-                m.flag_pair = tmpl.flag_pair.clone();
-            }
-
-            // ptype: only backfill if still default "arg_select" and template differs
-            if m.ptype == "arg_select" && tmpl.ptype != "arg_select" {
-                m.ptype = tmpl.ptype.clone();
-            }
-
-            // Spec profiles: always take factory group (repairs SYSTEM mis-pin from old migrate).
-            let tmpl_g = normalize_ui_group(&tmpl.ui_group);
-            let is_profile = tmpl_g == "SPECULATIVE-MTP"
-                || tmpl_g == "SPECULATIVE-DFLASH"
-                || m.key.starts_with("mtp_")
-                || m.key.starts_with("dflash_");
-            // Collapsed: an empty group or a spec-profile always adopts the factory group;
-            // otherwise adopt only when the normalized group actually differs (no-op otherwise).
-            if (m.ui_group.is_empty() || is_profile) && normalize_ui_group(&m.ui_group) != tmpl_g {
-                m.ui_group = tmpl_g;
-            }
-            if m.note.is_empty() {
-                m.note = tmpl.note.clone();
-            }
-            if m.pattern.is_empty() {
-                m.pattern = tmpl.pattern.clone();
-            }
-
-            // Backfill step (slider)
-            if m.step.is_none() && tmpl.step.is_some() {
-                m.step = tmpl.step;
-            }
-
-            // Per-key sub_params merge — backfill missing keys from template, preserve user keys
-            if let Some(tmpl_sp) = tmpl.sub_params.as_ref().and_then(template_sub_params_to_map) {
-                let mut merged_sp = m.sub_params.clone().unwrap_or_default();
-                for (k, v) in tmpl_sp {
-                    merged_sp.entry(k).or_insert(v);
-                }
-                if !merged_sp.is_empty() {
-                    m.sub_params = Some(merged_sp);
-                }
-            }
-
-            if m.dock.is_empty() && !tmpl.dock.is_empty() {
-                m.dock = tmpl.dock.clone();
-            }
-
-            // essentials_hidden_values is USER-OWNED once a param exists on disk.
-            // Do NOT re-apply factory when the list is empty — empty means "user showed all
-            // in Essentials" (or never curated). Factory ESS hides only land via:
-            //   • new param append (below)
-            //   • first-run user_edited_param_from_template / RESET TO DEFAULTS
-            // Never re-add a factory ESS-hidden value that the user deleted from `values`.
-            // Hide lists are pruned to the current catalog so a deleted value cannot linger.
-            m.hidden_values
-                .retain(|v| m.values.iter().any(|x| json_val_key(x) == json_val_key(v)));
-            m.essentials_hidden_values
-                .retain(|v| m.values.iter().any(|x| json_val_key(x) == json_val_key(v)));
-        }
-        merged.push(m);
-    }
-
-    merged.retain(|p| !excluded.contains(p.key.as_str()));
-
-    // Append new params from template that don't exist in user config
-    for (i, tmpl) in template.params.iter().enumerate() {
-        if excluded.contains(tmpl.key.as_str()) {
-            continue;
-        }
-        if !merged.iter().any(|p| p.key == tmpl.key) {
-            let param = crate::types::UserEditedTemplateParam {
-                key: tmpl.key.clone(),
-                label: tmpl.label.clone(),
-                values: tmpl.values.clone(),
-                order: (user_edited.len() + i) as i32,
-                hidden: tmpl.hidden_default,
-                user_hidden: false,
-                hidden_values: Vec::new(),
-                essentials_hidden_values: tmpl.essentials_hidden_values.clone(),
-                flag: tmpl.flag.clone(),
-                flag_pair: tmpl.flag_pair.clone(),
-                ptype: tmpl.ptype.clone(),
-                step: tmpl.step,
-                ui_group: normalize_ui_group(&tmpl.ui_group),
-                note: tmpl.note.clone(),
-                pattern: tmpl.pattern.clone(),
-                default_value: tmpl.default.clone(),
-                user_added_values: Vec::new(),
-                factory_default: tmpl.default.clone(),
-                sub_params: tmpl.sub_params.as_ref().and_then(|sp| {
-                    sp.as_object().map(|obj| {
-                        obj.iter()
-                            .filter_map(|(k, v)| {
-                                v.as_array().map(|arr| (k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
-                            })
-                            .collect::<std::collections::HashMap<_, _>>()
-                    })
-                }),
-                dock: tmpl.dock.clone(),
-                essential: None,
-            };
-            merged.push(param);
-        }
-    }
-
-    merged
 }
 
 pub fn resolve_provider_binaries_from_meta(
@@ -295,28 +89,4 @@ pub fn resolve_provider_binaries_from_meta(
         p.downloaded_version_per_env = m.downloaded_version_per_env.clone();
     }
     crate::profile_binaries::resolve_provider_binaries(p);
-}
-
-fn merge_template_into_user_params_by_key(
-    template_key: Option<&str>,
-    user_edited: &[crate::types::UserEditedTemplateParam],
-    excluded_keys: &[String],
-) -> Vec<crate::types::UserEditedTemplateParam> {
-    let Some(key) = template_key else {
-        let excluded: std::collections::HashSet<&str> = excluded_keys.iter().map(|k| k.as_str()).collect();
-        return user_edited
-            .iter()
-            .filter(|p| !excluded.contains(p.key.as_str()))
-            .cloned()
-            .collect();
-    };
-    let Some(template) = crate::templates::load_provider_defaults(key) else {
-        let excluded: std::collections::HashSet<&str> = excluded_keys.iter().map(|k| k.as_str()).collect();
-        return user_edited
-            .iter()
-            .filter(|p| !excluded.contains(p.key.as_str()))
-            .cloned()
-            .collect();
-    };
-    merge_user_params_with_template(&template, user_edited, excluded_keys)
 }

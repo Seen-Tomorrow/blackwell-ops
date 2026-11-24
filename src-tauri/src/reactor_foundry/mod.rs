@@ -21,7 +21,7 @@ mod progress;
 
 pub use batch::foundry_kill_all_children;
 pub use progress::BuildEdgeProgress;
-pub(crate) use artifacts::{copy_dir_contents, publish_artifacts_to_sacred};
+pub(crate) use artifacts::publish_artifacts_to_sacred;
 pub(crate) use batch::{
     batch_script_text, clear_pids, failure_detail, kill_all_children, run_foundry_batch_streaming,
     with_child_pids,
@@ -2451,75 +2451,6 @@ pub async fn refresh_build_info(
     provider_id: String,
     app: tauri::State<'_, crate::engine::AppContext>,
 ) -> Result<Vec<crate::types::ProviderConfig>, String> {
-    let prov = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        match cfg.providers.iter().find(|p| p.id == provider_id).cloned() {
-            Some(p) => p,
-            None => return Err(format!("Provider '{}' not found", provider_id)),
-        }
-    };
-
-    // One-time migration: ancient build/ → sacred artifacts (legacy installs).
-    if prov.binary_path_per_env.is_empty() && !prov.binary_path.is_empty() {
-        let src_dir = foundry_src_dir(&provider_id);
-        let old_build_dir = src_dir.join("build");
-        if old_build_dir.exists() {
-            let new_build_dir = src_dir.join("build-edge");
-            if !new_build_dir.exists() && old_build_dir.join("bin").exists() {
-                log::info!(
-                    "[migration] One-time historical migration of ancient 'build/' directory for '{}'",
-                    provider_id
-                );
-                let _ = tokio::fs::create_dir_all(&new_build_dir).await;
-                if tokio::fs::rename(&old_build_dir, &new_build_dir).await.is_ok() {
-                    let new_bin = new_build_dir.join("bin").join("Release");
-                    if new_bin.exists() {
-                        let sacred_exe = crate::config::foundry_artifacts_dir()
-                            .join(&provider_id)
-                            .join("edge")
-                            .join("Release")
-                            .join("llama-server.exe");
-                        if let Some(sacred_dir) = sacred_exe.parent() {
-                            let _ = tokio::fs::create_dir_all(sacred_dir).await;
-                            if copy_dir_contents(&new_bin, sacred_dir)
-                                .await
-                                .is_ok()
-                                && sacred_exe.exists()
-                            {
-                                let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-                                if let Some(p) =
-                                    cfg.providers.iter_mut().find(|p| p.id == provider_id)
-                                {
-                                    let rel = crate::config::to_relative_path(&sacred_exe);
-                                    p.binary_path_per_env
-                                        .insert("edge".to_string(), rel.clone());
-                                    p.binary_path = rel;
-                                }
-                                drop(cfg);
-                                if let Err(e) = persist_providers_atomic(&app.config) {
-                                    log::error!(
-                                        "[foundry] Failed to persist provider config: {}",
-                                        e
-                                    );
-                                }
-                            } else {
-                                log::warn!(
-                                    "[migration] Failed to copy binaries to sacred artifacts for '{}'",
-                                    provider_id
-                                );
-                            }
-                        }
-                    }
-                } else {
-                    log::warn!(
-                        "[migration] Failed to rename build/ for '{}'",
-                        provider_id
-                    );
-                }
-            }
-        }
-    }
-
     let mut provider = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         cfg.providers
@@ -2532,6 +2463,9 @@ pub async fn refresh_build_info(
     let before_paths = provider.binary_path_per_env.clone();
     crate::profile_binaries::resolve_after_source_change(&mut provider);
     let probed_changed = enrich_provider_binary_info(&mut provider, &provider_id).await;
+    if probed_changed {
+        crate::profile_binaries::resolve_after_source_change(&mut provider);
+    }
     let inventory_changed = provider.binary_source_per_env != before_source
         || provider.binary_path_per_env != before_paths
         || probed_changed;

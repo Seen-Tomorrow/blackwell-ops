@@ -158,9 +158,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     group_order: Vec::new(),
                     protected_groups: Vec::new(),
                     custom_capabilities: crate::types::CustomProviderCapabilities::default(),
-                    config_column_count: None,
-                    config_column_widths: Vec::new(),
-                    group_column: HashMap::new(),
+                    user_customized_template: false,
                     _original_id: None,
                     git_url: identity.git_url,
                     branch: identity.branch,
@@ -248,6 +246,7 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
     // Disk-based provider discovery replaces disk-based discovery
     for provider in discover_providers() {
         let mut p = provider;
+        let mut should_persist_reset = false;
         if let Some(meta) = meta_map.get(&p.id) {
             if !meta.binary_path.is_empty() { p.binary_path = meta.binary_path.clone(); }
             if !meta.display_name.is_empty() { p.display_name = meta.display_name.clone(); }
@@ -261,45 +260,44 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 p.template_type.clone()
             };
 
-            if !meta.user_edited_template_params.is_empty() {
-                p.user_edited_template_params = merge_template_for_provider(
-                    &p.id,
-                    &effective_template_type,
-                    true,
-                    &meta.user_edited_template_params,
-                    &meta.excluded_param_keys,
-                );
-            }
-
-            // Template version mismatch → set attention flag for UI banner.
-            // Merge already applied; banner is advisory — save syncs version or user hits RESET.
             let factory_tv =
                 factory_template_version_for_provider(&p.id, &effective_template_type, true);
             p.template_version = factory_tv;
-            if meta.template_version != factory_tv {
-                log::info!(
-                    "[config] Provider '{}' template version changed: user={}, factory={}",
-                    p.id,
-                    meta.template_version,
-                    factory_tv
-                );
-                p.needs_template_attention = true;
-            }
-            // Active binary paths + build info resolved after meta merge (see resolve_provider_binaries_from_meta).
             let factory_key = resolve_merge_template_key(&p.id, &effective_template_type, true)
                 .unwrap_or_else(|| p.id.clone());
-            apply_meta_overrides(&mut p, meta, &factory_key);
+
+            if meta.template_version != factory_tv {
+                // Factory template bumped: reset template-derived fields to fresh factory defaults.
+                if meta.user_customized_template {
+                    backup_customized_user_config(&p.id, meta.template_version);
+                    p.needs_template_attention = true;
+                }
+                p.user_customized_template = false;
+                p.excluded_param_keys.clear();
+                apply_factory_meta_defaults(&mut p, &factory_key);
+                should_persist_reset = true;
+                log::info!(
+                    "[config] Provider '{}' template reset to factory v{} (was v{}, customized={})",
+                    p.id,
+                    factory_tv,
+                    meta.template_version,
+                    meta.user_customized_template
+                );
+            } else if meta.user_customized_template && !meta.user_edited_template_params.is_empty() {
+                p.user_edited_template_params =
+                    dedupe_user_params_by_key(meta.user_edited_template_params.clone());
+                p.excluded_param_keys = meta.excluded_param_keys.clone();
+                p.user_customized_template = true;
+                apply_meta_overrides(&mut p, meta, &factory_key);
+            } else {
+                apply_factory_meta_defaults(&mut p, &factory_key);
+            }
+
             if !meta.last_pr_per_env.is_empty() {
                 p.last_pr_per_env = meta.last_pr_per_env.clone();
             }
             if !meta.pr_history_per_env.is_empty() {
                 p.pr_history_per_env = meta.pr_history_per_env.clone();
-            }
-            // Migration: seed history from last_pr when history is empty for an env.
-            for (env, pr) in &p.last_pr_per_env {
-                if p.pr_history_per_env.get(env).map(Vec::is_empty).unwrap_or(true) {
-                    p.pr_history_per_env.insert(env.clone(), vec![pr.clone()]);
-                }
             }
             // Always override — user's explicit choice survives restart
             p.enabled = meta.enabled;
@@ -307,11 +305,13 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
             if !meta.template_type.is_empty() {
                 p.template_type = meta.template_type.clone();
             }
-            p.excluded_param_keys = meta.excluded_param_keys.clone();
             p.custom_capabilities = meta.custom_capabilities.clone();
         }
         let pid = p.id.clone();
         resolve_provider_binaries_from_meta(&mut p, meta_map.get(&pid).copied());
+        if should_persist_reset {
+            let _ = save_provider_user_config(&p);
+        }
         if let Some(tmpl) = crate::templates::load_provider_defaults(&p.id) {
             p.spawn_profile = tmpl.spawn_profile.clone();
         }
@@ -327,25 +327,11 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
             let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
             let tmpl_key = template_key_for_type(&resolved_type);
         let user_edited_params = if !meta.user_edited_template_params.is_empty() {
-                merge_template_for_provider(
-                    &meta.id,
-                    &resolved_type,
-                    false,
-                    &meta.user_edited_template_params,
-                    &meta.excluded_param_keys,
-                )
+                dedupe_user_params_by_key(meta.user_edited_template_params.clone())
             } else if let Some(ref key) = tmpl_key {
                 params_for_provider(key)
             } else {
                 Vec::new()  // custom type, no template
-            };
-
-            // Compare versions against fresh template if one exists
-            let (factory_tv, tv_changed) = if let Some(ref key) = tmpl_key {
-                let factory_v = crate::templates::get_template_version_for_provider(key);
-                (factory_v, factory_v != meta.template_version)
-            } else {
-                (meta.template_version, false)
             };
 
             let factory_key = tmpl_key.clone().unwrap_or_else(|| meta.id.clone());
@@ -359,9 +345,7 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 group_order: Vec::new(),
                 protected_groups: Vec::new(),
                 custom_capabilities: meta.custom_capabilities.clone(),
-                config_column_count: None,
-                config_column_widths: Vec::new(),
-                group_column: HashMap::new(),
+                user_customized_template: meta.user_customized_template,
                 _original_id: None,
                 git_url: meta.git_url.clone(),
                 branch: meta.branch.clone(),
@@ -378,8 +362,8 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 display_order: meta.display_order,
                 factory_provided: false,
                 optional_download: false,
-                template_version: if tv_changed { factory_tv } else { meta.template_version },
-                needs_template_attention: tv_changed,
+                template_version: meta.template_version,
+                needs_template_attention: false,
                 spawn_profile: tmpl_key
                     .as_ref()
                     .and_then(|key| crate::templates::load_provider_defaults(key))
@@ -387,12 +371,6 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                     .unwrap_or_default(),
             };
             apply_meta_overrides(&mut custom, &meta, &factory_key);
-            // Migration: seed history from last_pr when history is empty for an env.
-            for (env, pr) in &custom.last_pr_per_env {
-                if custom.pr_history_per_env.get(env).map(Vec::is_empty).unwrap_or(true) {
-                    custom.pr_history_per_env.insert(env.clone(), vec![pr.clone()]);
-                }
-            }
             resolve_provider_binaries_from_meta(&mut custom, Some(&meta));
             // Custom: spawn_profile stays empty (no Full Auto); caps live on custom_capabilities.
             if is_custom_template_type(&custom.template_type) {

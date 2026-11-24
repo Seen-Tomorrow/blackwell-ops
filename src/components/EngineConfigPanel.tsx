@@ -54,6 +54,7 @@ import {
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
 import {
+  ENGINE_ONLY_PARAM_KEYS,
   COCKPIT_OWNED_PARAM_KEYS,
   isCockpitOwnedParam,
   isPlacementChromeParam,
@@ -165,7 +166,6 @@ import {
   specShareFields,
 } from "../lib/specProfiles";
 import { adapterForMethod, cliTypeForMethod, normalizeDraftPath } from "../lib/spec/adapters";
-import { migrateCatalogParams } from "../lib/systemParams";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -770,8 +770,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [gpus.length, userEditedParams]);
 
   const allParamsResolved = useMemo(() => {
-    const { params: migrated } = migrateCatalogParams(userEditedParams);
-    const defs = deviceParam ? [deviceParam, ...migrated] : [...migrated];
+    const filtered = userEditedParams.filter((p) => !ENGINE_ONLY_PARAM_KEYS.has(p.key));
+    const defs = deviceParam ? [deviceParam, ...filtered] : [...filtered];
     const gpuValues = gpus.map((g) => `GPU-${g.index}`);
     return defs
       .map((d) => {
@@ -1503,7 +1503,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [model?.path, activeDraftRole]);
 
   useEffect(() => {
-    migrateGlobalSpecOutOfCatalogOverrides(effectiveBackendType);
+    // Refresh catalog overrides on provider switch
   }, [effectiveBackendType]);
 
   // HIGH auto-pair into the DFlash lane's draft key when Boost is DFlash or DSpark

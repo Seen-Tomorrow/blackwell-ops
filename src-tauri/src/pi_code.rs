@@ -1477,11 +1477,6 @@ fn write_subagents_config(home: &Path, slots: u32) -> Result<(), String> {
     let body = serde_json::to_string_pretty(&cfg)
         .map_err(|e| format!("subagent cfg json: {e}"))?;
     std::fs::write(&cfg_path, body).map_err(|e| format!("write subagent cfg: {e}"))?;
-    // Drop legacy nested path so we never re-read a stale wrong config.
-    let legacy = home.join("agent").join("extensions").join("subagent").join("config.json");
-    if legacy.is_file() {
-        let _ = std::fs::remove_file(&legacy);
-    }
     emit_dbg(&format!(
         "[Pi] Wrote subagents config → {} (concurrency={})",
         cfg_path.display(),

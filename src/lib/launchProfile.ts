@@ -33,7 +33,7 @@ const DEFAULT_ESSENTIAL_KEYS = ["device", "ctx"] as const;
 
 /** Factory FIT whitelist (param keys only — split handled separately for multi-GPU). */
 function resolveFitLaunchKeys(profile?: SpawnProfile): string[] {
-  const raw = profile?.simple_param_keys ?? [...DEFAULT_ESSENTIAL_KEYS];
+  const raw = profile?.essentialParamKeys ?? [...DEFAULT_ESSENTIAL_KEYS];
   return raw.filter((k) => k !== "split");
 }
 
@@ -68,7 +68,7 @@ function filterParamsForFitLaunchDisplay(
 
 /** Factory baseline for Essentials view (param panel filter only). */
 export function resolveEssentialParamKeys(profile?: SpawnProfile): Set<string> {
-  const raw = profile?.essentialParamKeys ?? profile?.simple_param_keys ?? [...DEFAULT_ESSENTIAL_KEYS];
+  const raw = profile?.essentialParamKeys ?? [...DEFAULT_ESSENTIAL_KEYS];
   return new Set([...raw, ...LAUNCH_DOCK_PARAM_KEYS]);
 }
 

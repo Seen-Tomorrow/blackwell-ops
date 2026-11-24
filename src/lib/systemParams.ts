@@ -330,15 +330,6 @@ export function groupEditCaps(
   };
 }
 
-type MigratableParam = {
-  key: string;
-  ui_group?: string;
-  dock?: string | null;
-  hidden?: boolean;
-  userHidden?: boolean;
-  values?: (string | number)[];
-};
-
 function sortedValuesIfNeeded(values: (string | number)[] | undefined): {
   values: (string | number)[] | undefined;
   changed: boolean;
@@ -349,62 +340,4 @@ function sortedValuesIfNeeded(values: (string | number)[] | undefined): {
   const sorted = sortParamValues(values);
   const changed = sorted.some((v, i) => String(v) !== String(values[i]));
   return { values: sorted, changed };
-}
-
-/** Normalize persisted rows: drop device, pin chrome + cockpit keys to SYSTEM, unhide system rows, sort values. */
-export function migrateCatalogParams<T extends MigratableParam>(
-  params: T[],
-): { params: T[]; changed: boolean } {
-  let changed = false;
-  const next: T[] = [];
-  for (const p of params) {
-    if (ENGINE_ONLY_PARAM_KEYS.has(p.key)) {
-      changed = true;
-      continue;
-    }
-
-    let row: T = p;
-
-    // Repair: profile knobs must sit in SPECULATIVE-MTP / SPECULATIVE-DFLASH (not SYSTEM).
-    const profileGroup = profileGroupForParamKey(p.key);
-    if (profileGroup && paramUiGroup(p.ui_group) !== profileGroup) {
-      row = { ...row, ui_group: profileGroup };
-      changed = true;
-    }
-
-    // SYSTEM chrome / cockpit: only re-pin when already in chrome bucket (or empty/legacy).
-    // Do NOT steal PERFORMANCE / user groups (custom essentials pack stays editable).
-    const gNow = paramUiGroup(p.ui_group);
-    const chromeKey =
-      !profileGroup
-      && (SYSTEM_CATALOG_PARAM_KEYS.has(p.key) || COCKPIT_OWNED_PARAM_KEYS.has(p.key));
-    const alreadyChromeBucket =
-      gNow === SYSTEM_UI_GROUP
-      || gNow === "MULTI-GPU"
-      || gNow === ""
-      || gNow === "RUNTIME-CONFIG";
-    if (chromeKey && alreadyChromeBucket) {
-      let rowChanged = false;
-      if (gNow !== SYSTEM_UI_GROUP) {
-        row = { ...row, ui_group: SYSTEM_UI_GROUP };
-        rowChanged = true;
-      }
-      if (p.hidden || p.userHidden) {
-        row = { ...row, hidden: false, userHidden: false };
-        rowChanged = true;
-      }
-      if (rowChanged) {
-        changed = true;
-      }
-    }
-
-    const { values: sortedVals, changed: sortChanged } = sortedValuesIfNeeded(row.values);
-    if (sortChanged && sortedVals) {
-      row = { ...row, values: sortedVals };
-      changed = true;
-    }
-
-    next.push(row);
-  }
-  return { params: next, changed };
 }

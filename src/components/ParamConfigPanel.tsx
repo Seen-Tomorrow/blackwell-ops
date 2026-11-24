@@ -69,7 +69,6 @@ import {
   isCatalogVisibleParam,
   isPlacementChromeParam,
   isProtectedGroup,
-  migrateCatalogParams,
   normalizeProtectedGroups,
   paramEditCaps,
   pinProtectedGroupsLast,
@@ -412,13 +411,7 @@ export default function ParamConfigPanel({
       const baseOrder =
         customGroupOrder ??
         resolveGroupOrderForAdmin(catalogVisibleParams, customGroupOrder);
-      const groupColumn = loadGroupColumn(selectedProviderId, currentProvider.groupColumn);
-      const renamed = renameGroupInLayout(
-        oldName,
-        newName,
-        baseOrder,
-        groupColumn,
-      );
+      const renamed = renameGroupInLayout(oldName, newName, baseOrder, {});
       const existingGroupNames = new Set(
         catalogVisibleParams.map((d) => paramUiGroup(d.ui_group)),
       );
@@ -435,13 +428,11 @@ export default function ParamConfigPanel({
         paramUiGroup(d.ui_group) === oldNorm ? { ...d, ui_group: newName } : d,
       );
       await saveGroupOrder(renamed.groupOrder);
-      saveGroupColumn(selectedProviderId, renamed.groupColumn);
 
       const updatedProvider: ProviderConfig = {
         ...currentProvider,
         userEditedTemplateParams: updatedUserParams,
         groupOrder: renamed.groupOrder,
-        groupColumn: renamed.groupColumn,
       };
       onProvidersChange((prev) =>
         prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)),
@@ -490,18 +481,11 @@ export default function ParamConfigPanel({
       if (!isEmptyGroupDeletable(groupName, groups, protectedGroups)) return;
 
       const baseOrder = customGroupOrder ?? currentProvider.groupOrder ?? [];
-      const groupColumn = loadGroupColumn(selectedProviderId, currentProvider.groupColumn);
-      const stripped = stripGroupFromLayout(
-        groupName,
-        baseOrder,
-        groupColumn,
-      );
+      const stripped = stripGroupFromLayout(groupName, baseOrder, {});
       await saveGroupOrder(stripped.groupOrder);
-      saveGroupColumn(selectedProviderId, stripped.groupColumn);
       const updated = {
         ...currentProvider,
         groupOrder: stripped.groupOrder,
-        groupColumn: stripped.groupColumn,
       };
       onProvidersChange((prev) => prev.map((p) => (p.id !== selectedProviderId ? p : updated)));
       try {
@@ -542,59 +526,6 @@ export default function ParamConfigPanel({
       dispatchAppEvent(EVENTS.reloadProviders);
     } catch (err) { console.error("[CONFIG] save_provider FAILED:", err); }
   }, []);
-
-  // Drop device from catalog; pin chrome params to SYSTEM; migrate MULTI-GPU → SYSTEM;
-  // seed protectedGroups from factory defaults when missing.
-  useEffect(() => {
-    if (!currentProvider) return;
-    const currentUserParams = buildUserSavedParams(currentProvider);
-    const { params: migratedParams, changed: paramsChanged } = migrateCatalogParams(currentUserParams);
-    let paramsAfter = migratedParams;
-    let customRepairChanged = false;
-    if (isCustomTemplateType(currentProvider.template_type)) {
-      const repaired = repairCustomEssentialsGroups(paramsAfter);
-      paramsAfter = repaired.params;
-      customRepairChanged = repaired.changed;
-    }
-    const baseOrder = customGroupOrder ?? currentProvider.groupOrder ?? [];
-    const { order: migratedOrder, changed: orderChanged } = migrateCatalogGroupOrder(baseOrder);
-    const present = new Set(paramsAfter.map((p) => paramUiGroup(p.ui_group)));
-    for (const g of migratedOrder) present.add(normalizeUiGroup(g));
-    const resolvedProt = resolveProtectedGroups(currentProvider.protectedGroups, present);
-    const hadProt = (currentProvider.protectedGroups?.length ?? 0) > 0;
-    const protChanged =
-      !hadProt &&
-      resolvedProt.length > 0 &&
-      JSON.stringify(normalizeProtectedGroups(currentProvider.protectedGroups)) !==
-        JSON.stringify(resolvedProt);
-    if (!paramsChanged && !orderChanged && !protChanged && !customRepairChanged) return;
-
-    let updatedProvider: ProviderConfig = {
-      ...currentProvider,
-      userEditedTemplateParams: paramsAfter,
-    };
-    if (orderChanged) {
-      updatedProvider = {
-        ...updatedProvider,
-        groupOrder: pinProtectedGroupsLast(migratedOrder, resolvedProt),
-      };
-      writeJsonStorage(groupOrderKey(selectedProviderId), updatedProvider.groupOrder!);
-      setCustomGroupOrder(updatedProvider.groupOrder!);
-    }
-    if (protChanged) {
-      updatedProvider = { ...updatedProvider, protectedGroups: resolvedProt };
-    }
-    onProvidersChange((prev) =>
-      prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)),
-    );
-    void persistProviderToConfig(updatedProvider);
-  }, [
-    currentProvider,
-    selectedProviderId,
-    customGroupOrder,
-    buildUserSavedParams,
-    persistProviderToConfig,
-  ]);
 
   // ── User override (selecting a value for this model + provider) ───
   const setOverride = useCallback((defKey: string, value: string | number) => {
@@ -1561,12 +1492,25 @@ export default function ParamConfigPanel({
             )}
           </div>
 
-          {/* Template update banner — shows when factory template version changed */}
+          {/* Template update banner — shows when factory template version bumped for a customized config */}
           {currentProvider?.needsTemplateAttention && (
-            <div className="mx-4 mt-3 px-3 py-2 foundry-profile-row rounded-sm">
+            <div className="mx-4 mt-3 px-3 py-2 foundry-profile-row rounded-sm flex items-center justify-between gap-3">
               <span className="type-label font-mono config-muted leading-tight">
-                ⚠ Factory template updated — new options were merged automatically. Save any change to dismiss.
+                Factory template updated to v{currentProvider.templateVersion} — reset to new defaults (previous custom config backed up to config/backups/).
               </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!currentProvider) return;
+                  void persistProviderToConfig({
+                    ...currentProvider,
+                    needsTemplateAttention: false,
+                  });
+                }}
+                className="value-chip type-micro font-mono px-2 py-0.5 rounded-sm shrink-0"
+              >
+                DISMISS
+              </button>
             </div>
           )}
 

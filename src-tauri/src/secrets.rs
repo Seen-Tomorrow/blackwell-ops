@@ -4,8 +4,6 @@
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 
-use crate::config::AppConfig;
-
 pub const SERVICE: &str = "blackwell-ops";
 
 #[derive(Clone, Copy)]
@@ -113,19 +111,6 @@ pub fn list_secret_status() -> Result<Vec<SecretStatus>, String> {
         });
     }
     Ok(out)
-}
-
-/// One-time move from legacy plaintext `app_config.json` field.
-pub fn migrate_legacy_hf_token(cfg: &mut AppConfig) -> Result<(), String> {
-    if cfg.hf_token.is_empty() {
-        return Ok(());
-    }
-    if get_secret("hf_token")?.is_none() {
-        set_secret("hf_token", &cfg.hf_token)?;
-        log::info!("[secrets] Migrated Hugging Face token from app_config.json to OS keyring");
-    }
-    cfg.hf_token.clear();
-    Ok(())
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────

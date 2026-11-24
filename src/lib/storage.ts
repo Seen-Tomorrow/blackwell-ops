@@ -31,14 +31,7 @@ function isPowerUserState(value: string | null): value is PowerUserState {
 
 export function loadPowerUserState(): PowerUserState {
   const current = readStorage(KEYS.powerUser);
-  if (isPowerUserState(current)) return current;
-
-  const legacy = readStorage(`${STORAGE_PREFIX}admin-lock`);
-  if (isPowerUserState(legacy)) {
-    savePowerUserState(legacy);
-    return legacy;
-  }
-  return "locked";
+  return isPowerUserState(current) ? current : "locked";
 }
 
 export function savePowerUserState(state: PowerUserState): void {
@@ -897,68 +890,6 @@ export function writeJsonStorage(key: string, value: unknown): void {
     writeStorage(key, JSON.stringify(value));
   } catch {
     // ignore
-  }
-}
-
-function migrateValue(fromKey: string, toKey: string): void {
-  if (fromKey === toKey) return;
-  const existing = readStorage(toKey);
-  if (existing !== null) {
-    removeStorage(fromKey);
-    return;
-  }
-  const legacy = readStorage(fromKey);
-  if (legacy === null) return;
-  writeStorage(toKey, legacy);
-  removeStorage(fromKey);
-}
-
-function purgeStaleStorageKeys(): void {
-  for (const key of STALE_STORAGE_KEYS) {
-    removeStorage(key);
-  }
-}
-
-/** One-time migration of legacy / inline localStorage keys into the registry. */
-export function migrateLegacyStorageKeys(): void {
-  purgeStaleStorageKeys();
-
-  const staticMigrations: Array<{ from: string; to: string }> = [
-    { from: `${STORAGE_PREFIX}admin-lock`, to: KEYS.powerUser },
-    { from: `${STORAGE_PREFIX}testFlags`, to: KEYS.testFlags },
-    { from: `${STORAGE_PREFIX}testFlagsOn`, to: KEYS.testFlagsOn },
-    { from: `${STORAGE_PREFIX}testFlagsMode`, to: KEYS.testFlagsMode },
-    { from: "blackwell_startup_updates", to: KEYS.startupUpdates },
-    { from: "blackops-fusion-hero-tps", to: KEYS.fusionHeroTpsMode },
-  ];
-
-  for (const { from, to } of staticMigrations) {
-    migrateValue(from, to);
-  }
-
-  try {
-    for (const key of Object.keys(localStorage)) {
-      const adminOverridePrefix = `${STORAGE_PREFIX}admin-catalog-override:`;
-      if (key.startsWith(adminOverridePrefix)) {
-        const providerId = key.slice(adminOverridePrefix.length);
-        migrateValue(key, catalogOverrideKey(providerId));
-        continue;
-      }
-
-      const legacyGroupPrefix = `${STORAGE_PREFIX}group-order-`;
-      if (key.startsWith(legacyGroupPrefix) && !key.includes(":")) {
-        const providerId = key.slice(legacyGroupPrefix.length);
-        migrateValue(key, groupOrderKey(providerId));
-        continue;
-      }
-
-      if (key.startsWith("foundry_last_refresh_")) {
-        const signature = key.slice("foundry_last_refresh_".length);
-        migrateValue(key, foundryLastRefreshKey(signature));
-      }
-    }
-  } catch {
-    // ignore iteration errors (e.g. privacy mode)
   }
 }
 

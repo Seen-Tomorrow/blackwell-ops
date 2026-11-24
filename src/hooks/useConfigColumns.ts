@@ -52,11 +52,11 @@ export function useConfigColumns({
   );
 
   const reloadColumnLayout = useCallback(() => {
-    const count = loadConfigColumnCount(providerId, currentProvider?.configColumnCount);
+    const count = loadConfigColumnCount(providerId);
     setColumnCount(count);
-    setColumnWidths(loadConfigColumnWidths(providerId, count, currentProvider?.configColumnWidths));
-    setGroupColumn(loadGroupColumn(providerId, currentProvider?.groupColumn));
-  }, [providerId, currentProvider]);
+    setColumnWidths(loadConfigColumnWidths(providerId, count));
+    setGroupColumn({});
+  }, [providerId]);
 
   useEffect(() => {
     reloadColumnLayout();
@@ -72,20 +72,6 @@ export function useConfigColumns({
     };
   }, [reloadColumnLayout]);
 
-  const persistProviderPatch = useCallback(
-    async (patch: Partial<ProviderConfig>) => {
-      if (!currentProvider) return;
-      const updated = { ...currentProvider, ...patch };
-      try {
-        await invoke("save_provider", { provider: updated });
-        dispatchAppEvent(EVENTS.reloadProviders);
-      } catch {
-        /* ignore — the panel keeps working from local state */
-      }
-    },
-    [currentProvider],
-  );
-
   const saveColumnLayout = useCallback(
     async (count: ConfigColumnCount, widths: number[]) => {
       const normalizedWidths = normalizeColumnWidths(count, widths);
@@ -93,25 +79,21 @@ export function useConfigColumns({
       saveConfigColumnWidths(providerId, normalizedWidths);
       setColumnCount(count);
       setColumnWidths(normalizedWidths);
-      await persistProviderPatch({
-        configColumnCount: count,
-        configColumnWidths: normalizedWidths,
-      });
       dispatchAppEvent(EVENTS.paramConfigChanged);
     },
-    [providerId, persistProviderPatch],
+    [providerId],
   );
 
   const setBelowColumnCount = useCallback(
     (count: ConfigColumnCount) => {
-      const loaded = loadConfigColumnWidths(providerId, count, currentProvider?.configColumnWidths);
+      const loaded = loadConfigColumnWidths(providerId, count);
       const normalized = normalizeColumnWidths(
         count,
         loaded.length === count ? loaded : defaultColumnWidths(count),
       );
       void saveColumnLayout(count, normalized);
     },
-    [providerId, currentProvider, saveColumnLayout],
+    [providerId, saveColumnLayout],
   );
 
   const clearDragListeners = useCallback(() => {

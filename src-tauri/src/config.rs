@@ -5,14 +5,14 @@
 //! 2. **User disk** — `config/<id>-user-config.json` (hidden, order, defaults, custom params/values)
 //! 3. **localStorage** — `BlackOps-catalog-override:<id>` (launch-time chip selections; frontend only)
 //!
-//! ## Merge (`merge_template_for_provider`)
-//! Runs on every load and `save_provider`. Factory structural fields backfill; user cosmetic choices
-//! (hidden, userHidden, order, userAddedValues, hidden_values, essentials_hidden_values, values)
-//! are never overwritten. Empty essentials_hidden_values means user cleared ESS hides — do not
-//! re-apply factory. New template params still get factory ESS hides on append.
+//! ## Template updates (`templateVersion`)
+//! When a factory template's `templateVersion` bumps, template-derived fields reset to factory
+//! defaults (preserving binary/Foundry/PR state); customized user configs are backed up to
+//! `config/backups/<id>-v<old>.json` first.
 //!
 //! ## RESET TO DEFAULTS
-//! Deletes user config file + frontend clears overrides and group-order localStorage. Full factory wipe.
+//! Resets template-derived fields on the live provider to factory defaults (preserving binary/Foundry
+//! state) + frontend clears overrides and group-order localStorage.
 //!
 //! ## Validation
 //! `save_provider` and `save_user_providers_meta` block-save on invalid params (orphan defaults,
@@ -57,7 +57,6 @@ use crate::types::ModelPathEntry;
 #[cfg(test)]
 mod merge_tests {
     use super::*;
-    use crate::templates::{ProviderDefaultParam, ProviderTemplate};
 
     fn make_user_param(key: &str, values: &[&str], default: &str, order: i32) -> crate::types::UserEditedTemplateParam {
         crate::types::UserEditedTemplateParam {
@@ -83,240 +82,6 @@ mod merge_tests {
             dock: String::new(),
             essential: None,
         }
-    }
-
-    fn make_template(params: Vec<ProviderDefaultParam>) -> ProviderTemplate {
-        ProviderTemplate {
-            binary_name: "llama-server.exe".to_string(),
-            description: "test".to_string(),
-            spawn_profile: Default::default(),
-            params,
-        }
-    }
-
-    #[test]
-    fn merge_preserves_user_values_catalog() {
-        let template = make_template(vec![ProviderDefaultParam {
-            key: "ctx".to_string(),
-            label: "CTX".to_string(),
-            flag: Some("--ctx-size".to_string()),
-            flag_pair: Vec::new(),
-            ptype: "arg_select".to_string(),
-            values: vec![
-                serde_json::Value::String("8192".to_string()),
-                serde_json::Value::String("32768".to_string()),
-            ],
-            step: None,
-            default: serde_json::Value::String("32768".to_string()),
-            ui_group: "CORE".to_string(),
-            note: String::new(),
-            pattern: String::new(),
-            sub_params: None,
-            dock: String::new(),
-            hidden_default: false,
-            essentials_hidden_values: Vec::new(),
-        }]);
-
-        let user = vec![make_user_param("ctx", &["8192", "user_custom"], "8192", 0)];
-        let merged = merge_user_params_with_template(&template, &user, &[]);
-        let ctx = merged.iter().find(|p| p.key == "ctx").unwrap();
-
-        assert!(!ctx.values.iter().any(|v| v.as_str() == Some("32768")));
-        assert!(ctx.values.iter().any(|v| v.as_str() == Some("user_custom")));
-        assert!(ctx.hidden);
-        assert_eq!(ctx.user_added_values.len(), 1);
-    }
-
-    #[test]
-    fn merge_does_not_reappend_deleted_factory_values() {
-        let template = make_template(vec![ProviderDefaultParam {
-            key: "kv_quant".to_string(),
-            label: "KV".to_string(),
-            flag: Some("--cache-type-k".to_string()),
-            flag_pair: Vec::new(),
-            ptype: "arg_select".to_string(),
-            values: vec![
-                serde_json::Value::String("q4_0".to_string()),
-                serde_json::Value::String("q8_0".to_string()),
-            ],
-            step: None,
-            default: serde_json::Value::String("q4_0".to_string()),
-            ui_group: "CORE".to_string(),
-            note: String::new(),
-            pattern: String::new(),
-            sub_params: None,
-            dock: String::new(),
-            hidden_default: false,
-            essentials_hidden_values: Vec::new(),
-        }]);
-
-        let user = make_user_param("kv_quant", &["q4_0"], "q4_0", 0);
-        let merged = merge_user_params_with_template(&template, &[user], &[]);
-        let kv = merged.iter().find(|p| p.key == "kv_quant").unwrap();
-
-        assert!(!kv.values.iter().any(|v| v.as_str() == Some("q8_0")));
-    }
-
-    #[test]
-    fn merge_resets_orphan_default() {
-        let template = make_template(vec![ProviderDefaultParam {
-            key: "kv_quant".to_string(),
-            label: "KV".to_string(),
-            flag: Some("--cache-type-k".to_string()),
-            flag_pair: Vec::new(),
-            ptype: "arg_select".to_string(),
-            values: vec![serde_json::Value::String("q4_0".to_string())],
-            step: None,
-            default: serde_json::Value::String("q4_0".to_string()),
-            ui_group: "CORE".to_string(),
-            note: String::new(),
-            pattern: String::new(),
-            sub_params: None,
-            dock: String::new(),
-            hidden_default: false,
-            essentials_hidden_values: Vec::new(),
-        }]);
-
-        let mut user = make_user_param("kv_quant", &["q4_0"], "stale_removed", 0);
-        user.default_value = serde_json::Value::String("stale_removed".to_string());
-        let merged = merge_user_params_with_template(&template, &[user], &[]);
-        let kv = merged.iter().find(|p| p.key == "kv_quant").unwrap();
-
-        assert_eq!(kv.default_value.as_str(), Some("q4_0"));
-    }
-
-    #[test]
-    fn merge_keeps_orphaned_user_param() {
-        let template = make_template(vec![]);
-        let user = vec![make_user_param("orphan_key", &["on"], "on", 0)];
-        let merged = merge_user_params_with_template(&template, &user, &[]);
-
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].key, "orphan_key");
-    }
-
-    #[test]
-    fn merge_appends_new_template_param() {
-        let template = make_template(vec![ProviderDefaultParam {
-            key: "new_param".to_string(),
-            label: "New".to_string(),
-            flag: Some("--new".to_string()),
-            flag_pair: Vec::new(),
-            ptype: "arg_select".to_string(),
-            values: vec![serde_json::Value::String("1".to_string())],
-            step: None,
-            default: serde_json::Value::String("1".to_string()),
-            ui_group: "CORE".to_string(),
-            note: String::new(),
-            pattern: String::new(),
-            sub_params: None,
-            dock: String::new(),
-            hidden_default: false,
-            essentials_hidden_values: Vec::new(),
-        }]);
-
-        let user = vec![make_user_param("existing", &["a"], "a", 0)];
-        let merged = merge_user_params_with_template(&template, &user, &[]);
-
-        assert_eq!(merged.len(), 2);
-        assert!(merged.iter().any(|p| p.key == "new_param"));
-        assert!(merged.iter().any(|p| p.key == "existing"));
-    }
-
-    #[test]
-    fn merge_preserves_empty_essentials_hidden_values() {
-        // User cleared all ESS hides — must not re-apply factory list.
-        let template = make_template(vec![ProviderDefaultParam {
-            key: "batch".to_string(),
-            label: "BATCH".to_string(),
-            flag: Some("--batch-size".to_string()),
-            flag_pair: Vec::new(),
-            ptype: "arg_select".to_string(),
-            values: vec![
-                serde_json::json!(512),
-                serde_json::json!(2048),
-                serde_json::json!(16384),
-            ],
-            step: None,
-            default: serde_json::json!(512),
-            ui_group: "PERFORMANCE".to_string(),
-            note: String::new(),
-            pattern: String::new(),
-            sub_params: None,
-            dock: String::new(),
-            hidden_default: false,
-            essentials_hidden_values: vec![serde_json::json!(16384)],
-        }]);
-
-        let mut user = make_user_param("batch", &["512", "2048", "16384"], "512", 0);
-        user.essentials_hidden_values = Vec::new(); // user showed all in Essentials
-        let merged = merge_user_params_with_template(&template, &[user], &[]);
-        let batch = merged.iter().find(|p| p.key == "batch").unwrap();
-        assert!(
-            batch.essentials_hidden_values.is_empty(),
-            "empty ESS hide list must stay empty (not factory 16384)"
-        );
-    }
-
-    #[test]
-    fn merge_new_param_gets_factory_essentials_hidden() {
-        let template = make_template(vec![ProviderDefaultParam {
-            key: "batch".to_string(),
-            label: "BATCH".to_string(),
-            flag: Some("--batch-size".to_string()),
-            flag_pair: Vec::new(),
-            ptype: "arg_select".to_string(),
-            values: vec![serde_json::json!(512), serde_json::json!(16384)],
-            step: None,
-            default: serde_json::json!(512),
-            ui_group: "PERFORMANCE".to_string(),
-            note: String::new(),
-            pattern: String::new(),
-            sub_params: None,
-            dock: String::new(),
-            hidden_default: false,
-            essentials_hidden_values: vec![serde_json::json!(16384)],
-        }]);
-
-        let merged = merge_user_params_with_template(&template, &[], &[]);
-        let batch = merged.iter().find(|p| p.key == "batch").unwrap();
-        assert_eq!(batch.essentials_hidden_values.len(), 1);
-    }
-
-    #[test]
-    fn merge_sub_params_per_key() {
-        let template = make_template(vec![ProviderDefaultParam {
-            key: "feat".to_string(),
-            label: "Feat".to_string(),
-            flag: Some("--feat".to_string()),
-            flag_pair: Vec::new(),
-            ptype: "arg_select".to_string(),
-            values: vec![serde_json::Value::String("ON".to_string())],
-            step: None,
-            default: serde_json::Value::String("ON".to_string()),
-            ui_group: "CORE".to_string(),
-            note: String::new(),
-            pattern: String::new(),
-            sub_params: Some(serde_json::json!({
-                "ON": ["--extra-on"],
-                "NEW": ["--extra-new"]
-            })),
-            dock: String::new(),
-            hidden_default: false,
-            essentials_hidden_values: Vec::new(),
-        }]);
-
-        let mut user = make_user_param("feat", &["ON"], "ON", 0);
-        let mut user_sp = std::collections::HashMap::new();
-        user_sp.insert("ON".to_string(), vec!["--user-on".to_string()]);
-        user.sub_params = Some(user_sp);
-
-        let merged = merge_user_params_with_template(&template, &[user], &[]);
-        let feat = merged.iter().find(|p| p.key == "feat").unwrap();
-        let sp = feat.sub_params.as_ref().unwrap();
-
-        assert_eq!(sp.get("ON").map(|v| v.as_slice()), Some(&["--user-on".to_string()][..]));
-        assert_eq!(sp.get("NEW").map(|v| v.as_slice()), Some(&["--extra-new".to_string()][..]));
     }
 
     #[test]

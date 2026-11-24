@@ -68,59 +68,6 @@ function isFlatCatalogOverride(raw: unknown): raw is Record<string, unknown> {
   return true;
 }
 
-export type MigrateCatalogOverrideInput = {
-  raw: unknown;
-  factoryDefaults: Record<string, unknown>;
-  /** Preferred active policy after migrate (from FIT + configView). */
-  preferredActive?: LaunchPolicyId;
-};
-
-/**
- * Normalize any on-disk shape to v2.
- * Pure — does not touch localStorage.
- */
-export function migrateCatalogOverrideStore(
-  input: MigrateCatalogOverrideInput,
-): CatalogOverrideStoreV2 {
-  const preferred = input.preferredActive ?? "full_auto";
-
-  if (isCatalogOverrideStoreV2(input.raw)) {
-    // Ensure all profile keys exist
-    const profiles = emptyProfiles();
-    for (const id of Object.keys(profiles) as LaunchPolicyId[]) {
-      const p = input.raw.profiles[id];
-      profiles[id] = p && typeof p === "object" && !Array.isArray(p) ? { ...p } : {};
-    }
-    return {
-      version: CATALOG_OVERRIDE_STORE_VERSION,
-      activePolicy: isLaunchPolicyId(input.raw.activePolicy)
-        ? input.raw.activePolicy
-        : preferred,
-      profiles,
-    };
-  }
-
-  const legacy: Record<string, unknown> =
-    isFlatCatalogOverride(input.raw) ? { ...input.raw } : {};
-
-  const fullAuto = seedFullAutoProfile({
-    legacyValues: legacy,
-    factoryDefaults: input.factoryDefaults,
-  });
-
-  return {
-    version: CATALOG_OVERRIDE_STORE_VERSION,
-    activePolicy: preferred,
-    profiles: {
-      full_auto: fullAuto,
-      assisted_essentials: { ...legacy },
-      assisted_full: { ...legacy },
-    },
-  };
-}
-
-// ── localStorage I/O ────────────────────────────────────────────────────────
-
 export function readCatalogOverrideStore(
   providerId: string,
   factoryDefaults: Record<string, unknown>,
@@ -128,16 +75,31 @@ export function readCatalogOverrideStore(
 ): CatalogOverrideStoreV2 {
   const key = catalogOverrideKey(providerId);
   const raw = readJsonStorage<unknown>(key);
-  const store = migrateCatalogOverrideStore({
-    raw,
-    factoryDefaults,
-    preferredActive,
-  });
-  // Persist migration once so we never re-seed full_auto from a flat bag
-  if (!isCatalogOverrideStoreV2(raw)) {
-    writeJsonStorage(key, store);
+  if (isCatalogOverrideStoreV2(raw)) {
+    const profiles = emptyProfiles();
+    for (const id of Object.keys(profiles) as LaunchPolicyId[]) {
+      const p = raw.profiles[id];
+      profiles[id] = p && typeof p === "object" && !Array.isArray(p) ? { ...p } : {};
+    }
+    return {
+      version: CATALOG_OVERRIDE_STORE_VERSION,
+      activePolicy: isLaunchPolicyId(raw.activePolicy)
+        ? raw.activePolicy
+        : (preferredActive ?? "full_auto"),
+      profiles,
+    };
   }
-  return store;
+  const fresh: CatalogOverrideStoreV2 = {
+    version: CATALOG_OVERRIDE_STORE_VERSION,
+    activePolicy: preferredActive ?? "full_auto",
+    profiles: {
+      full_auto: seedFullAutoProfile({ legacyValues: {}, factoryDefaults }),
+      assisted_essentials: {},
+      assisted_full: {},
+    },
+  };
+  writeJsonStorage(key, fresh);
+  return fresh;
 }
 
 export function writeCatalogOverrideStore(

@@ -50,30 +50,6 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         }
     }
 
-    // Merge flag_pair from provider defaults for params missing it (schema migration)
-    if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
-        let default_params = crate::config::params_for_provider(&tmpl_key);
-        let defaults_map: std::collections::HashMap<&str, &crate::types::UserEditedTemplateParam> = default_params.iter()
-            .map(|p| (p.key.as_str(), p))
-            .collect();
-        for ep in &mut save_provider.user_edited_template_params {
-            if ep.flag_pair.is_empty() {
-                if let Some(def) = defaults_map.get(ep.key.as_str()) {
-                    ep.flag_pair = def.flag_pair.clone();
-                }
-            }
-        }
-
-        // Full schema evolution merge — backfill all structural fields from template
-        save_provider.user_edited_template_params = crate::config::merge_template_for_provider(
-            &save_provider.id,
-            &save_provider.template_type,
-            save_provider.factory_provided,
-            &save_provider.user_edited_template_params,
-            &save_provider.excluded_param_keys,
-        );
-    }
-
     save_provider.user_edited_template_params =
         crate::config::dedupe_user_params_by_key(save_provider.user_edited_template_params);
 
@@ -108,6 +84,26 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         save_provider.factory_provided,
     );
     save_provider.needs_template_attention = false;
+
+    // Mark customized only when template-owned fields actually changed vs the live provider.
+    if let Some(existing) = cfg.providers.iter().find(|p| p.id == save_provider.id) {
+        let tpl_changed = serde_json::to_value((
+            &save_provider.user_edited_template_params,
+            &save_provider.excluded_param_keys,
+            &save_provider.group_order,
+            &save_provider.protected_groups,
+        ))
+        .ok()
+            != serde_json::to_value((
+                &existing.user_edited_template_params,
+                &existing.excluded_param_keys,
+                &existing.group_order,
+                &existing.protected_groups,
+            ))
+            .ok();
+        save_provider.user_customized_template =
+            if tpl_changed { true } else { existing.user_customized_template };
+    }
 
     if save_provider.user_edited_template_params.is_empty() {
         let user_config_path = crate::config::provider_user_config_path(&save_provider.id);
