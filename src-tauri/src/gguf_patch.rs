@@ -683,10 +683,7 @@ fn write_kind_cache(path: &str, remote_oid: &str, remote_size: u64, kind: &crate
         let drop_n = entries.len() - 200;
         entries.drain(0..drop_n);
     }
-    if let Ok(json) = serde_json::to_string_pretty(&entries) {
-        let _ = std::fs::create_dir_all(crate::config::cache_dir());
-        let _ = std::fs::write(kind_cache_path(), json);
-    }
+    let _ = crate::fs_util::write_json_atomic(&kind_cache_path(), &entries);
 }
 
 /// Download `[start, end)` from a remote URL via HTTP Range (Range is inclusive).

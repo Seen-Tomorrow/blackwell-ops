@@ -56,13 +56,7 @@ pub fn save_cache(cache: &HashMap<String, CachedEntry>) -> Result<(), String> {
 
 /// Save to an explicit file — the test seam. See [`cache_path_in`].
 fn save_cache_to(cache: &HashMap<String, CachedEntry>, path: &Path) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-
-    let json = serde_json::to_string_pretty(cache).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())?;
-    Ok(())
+    crate::fs_util::write_json_atomic(path, cache)
 }
 
 fn storage_key_for(model_path: &str) -> String {
@@ -83,7 +77,7 @@ fn keys_for_same_file(cache: &HashMap<String, CachedEntry>, model_path: &str) ->
         .collect()
 }
 
-/// Resolve a model path to its cache key, handling canonical + legacy slash variants.
+/// Resolve a model path to its canonical cache key.
 fn resolve_cache_key(cache: &HashMap<String, CachedEntry>, model_path: &str) -> Option<String> {
     let target = storage_key_for(model_path);
     if target.is_empty() {
@@ -92,13 +86,7 @@ fn resolve_cache_key(cache: &HashMap<String, CachedEntry>, model_path: &str) -> 
     if cache.contains_key(&target) {
         return Some(target);
     }
-    if let Some(k) = cache.keys().find(|k| storage_key_for(k) == target) {
-        return Some(k.clone());
-    }
-    // Slash-only fallback for entries written before canonical keys.
-    cache.keys().find(|k| {
-        k.as_str() == model_path.replace('\\', "/") || k.as_str() == model_path.replace('/', "\\")
-    }).cloned()
+    cache.keys().find(|k| storage_key_for(k) == target).cloned()
 }
 
 fn current_mtime_ms(model_path: &str) -> Option<u64> {

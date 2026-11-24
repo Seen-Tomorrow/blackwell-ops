@@ -10,8 +10,15 @@ use tauri::Emitter;
 
 static RELEASE_JOB_RUNNING: AtomicBool = AtomicBool::new(false);
 
-const POLICY_VERSION: u32 = 1;
+const POLICY_VERSION: u32 = 2;
 const DEFAULT_PROFILES: &[&str] = &["edge", "stable"];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendedEngine {
+    pub provider: String,
+    pub profile: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +28,8 @@ pub struct DistributionPolicy {
     /// Profiles published as downloadable engine packs (docs/RELEASE-CHANNELS.md).
     #[serde(default)]
     pub engine_packs: BTreeMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommended_engine: Option<RecommendedEngine>,
     pub plugins: BTreeMap<String, Vec<String>>,
     #[serde(default = "default_plugin_profiles")]
     pub default_plugin_profiles: Vec<String>,
@@ -35,12 +44,21 @@ impl Default for DistributionPolicy {
         let mut nsis_core = BTreeMap::new();
         nsis_core.insert(
             crate::config::DEFAULT_PROVIDER_ID.to_string(),
+            vec!["edge".into()],
+        );
+        let mut engine_packs = BTreeMap::new();
+        engine_packs.insert(
+            crate::config::DEFAULT_PROVIDER_ID.to_string(),
             vec!["edge".into(), "stable".into()],
         );
         Self {
             policy_version: POLICY_VERSION,
             nsis_core,
-            engine_packs: BTreeMap::new(),
+            engine_packs,
+            recommended_engine: Some(RecommendedEngine {
+                provider: crate::config::DEFAULT_PROVIDER_ID.to_string(),
+                profile: "edge".to_string(),
+            }),
             plugins: BTreeMap::new(),
             default_plugin_profiles: default_plugin_profiles(),
         }
@@ -101,15 +119,7 @@ pub fn load_policy() -> Result<DistributionPolicy, String> {
 
 pub fn save_policy(policy: &DistributionPolicy) -> Result<(), String> {
     let path = policy_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
-    }
-    let raw = serde_json::to_string_pretty(policy)
-        .map_err(|e| format!("Failed to serialize policy: {e}"))?;
-    std::fs::write(&path, raw + "\n")
-        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
-    Ok(())
+    crate::fs_util::write_json_atomic(&path, policy)
 }
 
 
@@ -910,11 +920,8 @@ pub async fn run_release_plan(
         "steps": planned.steps,
         "plan": plan,
     });
-    std::fs::write(
-        &plan_path,
-        serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| format!("write release-plan.json: {e}"))?;
+    crate::fs_util::write_json_atomic(&plan_path, &doc)
+        .map_err(|e| format!("write release-plan.json: {e}"))?;
 
     // spawn_detached_plan blocks (Start-Process handshake + 1.2 s pid check); keep it off the
     // async runtime's worker threads.
@@ -976,11 +983,8 @@ pub async fn run_local_rel_refresh(
         "steps": planned.steps,
         "plan": { "artifacts": [], "phases": [] },
     });
-    std::fs::write(
-        &plan_path,
-        serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| format!("write release-plan.json: {e}"))?;
+    crate::fs_util::write_json_atomic(&plan_path, &doc)
+        .map_err(|e| format!("write release-plan.json: {e}"))?;
 
     {
         let app = app_handle.clone();
@@ -1024,9 +1028,8 @@ fn job_status_path() -> PathBuf {
 /// parse as "no job" and stop the panel's polling for the rest of a long job).
 fn write_job_status_atomic(value: &serde_json::Value) -> std::io::Result<()> {
     let path = job_status_path();
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_string_pretty(value).unwrap_or_default())?;
-    std::fs::rename(&tmp, &path)
+    crate::fs_util::write_json_atomic(&path, value)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
 fn chain_runner_ps1() -> PathBuf {

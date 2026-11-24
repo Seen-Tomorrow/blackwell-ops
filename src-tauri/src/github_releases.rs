@@ -150,12 +150,7 @@ fn read_github_cache(url: &str) -> Option<GitHubCacheEntry> {
 }
 
 fn write_github_cache(url: &str, entry: &GitHubCacheEntry) {
-    if std::fs::create_dir_all(github_cache_dir()).is_err() {
-        return;
-    }
-    if let Ok(s) = serde_json::to_string(entry) {
-        let _ = std::fs::write(github_cache_file(url), s);
-    }
+    let _ = crate::fs_util::write_json_atomic(&github_cache_file(url), entry);
 }
 
 fn cache_age(e: &GitHubCacheEntry) -> Duration {

@@ -74,8 +74,7 @@ pub fn load_or_seed_defaults() -> Result<LlamaBenchDefaults, String> {
         serde_json::from_str(&raw).map_err(|e| format!("Invalid {}: {e}", path.display()))
     } else {
         let d = LlamaBenchDefaults::default();
-        let pretty = serde_json::to_string_pretty(&d).map_err(|e| e.to_string())?;
-        std::fs::write(&path, pretty + "\n")
+        crate::fs_util::write_json_atomic(&path, &d)
             .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
         Ok(d)
     }
@@ -301,8 +300,7 @@ fn write_latest_meta(
         "defaults": defaults,
         "defaultsPath": defaults_path().to_string_lossy(),
     });
-    let pretty = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
-    std::fs::write(&path, pretty + "\n")
+    crate::fs_util::write_json_atomic(&path, &doc)
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     Ok(path)
 }

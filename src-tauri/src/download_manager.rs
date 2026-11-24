@@ -217,27 +217,8 @@ fn load_manifest() -> HashMap<String, ManifestEntry> {
 
 /// Save the task manifest to disk — atomic write via .tmp + rename to avoid corruption on crash.
 fn save_manifest(manifest: &HashMap<String, ManifestEntry>) {
-    let path = manifest_path();
-    let tmp_path = path.with_extension("json.tmp");
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let json = match serde_json::to_string_pretty(manifest) {
-        Ok(j) => j,
-        Err(e) => {
-            log::warn!("[download] Failed to serialize manifest: {}", e);
-            return;
-        }
-    };
-    // Write to .tmp first, then atomic rename — prevents truncated JSON on crash.
-    if let Err(e) = std::fs::write(&tmp_path, json) {
-        log::warn!("[download] Failed to write manifest temp: {}", e);
-        return;
-    }
-    if let Err(e) = std::fs::rename(&tmp_path, &path) {
-        log::warn!("[download] Failed to rename manifest: {}", e);
-        // Fallback: try to clean up tmp so it doesn't linger
-        let _ = std::fs::remove_file(&tmp_path);
+    if let Err(e) = crate::fs_util::write_json_atomic(&manifest_path(), manifest) {
+        log::warn!("[download] Failed to write manifest: {}", e);
     }
 }
 
@@ -313,29 +294,13 @@ fn load_quant_batches() -> HashMap<String, QuantDownloadBatch> {
 }
 
 fn save_quant_batches(batches: &HashMap<String, QuantDownloadBatch>) {
-    let path = batches_path();
-    let tmp_path = path.with_extension("json.tmp");
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let json = match serde_json::to_string_pretty(batches) {
-        Ok(j) => j,
-        Err(e) => {
-            log::warn!("[download] Failed to serialize batch manifest: {}", e);
-            return;
-        }
-    };
-    if let Err(e) = std::fs::write(&tmp_path, json) {
-        log::warn!("[download] Failed to write batch manifest temp: {}", e);
-        return;
-    }
-    if let Err(e) = std::fs::rename(&tmp_path, &path) {
-        log::warn!("[download] Failed to rename batch manifest: {}", e);
-        let _ = std::fs::remove_file(&tmp_path);
+    if let Err(e) = crate::fs_util::write_json_atomic(&batches_path(), batches) {
+        log::warn!("[download] Failed to write batch manifest: {}", e);
     }
 }
 
 fn remove_quant_batch(batch_id: &str) {
+    let _guard = manifest_guard();
     let mut batches = load_quant_batches();
     if batches.remove(batch_id).is_some() {
         save_quant_batches(&batches);

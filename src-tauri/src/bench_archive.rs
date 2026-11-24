@@ -401,12 +401,8 @@ pub async fn capture(
     };
 
     let dir = runs_dir().join(&day);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("bench dir: {e}"))?;
     let path = dir.join(format!("{id}.json"));
-    let body = serde_json::to_string_pretty(&run).map_err(|e| format!("bench json: {e}"))?;
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, &body).map_err(|e| format!("bench write: {e}"))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("bench rename: {e}"))?;
+    crate::fs_util::write_json_atomic(&path, &run).map_err(|e| format!("bench write: {e}"))?;
 
     // Append-only index for cheap listing without walking the tree.
     if let Ok(mut idx) = std::fs::OpenOptions::new()

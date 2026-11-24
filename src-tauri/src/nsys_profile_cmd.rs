@@ -102,12 +102,8 @@ pub fn load_or_seed_defaults() -> Result<NsysDefaults, String> {
             .map_err(|e| format!("Invalid {}: {e}", path.display()));
     }
     let defaults = NsysDefaults::default();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
-    }
-    let text = serde_json::to_string_pretty(&defaults).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+    crate::fs_util::write_json_atomic(&path, &defaults)
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     Ok(defaults)
 }
 
@@ -551,8 +547,8 @@ fn write_latest_meta(
         "cupti_dir": cupti_dir.map(|p| p.to_string_lossy().to_string()),
         "defaults": defaults,
     });
-    let text = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+    crate::fs_util::write_json_atomic(&path, &meta)
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     Ok(path)
 }
 

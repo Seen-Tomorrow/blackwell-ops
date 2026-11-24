@@ -76,14 +76,10 @@ pub fn load() -> RuntimeSettings {
 }
 
 pub fn save(settings: &RuntimeSettings) -> Result<(), String> {
-    let dir = crate::config::config_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("runtime settings dir: {e}"))?;
     let mut stored = settings.clone();
     stored.cpu_affinity = normalize_affinity(&stored.cpu_affinity);
-    let json = serde_json::to_string_pretty(&stored)
-        .map_err(|e| format!("runtime settings serialize: {e}"))?;
-    std::fs::write(settings_path(), json).map_err(|e| format!("runtime settings write: {e}"))?;
-    Ok(())
+    crate::fs_util::write_json_atomic(&settings_path(), &stored)
+        .map_err(|e| format!("runtime settings write: {e}"))
 }
 
 pub fn affinity_bypassed() -> bool {

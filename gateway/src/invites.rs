@@ -48,7 +48,18 @@ pub fn load(data_dir: &Path) -> InviteFile {
 fn save(data_dir: &Path, file: &InviteFile) -> Result<(), String> {
     std::fs::create_dir_all(data_dir).map_err(|error| format!("create data dir: {error}"))?;
     let raw = serde_json::to_string_pretty(file).map_err(|error| error.to_string())?;
-    std::fs::write(path(data_dir), raw).map_err(|error| format!("write invites: {error}"))
+    let dest = path(data_dir);
+    let tmp = dest.with_extension(format!("{}.tmp", std::process::id()));
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp).map_err(|e| format!("create invites tmp: {e}"))?;
+        f.write_all(raw.as_bytes()).map_err(|e| format!("write invites tmp: {e}"))?;
+        f.sync_all().map_err(|e| format!("sync invites tmp: {e}"))?;
+    }
+    std::fs::rename(&tmp, &dest).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename invites: {e}")
+    })
 }
 
 pub fn create(

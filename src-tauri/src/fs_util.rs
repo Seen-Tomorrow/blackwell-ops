@@ -76,7 +76,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 
     // std::fs::rename on Windows is MoveFileEx(MOVEFILE_REPLACE_EXISTING), so this
     // replaces an existing target in one step — no delete-then-create gap.
-    fs::rename(&tmp, path).map_err(|e| {
+    retry_fs_op(|| fs::rename(&tmp, path)).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         format!(
             "Failed to move {} onto {}: {e}",
@@ -84,6 +84,26 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
             path.display()
         )
     })
+}
+
+/// Retry a filesystem operation on transient Windows sharing/lock/access errors
+/// (e.g., Windows Defender Real-Time Protection or indexer holding a brief handle).
+pub fn retry_fs_op<T, F: FnMut() -> std::io::Result<T>>(mut op: F) -> std::io::Result<T> {
+    const DELAYS_MS: [u64; 6] = [50, 100, 200, 400, 800, 1500];
+    let mut attempt = 0usize;
+    loop {
+        match op() {
+            Ok(val) => return Ok(val),
+            Err(e)
+                if attempt < DELAYS_MS.len()
+                    && matches!(e.raw_os_error(), Some(32 | 33 | 5)) =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(DELAYS_MS[attempt]));
+                attempt += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Serialize as pretty JSON and write atomically.

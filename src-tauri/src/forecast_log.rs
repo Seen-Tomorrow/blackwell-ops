@@ -16,6 +16,13 @@ fn append_row(row: &Value) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+    const MAX_BYTES: u64 = 5 * 1024 * 1024;
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > MAX_BYTES {
+            let rotated = path.with_extension("jsonl.1");
+            let _ = crate::fs_util::retry_fs_op(|| std::fs::rename(&path, &rotated));
+        }
+    }
     let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) else {
         log::warn!("[forecast_log] open {} failed", path.display());
         return;

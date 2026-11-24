@@ -5,33 +5,29 @@ use crate::config::*;
 
 /// Internal: Load config with bundled path resolution (called from setup).
 pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
-    if let Some(saved) = load_saved_config() {
-        build_config_with_providers_full(saved)
-    } else {
-        let fresh = build_fresh_config();
-        let mut to_persist = fresh.clone();
+    let (cfg, persist_defaults) = load_or_fresh_config();
+    if persist_defaults {
+        let mut to_persist = cfg.clone();
         if let Err(e) = save_config(&mut to_persist) {
             log::warn!("[config] Failed to persist default app_config.json: {}", e);
         } else {
             log::info!("[config] Created default app_config.json with model path '{}'", DEFAULT_MODEL_PATH_REL);
         }
-        build_config_with_providers_full(fresh)
     }
+    build_config_with_providers_full(cfg)
 }
 
 /// Tauri command: Load config from disk (no app handle needed for frontend queries).
 #[tauri::command]
 pub fn load_config() -> AppConfig {
-    if let Some(saved) = load_saved_config() {
-        return build_config_with_providers_full(saved);
+    let (cfg, persist_defaults) = load_or_fresh_config();
+    if persist_defaults {
+        let mut to_persist = cfg.clone();
+        if let Err(e) = save_config(&mut to_persist) {
+            log::warn!("[config] Failed to persist default app_config.json: {}", e);
+        }
     }
-
-    let fresh = build_fresh_config();
-    let mut to_persist = fresh.clone();
-    if let Err(e) = save_config(&mut to_persist) {
-        log::warn!("[config] Failed to persist default app_config.json: {}", e);
-    }
-    build_config_with_providers_full(fresh)
+    build_config_with_providers_full(cfg)
 }
 
 
@@ -85,13 +81,7 @@ pub fn dev_reset_first_run(
     {
         crate::model_cache::clear_cache()?;
 
-        let hf_token = {
-            let cfg = _config.lock().map_err(|e| e.to_string())?;
-            cfg.hf_token.clone()
-        };
-
         let mut fresh = build_fresh_config();
-        fresh.hf_token = hf_token;
         fresh.setup_completed = false;
 
         let built = build_config_with_providers_full(fresh);
@@ -182,17 +172,11 @@ fn clear_config_cache_dir() -> Result<(), String> {
 pub fn reset_app_config(
     config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
 ) -> Result<(), String> {
-    let hf_token = {
-        let cfg = config.lock().map_err(|e| e.to_string())?;
-        cfg.hf_token.clone()
-    };
-
     let removed_configs = remove_user_provider_configs()?;
     clear_config_cache_dir()?;
     crate::model_cache::clear_cache()?;
 
     let mut fresh = build_fresh_config();
-    fresh.hf_token = hf_token;
     fresh.setup_completed = false;
 
     let built = build_config_with_providers_full(fresh);
@@ -249,10 +233,10 @@ pub fn model_paths_from_saved_config() -> Vec<ModelPathEntry> {
     load_saved_config().map(|cfg| get_model_paths(&cfg)).unwrap_or_default()
 }
 
-fn load_saved_config() -> Option<AppConfig> {
+fn load_or_fresh_config() -> (AppConfig, bool) {
     let config_path = config_dir().join("app_config.json");
     if !config_path.exists() {
-        return None;
+        return (build_fresh_config(), true);
     }
 
     let content = match std::fs::read_to_string(&config_path) {
@@ -262,8 +246,11 @@ fn load_saved_config() -> Option<AppConfig> {
                 "[config] Cannot read {}: {e} — quarantining, not resetting",
                 config_path.display()
             );
-            crate::fs_util::quarantine(&config_path);
-            return None;
+            let quarantined = crate::fs_util::quarantine(&config_path).is_some();
+            if !quarantined {
+                log::warn!("[config] Quarantine failed — using in-memory defaults without overwriting {}", config_path.display());
+            }
+            return (build_fresh_config(), quarantined);
         }
     };
 
@@ -279,17 +266,29 @@ fn load_saved_config() -> Option<AppConfig> {
                 }
             }
             log::info!("Loaded app_config.json from {}", config_path.display());
-            Some(config)
+            (config, false)
         }
         Err(e) => {
             log::error!(
                 "[config] {} is corrupt: {e} — quarantining instead of resetting to defaults",
                 config_path.display()
             );
-            crate::fs_util::quarantine(&config_path);
-            None
+            let quarantined = crate::fs_util::quarantine(&config_path).is_some();
+            if !quarantined {
+                log::warn!("[config] Quarantine failed — using in-memory defaults without overwriting {}", config_path.display());
+            }
+            (build_fresh_config(), quarantined)
         }
     }
+}
+
+fn load_saved_config() -> Option<AppConfig> {
+    let config_path = config_dir().join("app_config.json");
+    if !config_path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&config_path).ok()?;
+    serde_json::from_str::<AppConfig>(&content).ok()
 }
 
 /// Ensure model paths are consistent: deduped, at most one default, default_download_path synced.
@@ -343,6 +342,13 @@ pub fn sanitize_model_paths(config: &mut AppConfig) -> bool {
 /// This writes `defaultValue` on the matching row, wherever it sits in the file.
 #[tauri::command]
 pub fn set_provider_param_value(provider_id: String, key: String, value: String) -> Result<(), String> {
+    if provider_id.is_empty()
+        || !provider_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+    {
+        return Err(format!("invalid provider_id '{provider_id}'"));
+    }
     let path = crate::config::app_root_dir()
         .join("config")
         .join(format!("{provider_id}-user-config.json"));
@@ -356,7 +362,6 @@ pub fn set_provider_param_value(provider_id: String, key: String, value: String)
             serde_json::Value::Object(map) => {
                 if map.get("key").and_then(|k| k.as_str()) == Some(key) {
                     map.insert("defaultValue".into(), serde_json::Value::String(value.into()));
-                    map.insert("factoryDefault".into(), serde_json::Value::String(value.into()));
                     return true;
                 }
                 map.values_mut().any(|child| set_in(child, key, value))
@@ -369,6 +374,5 @@ pub fn set_provider_param_value(provider_id: String, key: String, value: String)
     if !set_in(&mut doc, &key, &value) {
         return Err(format!("no param '{key}' in {}", path.display()));
     }
-    let out = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
-    std::fs::write(&path, out).map_err(|e| format!("{}: {e}", path.display()))
+    crate::fs_util::write_json_atomic(&path, &doc)
 }

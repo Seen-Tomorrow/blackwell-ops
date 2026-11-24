@@ -16,9 +16,6 @@ pub struct AppConfig {
     /// model rows; they are offered to models that need them.
     #[serde(default)]
     pub extras_paths: Vec<ModelPathEntry>,
-    /// HuggingFace API token — stored in app_config.json. Empty string if not set.
-    #[serde(default)]
-    pub hf_token: String,
     #[serde(default = "default_providers", skip_serializing)]
     pub providers: Vec<ProviderConfig>,
     /// Where downloads go — derived from the default model path.
@@ -35,7 +32,6 @@ impl Default for AppConfig {
         Self {
             model_paths: vec![entry.clone()],
             extras_paths: Vec::new(),
-            hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(entry.path),
             setup_completed: false,
@@ -127,7 +123,8 @@ pub fn load_user_providers_meta() -> Vec<crate::types::ProviderConfig> {
             if let Ok(meta) = serde_json::from_str::<crate::types::ProviderConfig>(&content) {
                 metas.push(meta);
             } else {
-                log::warn!("[config] Failed to parse {}: skipping (check for corrupt JSON)", path.display());
+                log::warn!("[config] Failed to parse {}: quarantining corrupt file", path.display());
+                let _ = crate::fs_util::quarantine(&path);
             }
         } else {
             log::warn!("[config] Failed to read {}", path.display());

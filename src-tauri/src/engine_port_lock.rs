@@ -33,9 +33,7 @@ pub fn write_lock(port: u16, engine_pid: u32, binary_path: &Path) -> Result<(), 
         binary_path: crate::config::to_relative_path(binary_path),
         reserved_at: chrono::Utc::now().to_rfc3339(),
     };
-    let json = serde_json::to_string_pretty(&lock).map_err(|e| e.to_string())?;
-    std::fs::write(lock_file(port), json).map_err(|e| e.to_string())?;
-    Ok(())
+    crate::fs_util::write_json_atomic(&lock_file(port), &lock)
 }
 
 pub fn delete_lock(port: u16) {

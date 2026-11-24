@@ -1474,9 +1474,8 @@ fn write_subagents_config(home: &Path, slots: u32) -> Result<(), String> {
         "artifactDir": "session",
         "globalConcurrencyLimit": n
     });
-    let body = serde_json::to_string_pretty(&cfg)
-        .map_err(|e| format!("subagent cfg json: {e}"))?;
-    std::fs::write(&cfg_path, body).map_err(|e| format!("write subagent cfg: {e}"))?;
+    crate::fs_util::write_json_atomic(&cfg_path, &cfg)
+        .map_err(|e| format!("write subagent cfg: {e}"))?;
     emit_dbg(&format!(
         "[Pi] Wrote subagents config → {} (concurrency={})",
         cfg_path.display(),
@@ -1747,15 +1746,19 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         "SOLO — single engine, provider local (worker aliases the same engine for equal-capability fan-out)."
     };
 
-    // Read existing settings.json (pi/user-owned) if present; start fresh otherwise.
+    // Read existing settings.json (pi/user-owned) if present; quarantine if corrupt.
     let settings_path = settings_path();
-    let mut settings: serde_json::Value = std::fs::read_to_string(&settings_path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    if !settings.is_object() {
-        settings = serde_json::json!({});
-    }
+    let mut settings: serde_json::Value = match std::fs::read_to_string(&settings_path) {
+        Ok(s) => match serde_json::from_str::<serde_json::Value>(&s) {
+            Ok(v) if v.is_object() => v,
+            _ => {
+                log::warn!("[Pi] Corrupt {} — quarantining before writing defaults", settings_path.display());
+                let _ = crate::fs_util::quarantine(&settings_path);
+                serde_json::json!({})
+            }
+        },
+        Err(_) => serde_json::json!({}),
+    };
 
     // Overlay ONLY the keys Blackwell genuinely owns (routing + telemetry + metadata).
     // Never delete a non-Blackwell key. `packages` is handled separately as a *union*
@@ -2343,9 +2346,11 @@ pub async fn pi_code_launch(
         let (models_str, settings_str, routing, routing_facts) =
             build_models_and_settings(&request)?;
         let models_file = models_path();
-        std::fs::write(&models_file, &models_str).map_err(|e| format!("write models: {e}"))?;
+        crate::fs_util::write_atomic(&models_file, models_str.as_bytes())
+            .map_err(|e| format!("write models: {e}"))?;
         let settings_file = settings_path();
-        std::fs::write(&settings_file, &settings_str).map_err(|e| format!("write settings: {e}"))?;
+        crate::fs_util::write_atomic(&settings_file, settings_str.as_bytes())
+            .map_err(|e| format!("write settings: {e}"))?;
         emit_dbg(&format!(
             "[Pi] Wrote models.json → {} ({} bytes); PI_CODING_AGENT_DIR={}",
             models_file.display(),

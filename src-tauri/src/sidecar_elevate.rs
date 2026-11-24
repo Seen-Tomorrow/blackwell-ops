@@ -447,10 +447,9 @@ pub fn run_privileged_batch(
         return Err("no privileged commands to run".into());
     }
 
-    let script_path = crate::config::config_dir().join(format!(
-        "gpu-priv-{}.cmd",
-        std::process::id()
-    ));
+    let tmp_dir = crate::config::app_root_dir().join("tmp");
+    let _ = std::fs::create_dir_all(&tmp_dir);
+    let script_path = tmp_dir.join(format!("gpu-priv-{}.cmd", std::process::id()));
 
     let mut script = String::from("@echo off\r\nsetlocal\r\n");
     if let Some(dir) = cwd.filter(|p| p.is_dir()) {

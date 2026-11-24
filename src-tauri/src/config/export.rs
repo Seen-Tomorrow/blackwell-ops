@@ -356,8 +356,6 @@ pub fn export_provider_factory_template(
             "protectedGroups".to_string(),
             serde_json::to_value(&protected_groups).map_err(|e| e.to_string())?,
         );
-        // Layout defaults are user-owned now; strip any legacy block from the factory JSON.
-        obj.remove("layoutDefaults");
         obj.insert(
             "templateVersion".to_string(),
             serde_json::Value::Number(new_tv.into()),
@@ -366,7 +364,6 @@ pub fn export_provider_factory_template(
         // Full spawn_profile for forks: backfill from ggml-master when stub/missing
         // (EXPORT used to only write essentialParamKeys → empty fit_style / flags).
         let mut sp = ensure_complete_spawn_profile_map(obj.get("spawn_profile"));
-        sp.remove("simple_param_keys");
         sp.insert(
             "essentialParamKeys".to_string(),
             serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,

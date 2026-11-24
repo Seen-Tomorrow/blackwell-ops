@@ -1077,33 +1077,6 @@ impl ProviderTemplate {
             .is_some_and(|args| !args.is_empty())
     }
 
-    /// Merge argv tokens split by naive whitespace inside quoted values (legacy sub_params saves).
-    fn repair_quoted_arg_fragments(entry_args: &[String]) -> Vec<String> {
-        let mut out = Vec::new();
-        let mut i = 0;
-        while i < entry_args.len() {
-            let arg = &entry_args[i];
-            let starts_quoted = arg.starts_with('"') && !arg.ends_with('"');
-            if starts_quoted {
-                let mut parts = vec![arg.trim_start_matches('"').to_string()];
-                i += 1;
-                while i < entry_args.len() && !entry_args[i].ends_with('"') {
-                    parts.push(entry_args[i].clone());
-                    i += 1;
-                }
-                if i < entry_args.len() {
-                    parts.push(entry_args[i].trim_end_matches('"').to_string());
-                    i += 1;
-                }
-                out.push(parts.join(" "));
-            } else {
-                out.push(arg.clone());
-                i += 1;
-            }
-        }
-        out
-    }
-
     /// Inject sub_params from user's saved state (authoritative — no defaults fallback).
     fn inject_sub_params_user(
         args: &mut Vec<String>,
@@ -1700,29 +1673,6 @@ mod build_cmd_tests {
         assert!(args
             .windows(2)
             .any(|w| w[0] == "--reasoning-budget-message" && w[1] == "Proceed to final answer."));
-    }
-
-    #[test]
-    fn repair_quoted_arg_fragments_merges_legacy_splits() {
-        let broken = vec![
-            "--reasoning-budget".to_string(),
-            "0".to_string(),
-            "--reasoning-budget-message".to_string(),
-            "\"Proceed".to_string(),
-            "to".to_string(),
-            "final".to_string(),
-            "answer.\"".to_string(),
-        ];
-        let repaired = ProviderTemplate::repair_quoted_arg_fragments(&broken);
-        assert_eq!(
-            repaired,
-            vec![
-                "--reasoning-budget".to_string(),
-                "0".to_string(),
-                "--reasoning-budget-message".to_string(),
-                "Proceed to final answer.".to_string(),
-            ]
-        );
     }
 
     #[test]

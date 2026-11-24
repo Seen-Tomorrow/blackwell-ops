@@ -114,5 +114,15 @@ pub fn save(path: &Path, devices: &[DeviceRecord]) -> Result<(), String> {
         devices: devices.to_vec(),
     };
     let raw = serde_json::to_string_pretty(&file).map_err(|e| format!("serialize devices: {e}"))?;
-    std::fs::write(path, raw).map_err(|e| format!("write {}: {e}", path.display()))
+    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp).map_err(|e| format!("create {}: {e}", tmp.display()))?;
+        f.write_all(raw.as_bytes()).map_err(|e| format!("write {}: {e}", tmp.display()))?;
+        f.sync_all().map_err(|e| format!("sync {}: {e}", tmp.display()))?;
+    }
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename {} -> {}: {e}", tmp.display(), path.display())
+    })
 }

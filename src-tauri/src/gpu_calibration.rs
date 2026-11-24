@@ -111,12 +111,7 @@ fn load_store() -> CalibrationStore {
 }
 
 fn save_store(store: &CalibrationStore) -> Result<(), String> {
-    let path = store_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let text = serde_json::to_string_pretty(store).map_err(|e| e.to_string())?;
-    std::fs::write(path, text).map_err(|e| e.to_string())
+    crate::fs_util::write_json_atomic(&store_path(), store)
 }
 
 /// Buffers parsed for one device index, excluding host-side rows.
