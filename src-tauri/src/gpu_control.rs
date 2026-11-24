@@ -1,14 +1,12 @@
-//! GPU power + clock offset control via nvidia-smi and bundled Nvidia Inspector CLI.
+//! GPU power + clock offset control via native NVML (`nvml.dll`).
 //! Mutating calls require administrator rights on Windows (gsudo UAC when not elevated).
 
-use crate::sidecar_elevate::{self, PrivilegedOutput, GSUDO_EXE, UAC_DENIED_MESSAGE};
+use crate::nvml_oc::{self, NvmlOcTarget};
+use crate::sidecar_elevate::{self, GSUDO_EXE, UAC_DENIED_MESSAGE};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tauri::AppHandle;
-
-const INSPECTOR_EXE: &str = "nvidiaInspector.exe";
-const PSTATE_ID: u32 = 0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,10 +56,6 @@ pub struct GpuControlApplyResult {
     pub elevated: bool,
 }
 
-fn stage_inspector(app: &AppHandle) -> Result<PathBuf, String> {
-    sidecar_elevate::stage_bin(app, INSPECTOR_EXE)
-}
-
 #[tauri::command]
 pub fn is_gpu_control_elevated() -> bool {
     sidecar_elevate::is_process_elevated()
@@ -94,7 +88,15 @@ fn resolve_nvidia_smi_path() -> PathBuf {
     crate::engine_utils::resolve_nvidia_smi_path()
 }
 
-fn step_from_output(gpu_index: u32, step: impl Into<String>, out: &PrivilegedOutput) -> GpuControlStepResult {
+fn quote_exe(path: &Path) -> String {
+    format!("\"{}\"", path.to_string_lossy().replace('"', ""))
+}
+
+fn step_from_output(
+    gpu_index: u32,
+    step: impl Into<String>,
+    out: &sidecar_elevate::PrivilegedOutput,
+) -> GpuControlStepResult {
     GpuControlStepResult {
         gpu_index,
         step: step.into(),
@@ -109,176 +111,28 @@ fn sorted_presets(presets: &[GpuControlPreset]) -> Vec<GpuControlPreset> {
     out
 }
 
-fn inspector_mem_args(presets: &[GpuControlPreset]) -> Vec<String> {
-    presets
-        .iter()
-        .map(|p| {
-            format!(
-                "-setMemoryClockOffset:{},{},{}",
-                p.gpu_index, PSTATE_ID, p.mem_offset_mhz
-            )
-        })
-        .collect()
-}
-
-fn inspector_core_args(presets: &[GpuControlPreset]) -> Vec<String> {
-    presets
-        .iter()
-        .map(|p| {
-            format!(
-                "-setBaseClockOffset:{},{},{}",
-                p.gpu_index, PSTATE_ID, p.core_offset_mhz
-            )
-        })
-        .collect()
-}
-
-fn quote_exe(path: &Path) -> String {
-    format!("\"{}\"", path.to_string_lossy().replace('"', ""))
-}
-
-fn build_apply_script_lines(
-    smi: &Path,
-    inspector: &Path,
-    presets: &[GpuControlPreset],
-) -> Vec<String> {
-    let smi_q = quote_exe(smi);
-    let insp_q = quote_exe(inspector);
-    let mut lines = Vec::new();
-    for p in presets {
-        lines.push(format!(
-            "{smi_q} -i {} -pl {}",
-            p.gpu_index, p.power_limit_w
-        ));
+fn run_nvml_oc_targets(app: &AppHandle, targets: &[NvmlOcTarget]) -> Result<(), String> {
+    if targets.is_empty() {
+        return Ok(());
     }
-    let mem = inspector_mem_args(presets).join(" ");
-    lines.push(format!("{insp_q} {mem}"));
-    let core = inspector_core_args(presets).join(" ");
-    lines.push(format!("{insp_q} {core}"));
-    lines
-}
-
-fn steps_from_batch_apply(out: &PrivilegedOutput, presets: &[GpuControlPreset]) -> Vec<GpuControlStepResult> {
-    let mut steps = Vec::new();
-    for preset in presets {
-        steps.push(step_from_output(
-            preset.gpu_index,
-            format!(
-                "nvidia-smi -pl {} (GPU{})",
-                preset.power_limit_w, preset.gpu_index
-            ),
-            out,
-        ));
-        steps.push(step_from_output(
-            preset.gpu_index,
-            format!(
-                "inspector mem GPU{} +{} MHz",
-                preset.gpu_index, preset.mem_offset_mhz
-            ),
-            out,
-        ));
-        steps.push(step_from_output(
-            preset.gpu_index,
-            format!(
-                "inspector core GPU{} +{} MHz",
-                preset.gpu_index, preset.core_offset_mhz
-            ),
-            out,
-        ));
+    if sidecar_elevate::is_process_elevated() {
+        return nvml_oc::apply_targets(targets);
     }
-    steps
-}
-
-fn execute_apply(
-    app: &AppHandle,
-    inspector: &Path,
-    presets: &[GpuControlPreset],
-) -> Result<Vec<GpuControlStepResult>, String> {
-    let smi = resolve_nvidia_smi_path();
-    let presets = sorted_presets(presets);
-    if presets.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let lines = build_apply_script_lines(&smi, inspector, &presets);
-    let cwd = inspector.parent();
-    let out = sidecar_elevate::run_privileged_batch(app, &lines, cwd)?;
+    sidecar_elevate::stage_bin(app, GSUDO_EXE)?;
+    let exe =
+        std::env::current_exe().map_err(|e| format!("Failed to locate executable: {e}"))?;
+    let specs: Vec<String> = targets.iter().map(nvml_oc::format_target_spec).collect();
+    let lines = vec![format!("{} --gpu-oc-apply {}", quote_exe(&exe), specs.join(" "))];
+    let out = sidecar_elevate::run_privileged_batch(app, &lines, None)?;
     if !out.success() && sidecar_elevate::is_uac_denied_output(&out) {
         return Err(UAC_DENIED_MESSAGE.into());
     }
-    Ok(steps_from_batch_apply(&out, &presets))
-}
-
-fn execute_reset(
-    app: &AppHandle,
-    inspector: &Path,
-    gpu_indices: &[u32],
-    default_power: &std::collections::HashMap<u32, u32>,
-) -> Result<Vec<GpuControlStepResult>, String> {
-    let smi = resolve_nvidia_smi_path();
-    let mut indices = gpu_indices.to_vec();
-    indices.sort_unstable();
-    indices.dedup();
-
-    let zero_presets: Vec<GpuControlPreset> = indices
-        .iter()
-        .map(|&gpu_index| GpuControlPreset {
-            gpu_index,
-            power_limit_w: 0,
-            core_offset_mhz: 0,
-            mem_offset_mhz: 0,
-        })
-        .collect();
-
-    if indices.is_empty() {
-        return Ok(Vec::new());
+    if !out.success() {
+        return Err(out
+            .detail_on_fail()
+            .unwrap_or_else(|| "NVML OC apply failed".into()));
     }
-
-    let smi_q = quote_exe(&smi);
-    let insp_q = quote_exe(inspector);
-    let mut lines = Vec::new();
-    let mem = inspector_mem_args(&zero_presets).join(" ");
-    lines.push(format!("{insp_q} {mem}"));
-    let core = inspector_core_args(&zero_presets).join(" ");
-    lines.push(format!("{insp_q} {core}"));
-    for &gpu_index in &indices {
-        if let Some(&default_w) = default_power.get(&gpu_index) {
-            if default_w > 0 {
-                lines.push(format!("{smi_q} -i {gpu_index} -pl {default_w}"));
-            }
-        }
-    }
-
-    let cwd = inspector.parent();
-    let out = sidecar_elevate::run_privileged_batch(app, &lines, cwd)?;
-    if !out.success() && sidecar_elevate::is_uac_denied_output(&out) {
-        return Err(UAC_DENIED_MESSAGE.into());
-    }
-
-    let mut steps = Vec::new();
-    for &gpu_index in &indices {
-        steps.push(step_from_output(
-            gpu_index,
-            "inspector mem offset reset",
-            &out,
-        ));
-        steps.push(step_from_output(
-            gpu_index,
-            "inspector core offset reset",
-            &out,
-        ));
-        if let Some(&default_w) = default_power.get(&gpu_index) {
-            if default_w > 0 {
-                steps.push(step_from_output(
-                    gpu_index,
-                    format!("nvidia-smi -pl {default_w} default (GPU{gpu_index})"),
-                    &out,
-                ));
-            }
-        }
-    }
-
-    Ok(steps)
+    Ok(())
 }
 
 fn normalize_driver_model(raw: &str) -> String {
@@ -430,13 +284,32 @@ pub async fn apply_gpu_control_presets(
     }
 
     tokio::task::spawn_blocking(move || {
-        sidecar_elevate::stage_bin(&app, GSUDO_EXE)?;
-        let inspector = stage_inspector(&app)?;
+        let presets = sorted_presets(&presets);
+        let targets: Vec<NvmlOcTarget> = presets
+            .iter()
+            .map(|p| NvmlOcTarget {
+                gpu_index: p.gpu_index,
+                power_limit_w: p.power_limit_w,
+                core_offset_mhz: p.core_offset_mhz,
+                mem_offset_mhz: p.mem_offset_mhz,
+            })
+            .collect();
         let elevated = sidecar_elevate::is_process_elevated();
-        let steps = execute_apply(&app, &inspector, &presets)?;
-        let ok = steps.iter().all(|s| s.ok);
+        run_nvml_oc_targets(&app, &targets)?;
+        let steps = presets
+            .iter()
+            .map(|p| GpuControlStepResult {
+                gpu_index: p.gpu_index,
+                step: format!(
+                    "nvml OC GPU{}: {}W / +{} core / +{} mem",
+                    p.gpu_index, p.power_limit_w, p.core_offset_mhz, p.mem_offset_mhz
+                ),
+                ok: true,
+                detail: None,
+            })
+            .collect();
         Ok(GpuControlApplyResult {
-            ok,
+            ok: true,
             steps,
             elevated,
         })
@@ -455,33 +328,31 @@ pub async fn reset_gpu_control(
     }
 
     tokio::task::spawn_blocking(move || {
-        sidecar_elevate::stage_bin(&app, GSUDO_EXE)?;
-        let inspector = stage_inspector(&app)?;
-
-        let devices_output = run_nvidia_smi(&[
-            "--query-gpu=index,power.default_limit",
-            "--format=csv,noheader,nounits",
-        ])?;
-        if !devices_output.status.success() {
-            return Err(decode_output(&devices_output));
-        }
-
-        let mut default_power: std::collections::HashMap<u32, u32> =
-            std::collections::HashMap::new();
-        for line in String::from_utf8_lossy(&devices_output.stdout).lines() {
-            let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-            if parts.len() >= 2 {
-                if let (Ok(idx), Ok(w)) = (parts[0].parse::<u32>(), parts[1].parse::<f32>()) {
-                    default_power.insert(idx, w.round() as u32);
-                }
-            }
-        }
-
+        let mut indices = gpu_indices;
+        indices.sort_unstable();
+        indices.dedup();
+        let targets: Vec<NvmlOcTarget> = indices
+            .iter()
+            .map(|&gpu_index| NvmlOcTarget {
+                gpu_index,
+                power_limit_w: 0,
+                core_offset_mhz: 0,
+                mem_offset_mhz: 0,
+            })
+            .collect();
         let elevated = sidecar_elevate::is_process_elevated();
-        let steps = execute_reset(&app, &inspector, &gpu_indices, &default_power)?;
-        let ok = steps.iter().all(|s| s.ok);
+        run_nvml_oc_targets(&app, &targets)?;
+        let steps = indices
+            .iter()
+            .map(|&gpu_index| GpuControlStepResult {
+                gpu_index,
+                step: format!("nvml OC reset GPU{gpu_index}"),
+                ok: true,
+                detail: None,
+            })
+            .collect();
         Ok(GpuControlApplyResult {
-            ok,
+            ok: true,
             steps,
             elevated,
         })

@@ -5,7 +5,6 @@ Place executables in this folder before dev or release builds.
 Files are gitignored (*.exe, *.dll); MinGit at git/ is fully gitignored — copy or stage locally.
 
   gsudo.exe              — elevated UAC helper (https://github.com/gerardog/gsudo)
-  nvidiaInspector.exe    — GPU clock offsets via NVAPI (Orbmu2k)
   7z.exe + 7z.dll        — 7-Zip console archiver for extracting toolchain packs (.7z)
   git/                   — MinGit portable tree (cmd/git.exe + mingw64/ + usr/)
 

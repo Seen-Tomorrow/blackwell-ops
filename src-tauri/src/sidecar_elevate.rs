@@ -1,5 +1,5 @@
 //! Privileged command execution via bundled gsudo (Windows).
-//! Sidecar binaries live in `bin/` (gsudo, nvidiaInspector, …) and stage to `{app_root}/bin/`.
+//! Sidecar binaries live in `bin/` (gsudo, 7z, git, …) and stage to `{app_root}/bin/`.
 
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output, Stdio};
