@@ -126,13 +126,16 @@ pub fn expand_path_placeholders(path: &str) -> String {
         }
     }
 
-    while let Some(start) = expanded.find('%') {
+    let mut cursor = 0usize;
+    while let Some(rel_start) = expanded[cursor..].find('%') {
+        let start = cursor + rel_start;
         let rest = &expanded[start + 1..];
         let Some(end) = rest.find('%') else { break };
         let var_name = &rest[..end];
         let replacement = std::env::var(var_name).unwrap_or_default();
         let end_idx = start + 1 + end + 1;
         expanded = format!("{}{}{}", &expanded[..start], replacement, &expanded[end_idx..]);
+        cursor = start + replacement.len();
     }
 
     expanded

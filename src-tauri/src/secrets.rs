@@ -53,14 +53,19 @@ pub fn mask_secret(value: &str) -> String {
     if trimmed.is_empty() {
         return String::new();
     }
-    if trimmed.len() <= 8 {
+    if trimmed.chars().count() <= 8 {
         return "••••••••".to_string();
     }
-    format!(
-        "{}…{}",
-        &trimmed[..4.min(trimmed.len())],
-        &trimmed[trimmed.len().saturating_sub(3)..]
-    )
+    let prefix: String = trimmed.chars().take(4).collect();
+    let suffix: String = trimmed
+        .chars()
+        .rev()
+        .take(3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}…{suffix}")
 }
 
 /// Read a stored secret (backend only — never expose via a generic frontend getter).
@@ -132,4 +137,16 @@ pub fn set_app_secret(key: String, value: String) -> Result<SecretStatus, String
 #[tauri::command]
 pub fn delete_app_secret(key: String) -> Result<(), String> {
     delete_secret(&key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mask_secret;
+
+    #[test]
+    fn mask_secret_handles_multibyte_utf8() {
+        let masked = mask_secret("hf_αβγδεζηθικ");
+        assert!(masked.starts_with("hf_α"));
+        assert!(masked.ends_with("ηθικ") || masked.ends_with("θικ"));
+    }
 }

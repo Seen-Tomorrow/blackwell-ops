@@ -744,23 +744,27 @@ impl ResolvedProfile {
     }
 
     /// MSVC MASM (`ml64.exe`) — required since upstream ggml `project(... ASM)` + CMake CMP0194.
-    pub fn ml64_exe(&self, manifest: &ToolchainManifest) -> PathBuf {
-        let vs = vs_def(manifest, &self.def.vs).expect("profile VS key validated at resolve");
-        toolchain_dir()
-            .join("vs")
-            .join(&self.def.vs)
-            .join("VC")
-            .join("Tools")
-            .join("MSVC")
-            .join(&vs.msvc_version)
-            .join("bin")
-            .join("Hostx64")
-            .join("x64")
-            .join("ml64.exe")
+    pub fn ml64_exe(&self, manifest: &ToolchainManifest) -> Option<PathBuf> {
+        let vs = vs_def(manifest, &self.def.vs).ok()?;
+        Some(
+            toolchain_dir()
+                .join("vs")
+                .join(&self.def.vs)
+                .join("VC")
+                .join("Tools")
+                .join("MSVC")
+                .join(&vs.msvc_version)
+                .join("bin")
+                .join("Hostx64")
+                .join("x64")
+                .join("ml64.exe"),
+        )
     }
 
     pub fn cmake_asm_compiler_flag(&self, manifest: &ToolchainManifest) -> Result<String, String> {
-        let ml64 = self.ml64_exe(manifest);
+        let ml64 = self.ml64_exe(manifest).ok_or_else(|| {
+            format!("VS profile '{}' missing from toolchain manifest", self.def.vs)
+        })?;
         if !ml64.exists() {
             return Err(format!(
                 "MSVC assembler (ml64.exe) not found at {}. Recent ggml requires CMAKE_ASM_COMPILER — update the portable toolchain bundle.",
@@ -772,25 +776,31 @@ impl ResolvedProfile {
     }
 
     pub fn check(&self, manifest: &ToolchainManifest) -> ProfileCheck {
-        let vs = vs_def(manifest, &self.def.vs).unwrap();
+        let vs = vs_def(manifest, &self.def.vs).ok();
         let mut missing = Vec::new();
+        if vs.is_none() {
+            missing.push(format!("VS manifest entry: {}", self.def.vs));
+        }
 
         if !self.vs_devcmd.exists() {
             missing.push(format!("VS devcmd: {}", self.vs_devcmd.display()));
         }
-        let msvc_dir = toolchain_dir()
-            .join("vs")
-            .join(&self.def.vs)
-            .join("VC")
-            .join("Tools")
-            .join("MSVC")
-            .join(&vs.msvc_version);
-        if !msvc_dir.exists() {
-            missing.push(format!("MSVC toolset: {}", msvc_dir.display()));
+        if let Some(vs) = vs {
+            let msvc_dir = toolchain_dir()
+                .join("vs")
+                .join(&self.def.vs)
+                .join("VC")
+                .join("Tools")
+                .join("MSVC")
+                .join(&vs.msvc_version);
+            if !msvc_dir.exists() {
+                missing.push(format!("MSVC toolset: {}", msvc_dir.display()));
+            }
         }
-        let ml64 = self.ml64_exe(manifest);
-        if !ml64.exists() {
-            missing.push(format!("MASM ml64.exe: {}", ml64.display()));
+        if let Some(ml64) = self.ml64_exe(manifest) {
+            if !ml64.exists() {
+                missing.push(format!("MASM ml64.exe: {}", ml64.display()));
+            }
         }
         let sdk_inc = toolchain_dir()
             .join("Windows Kits")
@@ -815,7 +825,7 @@ impl ResolvedProfile {
             id: self.def.id.clone(),
             label: self.def.label.clone(),
             cuda: self.def.cuda.clone(),
-            vs_label: vs.label.clone(),
+            vs_label: vs.map(|v| v.label.clone()).unwrap_or_else(|| self.def.vs.clone()),
             ready: missing.is_empty(),
             missing,
         }
@@ -1745,35 +1755,8 @@ pub fn extract_toolchain_archive(
     archive: &std::path::Path,
     dest_root: &std::path::Path,
 ) -> Result<(), String> {
-    let seven_z = resolve_7z_exe()?;
-    std::fs::create_dir_all(dest_root)
-        .map_err(|e| format!("Failed to create extract dir: {}", e))?;
-
-    let dest = dest_root.to_string_lossy().to_string();
-    let output = command_no_window(&seven_z)
-        .args([
-            "x",
-            &archive.to_string_lossy(),
-            &format!("-o{}", dest),
-            "-y",
-            "-aoa",
-        ])
-        .output()
-        .map_err(|e| format!("Failed to run 7-Zip: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "7-Zip extraction failed (exit {:?}): {} {}",
-            output.status.code(),
-            stderr.trim(),
-            stdout.trim()
-        )
-        .trim()
-        .to_string());
-    }
-    Ok(())
+    let _ = resolve_7z_exe()?;
+    crate::archive_util::extract_7z_archive(archive, dest_root)
 }
 
 #[cfg(not(windows))]

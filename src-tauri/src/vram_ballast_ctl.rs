@@ -132,8 +132,8 @@ pub async fn vram_ballast_start(
     let parent_pid = std::process::id().to_string();
     let mut spawned: Vec<RunningBallast> = Vec::with_capacity(devices.len());
     for target in &devices {
-        let child = match Command::new(&exe)
-            .args([
+        let mut cmd = Command::new(&exe);
+        cmd.args([
                 "--target-free",
                 &target.target_mib.to_string(),
                 "--device",
@@ -143,8 +143,9 @@ pub async fn vram_ballast_start(
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+            .stderr(Stdio::null());
+        crate::engine_utils::apply_create_no_window(&mut cmd);
+        let child = match cmd.spawn()
         {
             Ok(child) => child,
             Err(e) => {

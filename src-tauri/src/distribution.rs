@@ -168,7 +168,10 @@ fn read_engine_build_info(dir: &std::path::Path) -> Option<EngineSource> {
         .collect();
     let build_no: u64 = digits.parse().ok()?;
     let build = match commit {
-        Some(sha) if sha.len() >= 8 => format!("b{build_no}-{}", &sha[..8]),
+        Some(sha) if sha.chars().count() >= 8 => {
+            let short: String = sha.chars().take(8).collect();
+            format!("b{build_no}-{short}")
+        }
         _ => format!("b{build_no}"),
     };
     Some(EngineSource { version, build })

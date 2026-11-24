@@ -1519,6 +1519,7 @@ fn write_nobsproof_batch(
     };
     let body = format!(
         "@echo off\r\n\
+         chcp 65001 >nul\r\n\
          title Blackwell NoBSproof\r\n\
          setlocal EnableExtensions\r\n\
          set \"BLACKWELL_NOBSPROOF=1\"\r\n\
@@ -1605,7 +1606,7 @@ pub(crate) fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Resul
     // 1) PowerShell Start-Process — fully detached visible console, no job breakaway needed.
     // ArgumentList as an array keeps paths with spaces as one argument to cmd /k.
     let ps_cmd = format!(
-        "$p='{script_ps}'; Start-Process -FilePath cmd.exe -ArgumentList @('/k', $p) -WindowStyle Normal"
+        "$p='\"' + '{script_ps}' + '\"'; Start-Process -FilePath cmd.exe -ArgumentList @('/k', $p) -WindowStyle Normal"
     );
     if spawn_hidden(
         "powershell",
@@ -1624,15 +1625,15 @@ pub(crate) fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Resul
     }
 
     // 2) cmd start — empty quoted title ("") is required; unquoted first token = program name.
-    // Quote the script path so "…\Blackwell OPS\…\script.cmd" is one token after start.
-    let quoted_script = format!("\"{script}\"");
-    if spawn_hidden(
-        "cmd",
-        &["/C", "start", "", "/k", &quoted_script],
-    )
-    .is_ok()
+    // Use system_cmd_exe + raw_arg so spaced paths in script_path are never mangled.
     {
-        return Ok(());
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new(crate::sidecar_elevate::system_cmd_exe());
+        crate::engine_utils::apply_create_no_window(&mut cmd);
+        cmd.raw_arg(format!("/d /s /c start \"\" cmd /k \"\"{script}\"\""));
+        if cmd.spawn().is_ok() {
+            return Ok(());
+        }
     }
 
     // 3) Last resort — direct console (may share dev terminal stderr; still usable).

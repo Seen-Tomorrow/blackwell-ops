@@ -271,7 +271,7 @@ pub async fn stop_child_fast(
 /// Short-lived hidden subprocess — use instead of `tokio::process::Command::output()` +
 /// CREATE_NO_WINDOW on Windows release builds (ERROR_INVALID_HANDLE / os error 6).
 #[cfg(windows)]
-fn apply_create_no_window(cmd: &mut std::process::Command) {
+pub fn apply_create_no_window(cmd: &mut std::process::Command) {
     use std::os::windows::process::CommandExt;
     cmd.creation_flags(0x08000000);
 }
@@ -291,10 +291,10 @@ pub fn run_hidden_output(
         match cmd.output() {
             Ok(output) => return Ok(output),
             Err(e) => {
-                let retryable = e.raw_os_error() == Some(6)
+                let retryable = matches!(e.raw_os_error(), Some(6 | 32))
                     || e.to_string().to_ascii_lowercase().contains("invalid handle");
                 last_err = Some(e);
-                if !retryable && attempt == MAX_ATTEMPTS {
+                if !retryable {
                     break;
                 }
             }
@@ -352,9 +352,9 @@ fn kill_process_by_pid_blocking(pid: u32) -> Result<(), String> {
             }
             Err(e) => {
                 last_err = e.to_string();
-                let retryable = e.raw_os_error() == Some(6)
+                let retryable = matches!(e.raw_os_error(), Some(6 | 32))
                     || last_err.to_ascii_lowercase().contains("invalid handle");
-                if !retryable && attempt == MAX_ATTEMPTS {
+                if !retryable || attempt == MAX_ATTEMPTS {
                     return Err(format!("Failed to kill pid {}: {}", pid, last_err));
                 }
             }

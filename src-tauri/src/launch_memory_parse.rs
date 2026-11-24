@@ -205,9 +205,9 @@ fn extract_number(s: &str) -> Option<f64> {
 }
 
 fn parse_buffer_size_mib(line: &str) -> Option<f64> {
-    let lower = line.to_lowercase();
+    let lower = line.to_ascii_lowercase();
     let idx = lower.rfind("buffer size =")?;
-    extract_number(line[idx..].trim_start_matches(|c: char| !c.is_ascii_digit() && c != '.'))
+    extract_number(line.get(idx..)?.trim_start_matches(|c: char| !c.is_ascii_digit() && c != '.'))
 }
 
 fn device_from_padding_line(line: &str) -> Option<String> {
@@ -381,11 +381,13 @@ fn build_gpu_breakdown(per_gpu: &HashMap<String, f64>) -> Vec<f64> {
     if idxs.is_empty() {
         return Vec::new();
     }
-    let max_idx = *idxs.last().unwrap();
+    let max_idx = (*idxs.last().unwrap()).min(64);
     let mut out = vec![0.0; max_idx + 1];
     for (dev, mib) in per_gpu {
         if let Some(n) = dev.strip_prefix("CUDA").and_then(|s| s.parse::<usize>().ok()) {
-            out[n] += mib;
+            if n < out.len() {
+                out[n] += mib;
+            }
         }
     }
     out
@@ -496,7 +498,9 @@ pub(crate) fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
         }
 
         if let Some(pos) = lower.find("projected to use ") {
-            let numbers: Vec<f64> = line[pos..]
+            let numbers: Vec<f64> = line
+                .get(pos..)
+                .unwrap_or("")
                 .split(|c: char| !c.is_ascii_digit() && c != '.')
                 .filter(|part| !part.is_empty())
                 .filter_map(|part| part.parse::<f64>().ok())
@@ -545,7 +549,7 @@ pub(crate) fn parse_fit_verdict(output: &str) -> Vec<FitAttempt> {
 /// that just finished, never a mixture. Observed 2026-11-05: ctx 65536 and 262144 in one file,
 /// and the parser returned the 65536 buffers for both — a flat learned curve.
 fn last_launch_start(text: &str) -> Option<usize> {
-    let lower = text.to_lowercase();
+    let lower = text.to_ascii_lowercase();
     // Launch-level markers. Do NOT include the per-model `llama_model_loader: loaded meta data`:
     // a spec launch loads the draft model after the main one, and that marker would move the
     // parse start onto the draft, discarding the main model's buffers.
@@ -572,10 +576,12 @@ fn last_launch_start(text: &str) -> Option<usize> {
 
 pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot> {
     // Only the launch that just finished.
-    let launch_text = last_launch_start(output).map(|idx| &output[idx..]).unwrap_or(output);
+    let launch_text = last_launch_start(output)
+        .and_then(|idx| output.get(idx..))
+        .unwrap_or(output);
     let marker = "model loaded";
-    let parse_region = if let Some(idx) = launch_text.to_lowercase().find(marker) {
-        &launch_text[..idx]
+    let parse_region = if let Some(idx) = launch_text.to_ascii_lowercase().find(marker) {
+        launch_text.get(..idx).unwrap_or(launch_text)
     } else {
         launch_text
     };
@@ -602,16 +608,16 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
     let mut mtp_extra_host = 0.0_f64;
 
     for line in parse_region.lines() {
-        let lower = line.to_lowercase();
+        let lower = line.to_ascii_lowercase();
 
         if lower.contains("estimated memory usage of mtp context") {
             if let Some(pos) = lower.find(" is ") {
-                mtp_estimate_mib = extract_number(&line[pos + 4..]);
+                mtp_estimate_mib = line.get(pos + 4..).and_then(extract_number);
             }
         }
         if lower.contains("estimated worst-case memory usage of mmproj") {
             if let Some(pos) = lower.find(" is ") {
-                vision_estimate_mib = extract_number(&line[pos + 4..]);
+                vision_estimate_mib = line.get(pos + 4..).and_then(extract_number);
             }
         }
         if lower.contains("load_hparams: model size:") {
@@ -619,7 +625,7 @@ pub fn parse_launch_memory_snapshot(output: &str) -> Option<LaunchMemorySnapshot
         }
         if lower.contains("prompt cache is enabled") && lower.contains("size limit:") {
             if let Some(pos) = lower.find("size limit:") {
-                prompt_cache_limit_mib = extract_number(&line[pos + 11..]);
+                prompt_cache_limit_mib = line.get(pos + 11..).and_then(extract_number);
             }
         }
         // External draft (dflash/dspark/eagle) and embedded MTP all open after this.

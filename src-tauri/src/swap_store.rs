@@ -254,7 +254,7 @@ fn repoint_pins(from: &Path, to: &Path) {
     let Ok(mut pins) = serde_json::from_str::<serde_json::Value>(&text) else {
         return;
     };
-    let from_prefix = from.to_string_lossy().to_lowercase();
+    let from_prefix = from.to_string_lossy().to_ascii_lowercase();
     let to_prefix = to.to_string_lossy().to_string();
     let mut changed = 0usize;
     if let Some(map) = pins.get_mut("pins").and_then(|v| v.as_object_mut()) {
@@ -262,11 +262,12 @@ fn repoint_pins(from: &Path, to: &Path) {
             if let Some(roles) = roles.as_object_mut() {
                 for value in roles.values_mut() {
                     let Some(current) = value.as_str() else { continue };
-                    if current.to_lowercase().starts_with(&from_prefix) {
-                        let rest = &current[from_prefix.len()..];
-                        let next = format!("{}{}", to_prefix.trim_end_matches(['/', '\\']), rest);
-                        *value = serde_json::Value::String(next);
-                        changed += 1;
+                    if current.to_ascii_lowercase().starts_with(&from_prefix) {
+                        if let Some(rest) = current.get(from_prefix.len()..) {
+                            let next = format!("{}{}", to_prefix.trim_end_matches(['/', '\\']), rest);
+                            *value = serde_json::Value::String(next);
+                            changed += 1;
+                        }
                     }
                 }
             }

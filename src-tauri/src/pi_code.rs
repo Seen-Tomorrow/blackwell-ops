@@ -98,15 +98,34 @@ fn is_installed() -> bool {
 }
 
 fn probe_version() -> Option<String> {
+    let bin = package_binary();
+    if bin.is_file() {
+        let mut cmd = std::process::Command::new(&bin);
+        crate::engine_utils::apply_create_no_window(&mut cmd);
+        cmd.arg("--version").env("PI_CODING_AGENT_DIR", home_dir());
+        if let Ok(out) = cmd.output() {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout);
+                if let Some(line) = s.lines().next().map(str::trim).filter(|l| !l.is_empty()) {
+                    return Some(line.to_string());
+                }
+            }
+        }
+    }
     let launcher = launcher_path();
     if !launcher.is_file() {
         return None;
     }
-    let out = std::process::Command::new("cmd")
-        .args(["/c", &launcher.to_string_lossy(), "--version"])
-        .env("PI_CODING_AGENT_DIR", home_dir())
-        .output()
-        .ok()?;
+    let (cmd_exe, _) = crate::sidecar_elevate::cmd_script_launch(&launcher);
+    let mut cmd = std::process::Command::new(cmd_exe);
+    crate::engine_utils::apply_create_no_window(&mut cmd);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.raw_arg(format!("/d /s /c \"\"{}\" --version\"", launcher.to_string_lossy()));
+    }
+    cmd.env("PI_CODING_AGENT_DIR", home_dir());
+    let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -289,26 +308,28 @@ fn write_outer_shim(tools: &Path) -> Result<(), String> {
 fn outer_shim_body(tools: &Path, home: &Path) -> String {
     let home_abs = home.to_string_lossy().replace('"', "");
     let pkg_abs = tools.join("pi").to_string_lossy().replace('"', "");
-    format!(
-        r#"@echo off
-setlocal
-REM Blackwell-isolated pi launcher (package lives in ..\pi)
-REM PI_CODING_AGENT_DIR overrides pi default ~/.pi/agent - never user profile.
-REM Absolute anchors first: %~dp0 is unreliable under the spaced-path launch chain.
-set "PKG={pkg_abs}"
-if not exist "%PKG%\pi.exe" set "PKG=%~dp0..\pi"
-if not defined PI_CODING_AGENT_DIR (
-  if exist "{home_abs}\" (
-    set "PI_CODING_AGENT_DIR={home_abs}"
-  ) else (
-    set "PI_CODING_AGENT_DIR=%PKG%\..\..\..\config\external-tools\pi-home"
-  )
-)
-if not defined PI_SUBAGENT_PI_BINARY set "PI_SUBAGENT_PI_BINARY=%PKG%\pi.exe"
-"%PKG%\pi.exe" %*
-exit /b %ERRORLEVEL%
-"#
-    )
+    [
+        "@echo off",
+        "chcp 65001 >nul",
+        "setlocal",
+        "REM Blackwell-isolated pi launcher (package lives in ..\\pi)",
+        "REM PI_CODING_AGENT_DIR overrides pi default ~/.pi/agent - never user profile.",
+        "REM Absolute anchors first: %~dp0 is unreliable under the spaced-path launch chain.",
+        &format!("set \"PKG={pkg_abs}\""),
+        "if not exist \"%PKG%\\pi.exe\" set \"PKG=%~dp0..\\pi\"",
+        "if not defined PI_CODING_AGENT_DIR (",
+        &format!("  if exist \"{home_abs}\\\" ("),
+        &format!("    set \"PI_CODING_AGENT_DIR={home_abs}\""),
+        "  ) else (",
+        "    set \"PI_CODING_AGENT_DIR=%PKG%\\..\\..\\..\\config\\external-tools\\pi-home\"",
+        "  )",
+        ")",
+        "if not defined PI_SUBAGENT_PI_BINARY set \"PI_SUBAGENT_PI_BINARY=%PKG%\\pi.exe\"",
+        "\"%PKG%\\pi.exe\" %*",
+        "exit /b %ERRORLEVEL%",
+        "",
+    ]
+    .join("\r\n")
 }
 
 #[cfg(test)]
@@ -2059,6 +2080,7 @@ fn write_session_launch_bat(home: &Path, launcher: &Path, project: &Path) -> Res
     let pi_bin_s = package_binary().to_string_lossy().replace('"', "");
     let body = format!(
         "@echo off\r\n\
+         chcp 65001 >nul\r\n\
          setlocal\r\n\
          REM Blackwell managed — forces isolated home (never %USERPROFILE%\\.pi)\r\n\
          set \"PI_CODING_AGENT_DIR={home_s}\"\r\n\

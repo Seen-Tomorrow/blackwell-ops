@@ -1119,6 +1119,7 @@ pub fn apply_app_update_archive(
     // Silent helper: no console UI. Progress goes only to the log file.
     let helper_body = format!(
         "@echo off\r\n\
+chcp 65001 >nul\r\n\
 setlocal\r\n\
 set \"PID={pid}\"\r\n\
 set \"NEW_EXE={new_exe}\"\r\n\
@@ -1133,11 +1134,18 @@ if not errorlevel 1 (\r\n\
 )\r\n\
 timeout /t 1 /nobreak >NUL\r\n\
 >>\"%LOG%\" echo [%DATE% %TIME%] replacing executable\r\n\
+set \"COPY_ATTEMPTS=0\"\r\n\
+:copyloop\r\n\
 copy /Y \"%NEW_EXE%\" \"%DEST_EXE%\" >NUL\r\n\
-if errorlevel 1 (\r\n\
-  >>\"%LOG%\" echo [%DATE% %TIME%] copy failed\r\n\
+if not errorlevel 1 goto copyok\r\n\
+set /a COPY_ATTEMPTS+=1\r\n\
+if %COPY_ATTEMPTS% GEQ 10 (\r\n\
+  >>\"%LOG%\" echo [%DATE% %TIME%] copy failed after 10 attempts\r\n\
   exit /b 1\r\n\
 )\r\n\
+timeout /t 1 /nobreak >NUL\r\n\
+goto copyloop\r\n\
+:copyok\r\n\
 >>\"%LOG%\" echo [%DATE% %TIME%] relaunching\r\n\
 start \"\" \"%DEST_EXE%\"\r\n\
 >>\"%LOG%\" echo [%DATE% %TIME%] done\r\n\
@@ -1195,7 +1203,7 @@ pub fn apply_provider_pack_archive(
     if core {
         // Extract to temp so we never overwrite NSIS runtime/ggml-master/.
         let stage = app_root
-            .join("work")
+            .join("tmp")
             .join(format!("catalog-pack-{provider_id}-{profile}"));
         if stage.exists() {
             let _ = std::fs::remove_dir_all(&stage);

@@ -371,13 +371,14 @@ fn build_isolated_batch_script(
     // These prove whether we are stuck in env setup vs inside cmake (not elevation).
     let mut lines = vec![
         "@echo off".to_string(),
+        "chcp 65001 >nul".to_string(),
         "echo [FOUNDRY-ENV] start".to_string(),
         "set \"CUDA_PATH=\"".to_string(),
     ];
     for var in all_cuda_vars {
         lines.push(format!("set \"{var}=\""));
     }
-    lines.push(format!("echo [FOUNDRY-ENV] call vsdevcmd: {vs_devcmd}"));
+    lines.push(format!("echo [FOUNDRY-ENV] call vsdevcmd: \"{vs_devcmd}\""));
     lines.push(format!("call \"{vs_devcmd}\" -arch=amd64 -host_arch=amd64"));
     lines.push("if errorlevel 1 (echo [FOUNDRY-ENV] vsdevcmd FAILED & exit /b 1)".to_string());
     lines.push("echo [FOUNDRY-ENV] vsdevcmd ok".to_string());
@@ -1935,7 +1936,8 @@ async fn run_single_build(
     let cuda_path_forced = profile.cuda_root.to_string_lossy().to_string();
     let ml64_bin = profile
         .ml64_exe(&manifest)
-        .parent()
+        .as_deref()
+        .and_then(|p| p.parent())
         .map(|p| p.to_string_lossy().to_string());
 
     let ctx = BuildCtx {
@@ -3105,6 +3107,7 @@ pub async fn foundry_clear_sccache() -> Result<(), String> {
         let _ = tokio::task::spawn_blocking(move || {
             let mut cmd = std::process::Command::new(exe);
             cmd.arg("--stop-server")
+                .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
             #[cfg(windows)]

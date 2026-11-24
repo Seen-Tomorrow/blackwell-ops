@@ -455,6 +455,9 @@ pub(crate) fn kill_all_children() {
     for pid in pids {
         let _ = std::process::Command::new("taskkill")
             .args(["/T", "/F", "/PID", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .creation_flags(0x08000000)
             .status();
     }

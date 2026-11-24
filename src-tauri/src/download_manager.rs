@@ -1761,9 +1761,9 @@ async fn flush_download_progress(
     if speed_samples.len() >= 2 {
         let (t0, b0) = speed_samples[0];
         let (t1, b1) = *speed_samples.last().unwrap();
-        let dt_sec = (t1 - t0) as f64 / 1000.0;
+        let dt_sec = t1.saturating_sub(t0) as f64 / 1000.0;
         if dt_sec > 0.01 {
-            let raw_speed = (b1 - b0) as f64 / dt_sec;
+            let raw_speed = b1.saturating_sub(b0) as f64 / dt_sec;
             *last_speed = *last_speed * (1.0 - SPEED_SMOOTHING) + raw_speed * SPEED_SMOOTHING;
         }
     }

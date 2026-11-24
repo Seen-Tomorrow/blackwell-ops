@@ -296,32 +296,21 @@ fn extract_description(lines: &[&str], idx: &usize, _flags: &[String], _arg_toke
         return String::new();
     }
 
-    // Reconstruct description from the remaining part of the line
-    let desc = line[words[desc_start].len()
-        + (" ".repeat(desc_start).len())..]
-        .trim();
-
-    // Fallback: just take everything after the last flag segment
+    // Reconstruct description from the remaining part of the line using exact slice pointer offset
+    let byte_offset = (words[desc_start].as_ptr() as usize).saturating_sub(line.as_ptr() as usize);
+    let desc = line.get(byte_offset..).unwrap_or("").trim();
     if desc.is_empty() || desc.starts_with('-') || is_arg_token(desc) {
-        // Find the byte offset of the first descriptive word
-        let mut byte_offset = 0;
-        for w in &words[..desc_start] {
-            byte_offset += w.len() + 1; // +1 for space
-        }
-        if byte_offset < line.len() {
-            return line[byte_offset..].trim().to_string();
-        }
         return String::new();
     }
-
     desc.to_string()
 }
 
 /// Extract `(env: VAR_NAME)` from text.
 fn extract_env(text: &str) -> Option<String> {
-    let lower = text.to_lowercase();
-    if let Some(pos) = lower.find("(env: ") {
-        let rest = &text[pos + 6..];
+    let lower = text.to_ascii_lowercase();
+    let needle = "(env: ";
+    if let Some(pos) = lower.find(needle) {
+        let rest = text.get(pos + needle.len()..)?;
         if let Some(end) = rest.find(')') {
             let var = rest[..end].trim();
             if !var.is_empty() {
@@ -334,32 +323,15 @@ fn extract_env(text: &str) -> Option<String> {
 
 /// Extract default value from help text.
 fn extract_default(text: &str, _flag: &str) -> Option<serde_json::Value> {
-    let lower = text.to_lowercase();
+    let lower = text.to_ascii_lowercase();
 
-    // Pattern: (default: VALUE)
-    if let Some(pos) = lower.find("(default: ") {
-        let rest = &text[pos + 9..];
-        let val = extract_default_value(rest);
-        if let Some(v) = val {
-            return Some(v);
-        }
-    }
-
-    // Pattern: "default: VALUE" without parens
-    if let Some(pos) = lower.find("default: ") {
-        let rest = &text[pos + 9..];
-        let val = extract_default_value(rest);
-        if let Some(v) = val {
-            return Some(v);
-        }
-    }
-
-    // "defaults to VALUE unless"
-    if let Some(pos) = lower.find("defaults to ") {
-        let rest = &text[pos + 10..];
-        let val = extract_default_value(rest);
-        if let Some(v) = val {
-            return Some(v);
+    for needle in ["(default: ", "default: ", "defaults to "] {
+        if let Some(pos) = lower.find(needle) {
+            if let Some(rest) = text.get(pos + needle.len()..) {
+                if let Some(v) = extract_default_value(rest) {
+                    return Some(v);
+                }
+            }
         }
     }
 

@@ -238,6 +238,7 @@ fn write_llama_bench_batch(
 
     let body = format!(
         "@echo off\r\n\
+         chcp 65001 >nul\r\n\
          title Blackwell llama-bench\r\n\
          setlocal EnableExtensions\r\n\
          set \"BLACKWELL_LLAMA_BENCH=1\"\r\n\

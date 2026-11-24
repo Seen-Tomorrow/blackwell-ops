@@ -1260,9 +1260,9 @@ impl LogHub {
     }
 
     fn extract_load_error_reason(line: &str) -> String {
-        let lower = line.to_lowercase();
+        let lower = line.to_ascii_lowercase();
         if let Some(idx) = lower.find("exiting due to") {
-            let tail = line[idx..].trim();
+            let tail = line.get(idx..).unwrap_or("").trim();
             let reason = tail
                 .strip_prefix("exiting due to")
                 .or_else(|| tail.strip_prefix("Exiting due to"))

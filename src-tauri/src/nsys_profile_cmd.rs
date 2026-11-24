@@ -499,8 +499,8 @@ fn write_nsys_batch(
         echo {stop_hint}\r\n\
         echo.\r\n\
          set \"PATH={path}\"\r\n\
-         set \"CUDA_PATH={cuda_root_q}\"\r\n\
-         set \"{cuda_var}={cuda_root_q}\"\r\n\
+         set \"CUDA_PATH={cuda_root}\"\r\n\
+         set \"{cuda_var}={cuda_root}\"\r\n\
          set \"CUDA_VISIBLE_DEVICES={gpu}\"\r\n\
          set \"LLAMA_LOG_COLORS=on\"\r\n\
          cd /d {model_dir_q}\r\n\
@@ -521,7 +521,7 @@ fn write_nsys_batch(
         gpu_hint = gpu_hint,
         stop_hint = stop_hint,
         path = path_value,
-        cuda_root_q = batch_quote(&cuda_root),
+        cuda_root = cuda_root,
         cuda_var = cuda.cuda_path_var,
         trace_cmd = trace_cmd,
         trace_run = trace_cmd,

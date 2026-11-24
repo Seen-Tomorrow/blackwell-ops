@@ -18,7 +18,8 @@ use crate::types::{
 
 /// True when the name ends in `.gguf`, whatever the extension's case.
 fn has_gguf_ext(name: &str) -> bool {
-    name.len() >= 5 && name[name.len() - 5..].eq_ignore_ascii_case(".gguf")
+    let bytes = name.as_bytes();
+    bytes.len() >= 5 && bytes[bytes.len() - 5..].eq_ignore_ascii_case(b".gguf")
 }
 
 /// Drop entries that belong to an in-progress download. Returns how many were dropped.
@@ -215,8 +216,8 @@ fn parse_name_and_quant(filename: &str) -> (String, String) {
     let without_ext = filename.trim_end_matches(".gguf");
     let q = extract_quant(filename);
     if q != "GGUF" {
-        let q_lower = q.to_lowercase();
-        if let Some(pos) = without_ext.to_lowercase().rfind(&q_lower) {
+        let q_lower = q.to_ascii_lowercase();
+        if let Some(pos) = without_ext.to_ascii_lowercase().rfind(&q_lower) {
             return (without_ext[..pos].trim_end_matches('-').trim_end_matches('.').to_string(), q);
         }
     }
@@ -801,17 +802,10 @@ pub fn strip_shard_pattern(filename: &str) -> String {
 }
 
 fn find_case_insensitive_rfind(s: &str, pattern: &str) -> Option<usize> {
-    let s_lower = s.to_lowercase();
-    let p_lower = pattern.to_lowercase();
-    if pattern.is_empty() || pattern.len() > s_lower.len() {
+    if pattern.is_empty() || pattern.len() > s.len() {
         return None;
     }
-    for i in (0..=s_lower.len() - pattern.len()).rev() {
-        if s_lower[i..i + pattern.len()] == p_lower {
-            return Some(i);
-        }
-    }
-    None
+    s.to_ascii_lowercase().rfind(&pattern.to_ascii_lowercase())
 }
 
 /// Extract quant type from filename. Returns known quant string or fallback.
@@ -961,23 +955,23 @@ pub fn extract_quant(filename: &str) -> String {
     let without_ext = &normalized[..normalized.len() - 5];
 
     // Look for "27B-Q8_0" pattern — quant after size suffix
-    let chars: Vec<char> = without_ext.chars().collect();
-    for i in (1..chars.len()).rev() {
-        if (chars[i] == 'B' || chars[i] == 'b')
-            && i > 0
-            && chars[i - 1].is_ascii_digit()
-            && i + 1 < chars.len()
-            && (chars[i + 1] == '-' || chars[i + 1] == '.')
+    let bytes = without_ext.as_bytes();
+    for i in (1..bytes.len()).rev() {
+        if (bytes[i] == b'B' || bytes[i] == b'b')
+            && bytes[i - 1].is_ascii_digit()
+            && i + 1 < bytes.len()
+            && (bytes[i + 1] == b'-' || bytes[i + 1] == b'.')
         {
-            let suffix = &without_ext[i + 2..];
-            if !suffix.is_empty() {
-                if let Some(q) = match_known_quant_in(suffix) {
-                    return q;
+            if let Some(suffix) = without_ext.get(i + 2..) {
+                if !suffix.is_empty() {
+                    if let Some(q) = match_known_quant_in(suffix) {
+                        return q;
+                    }
+                    if let Some(q) = find_quant_segment_reverse(&normalized) {
+                        return q;
+                    }
+                    return fallback_quant(&normalized);
                 }
-                if let Some(q) = find_quant_segment_reverse(&normalized) {
-                    return q;
-                }
-                return fallback_quant(&normalized);
             }
         }
     }
@@ -1171,11 +1165,7 @@ pub fn check_hf_files_against_disk(
 
         if lfs_match {
             if let Some(lh) = log_hub {
-                let oid_preview = if gf.lfs_oid.len() > 16 {
-                    &gf.lfs_oid[..16]
-                } else {
-                    gf.lfs_oid.as_str()
-                };
+                let oid_preview: String = gf.lfs_oid.chars().take(16).collect();
                 lh.emit_console_line(
                     BlackwellOutputConsoleCategory::Debug,
                     &format!("[DISK DEBUG] {} → LFS match (oid: {})", gf.r#type, oid_preview),
@@ -1538,5 +1528,18 @@ mod tests {
         let ex = catalog_exclusions_from_downloads(&tasks, &HashMap::new());
         assert_eq!(ex.dest_paths.len(), 1);
         assert!(ex.shard_groups.is_empty());
+    }
+
+    #[test]
+    fn utf8_filenames_do_not_panic_in_catalog_parsers() {
+        assert!(!has_gguf_ext("日本語.txt"));
+        assert!(has_gguf_ext("模型.GGUF"));
+        let (name1, q1) = parse_name_and_quant("café-7B-Q4_K_M.gguf");
+        assert_eq!(q1, "Q4_K_M");
+        assert!(name1.contains("café"));
+        let (name2, q2) = parse_name_and_quant("İ-Q4_K_M.gguf");
+        assert_eq!(q2, "Q4_K_M");
+        assert!(!name2.is_empty());
+        assert!(find_case_insensitive_rfind("模型-00001-of-00002.gguf", "-of-").is_some());
     }
 }

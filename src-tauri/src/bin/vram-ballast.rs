@@ -235,14 +235,19 @@ impl VramReader {
 }
 
 fn nvidia_smi_free_mib(index: u32) -> Result<(u64, u64), String> {
-    let out = Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=index,memory.total,memory.free",
-            "--format=csv,noheader,nounits",
-            "-i",
-            &index.to_string(),
-        ])
-        .output()
+    let mut cmd = Command::new("nvidia-smi");
+    cmd.args([
+        "--query-gpu=index,memory.total,memory.free",
+        "--format=csv,noheader,nounits",
+        "-i",
+        &index.to_string(),
+    ]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let out = cmd.output()
         .map_err(|e| format!("cannot run nvidia-smi: {e}"))?;
     if !out.status.success() {
         return Err(format!(

@@ -369,17 +369,21 @@ fn fits_vram(gguf_files: &[GgufFile], vram_limit_gb: u32) -> bool {
 }
 
 /// Build the reqwest Client with optional Bearer token.
-fn build_client(token: Option<&str>) -> Client {
-    let mut builder = Client::builder();
-    if let Some(t) = token {
-        builder = builder.default_headers({
-            use reqwest::header;
-            let mut headers = header::HeaderMap::new();
-            headers.insert(header::AUTHORIZATION, format!("Bearer {}", t).parse().unwrap());
-            headers
-        });
+fn build_client(token: Option<&str>) -> Result<Client, String> {
+    let mut builder = Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(60));
+    if let Some(t) = token.map(str::trim).filter(|t| !t.is_empty()) {
+        use reqwest::header;
+        let mut headers = header::HeaderMap::new();
+        let val = header::HeaderValue::from_str(&format!("Bearer {t}"))
+            .map_err(|e| format!("Invalid HF token header value: {e}"))?;
+        headers.insert(header::AUTHORIZATION, val);
+        builder = builder.default_headers(headers);
     }
-    builder.build().expect("failed to build HTTP client")
+    builder
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))
 }
 
 /// Search HF Hub for GGUF models matching the given filters.
@@ -387,7 +391,7 @@ pub async fn search_models(
     filters: &HfSearchFilters,
     token: Option<&str>,
 ) -> Result<HfSearchResponse, String> {
-    let client = build_client(token);
+    let client = build_client(token)?;
     let limit = if filters.limit == 0 { 50 } else { filters.limit };
 
     // Build query URL with search params
@@ -477,7 +481,7 @@ pub async fn list_repo_gguf_files(
     if parts.len() != 2 {
         return Err(format!("invalid repo id '{model_id}' (expected author/repo)"));
     }
-    let client = build_client(token);
+    let client = build_client(token)?;
     fetch_repo_gguf_files(&client, parts[0], parts[1]).await
 }
 
@@ -602,7 +606,7 @@ pub async fn fetch_quant_last_modified(
         return Ok(HashMap::new());
     }
 
-    let client = build_client(token);
+    let client = build_client(token)?;
     fetch_paths_last_modified(&client, namespace, repo, paths).await
 }
 
@@ -718,7 +722,7 @@ fn update_checks_from_disk(
 /// 1. /api/models/{id} — metadata (description, tags, downloads, likes)
 /// 2. /api/models/{ns}/{repo}/tree/main/ — file listing with sizes + pagination
 pub async fn get_model_info(model_id: &str, token: Option<&str>) -> Result<HfModelInfo, String> {
-    let client = build_client(token);
+    let client = build_client(token)?;
 
     // Parse namespace/repo from model_id (e.g. "unsloth/Qwen3.6-35B-A3B-GGUF")
     let parts: Vec<&str> = model_id.split('/').collect();
@@ -782,7 +786,7 @@ pub async fn check_repo_for_updates(
     }
     let (namespace, repo) = (parts[0], parts[1]);
 
-    let client = build_client(hf_token);
+    let client = build_client(hf_token)?;
     let hf_ggufs = fetch_repo_gguf_files(&client, namespace, repo).await?;
 
     let disk_results = model_catalog::check_hf_files_against_disk(
@@ -856,7 +860,7 @@ pub async fn check_local_model_update(
         crate::output_console::BlackwellOutputConsoleLineStyle::Highlight,
     );
 
-    let client = build_client(hf_token);
+    let client = build_client(hf_token)?;
     let hf_ggufs = fetch_repo_gguf_files(&client, namespace, repo).await?;
 
     // Prefer the artifact whose own file name matches this file: a label is not unique

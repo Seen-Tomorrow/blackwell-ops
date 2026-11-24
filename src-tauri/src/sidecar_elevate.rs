@@ -362,6 +362,7 @@ pub fn wt_start_bridge_bat_body(wt: &Path, session_bat: &Path) -> String {
     let session_s = path_for_cmd(session_bat).to_string_lossy().replace('"', "");
     format!(
         "@echo off\r\n\
+         chcp 65001 >nul\r\n\
          REM Blackwell managed — gsudo elevates this helper; start opens WT\r\n\
          start \"\" \"{wt_s}\" cmd /c call \"{session_s}\"\r\n"
     )
@@ -451,7 +452,7 @@ pub fn run_privileged_batch(
     let _ = std::fs::create_dir_all(&tmp_dir);
     let script_path = tmp_dir.join(format!("gpu-priv-{}.cmd", std::process::id()));
 
-    let mut script = String::from("@echo off\r\nsetlocal\r\n");
+    let mut script = String::from("@echo off\r\nchcp 65001 >nul\r\nsetlocal\r\n");
     if let Some(dir) = cwd.filter(|p| p.is_dir()) {
         script.push_str(&format!(
             "cd /d \"{}\"\r\n",
