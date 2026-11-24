@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import { useFoundry } from "../hooks/useFoundry";
+import { useTauriListen } from "../hooks/useTauriListen";
 import { buildEngineOverview, modeSourceLabel } from "../lib/engineOverview";
 import EngineVersionLabel from "./EngineVersionLabel";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
@@ -86,6 +87,15 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
       setError(typeof e === "string" ? e : "Could not read the engine state");
     }
   }, [onProvidersChange]);
+
+  useEffect(() => {
+    if (external && external.length > 0) setProviders(external);
+  }, [external]);
+
+  useTauriListen("binary-update:download-complete", () => {
+    probedRef.current = false;
+    void refresh();
+  });
 
   useEffect(() => {
     void refresh();

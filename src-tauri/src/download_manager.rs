@@ -2377,6 +2377,11 @@ async fn finalize_provider_pack_worker(
             log::info!(
                 "[download] Provider pack extracted OK, activating {provider_id}/{profile}"
             );
+            let probed = crate::engine_build_info::get_binary_build_info(
+                server.to_string_lossy().into_owned(),
+            )
+            .await
+            .ok();
             let activate = match &app_handle {
                 Some(handle) => crate::binary_update::activate_provider_pack(
                     handle,
@@ -2384,6 +2389,7 @@ async fn finalize_provider_pack_worker(
                     &profile,
                     &server,
                     &release_tag,
+                    probed,
                 ),
                 None => Err("App session lost — restart provider download.".into()),
             };

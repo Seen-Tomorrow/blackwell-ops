@@ -32,11 +32,15 @@ $root = Split-Path -Parent $script_dir
 
 $SevenZip = Join-Path $root 'src-tauri\bin\7z.exe'
 $SevenZipDll = Join-Path $root 'src-tauri\bin\7z.dll'
+$GsudoExe = Join-Path $root 'src-tauri\bin\gsudo.exe'
 if (-not (Test-Path -LiteralPath $SevenZip)) {
     throw "Bundled 7z.exe not found at $SevenZip"
 }
 if (-not (Test-Path -LiteralPath $SevenZipDll)) {
     throw "Bundled 7z.dll not found at $SevenZipDll"
+}
+if (-not (Test-Path -LiteralPath $GsudoExe)) {
+    throw "Bundled gsudo.exe not found at $GsudoExe"
 }
 
 if (-not $Version) {
@@ -112,11 +116,12 @@ if ($template_count -eq 0) {
     throw "No provider config trees under $BundleRoot"
 }
 
-# Always ship 7z so App update apply works even on bare/minimal installs
+# Always ship 7z + gsudo so App update apply and elevated OC/driver-model work on every install
 $bin_dst = Join-Path $app_stage 'bin'
 New-Item -ItemType Directory -Path $bin_dst -Force | Out-Null
 Copy-Item -LiteralPath $SevenZip -Destination (Join-Path $bin_dst '7z.exe') -Force
 Copy-Item -LiteralPath $SevenZipDll -Destination (Join-Path $bin_dst '7z.dll') -Force
+Copy-Item -LiteralPath $GsudoExe -Destination (Join-Path $bin_dst 'gsudo.exe') -Force
 
 # pi-subagents extension (pi-ext). Always staged when present so every App update is
 # self-contained for users upgrading across multiple versions.

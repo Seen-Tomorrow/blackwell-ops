@@ -1054,10 +1054,6 @@ pub fn apply_app_update_archive(
             if !provider_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 continue;
             }
-            let name = provider_entry.file_name();
-            if name == "catalog" {
-                continue; // legacy path handled above
-            }
             let config_src = provider_entry.path().join("config");
             if !config_src.is_dir() {
                 continue;

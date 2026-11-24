@@ -11,6 +11,7 @@ import "../styles/modelhub-page.css";
 import TabPageHeader from "./TabPageHeader";
 
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
+import { useTauriListen } from "../hooks/useTauriListen";
 import { buildEngineOverview, packDownloadAction } from "../lib/engineOverview";
 import EngineVersionLabel from "./EngineVersionLabel";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
@@ -78,6 +79,11 @@ export default function SoftwareDownloads() {
       setError(typeof e === "string" ? e : "Could not read update state");
     }
   }, []);
+
+  useTauriListen("binary-update:download-complete", () => {
+    probedRef.current = false;
+    void refresh();
+  });
 
   useEffect(() => {
     void refresh();

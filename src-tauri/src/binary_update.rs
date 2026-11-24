@@ -539,6 +539,7 @@ pub fn activate_provider_pack(
     profile: &str,
     server_exe: &Path,
     release_tag: &str,
+    probed_info: Option<crate::types::BuildInfo>,
 ) -> Result<(), String> {
     // Must match managed type in main.rs: Arc<Mutex<AppConfig>> (not bare Mutex).
     let cfg_state =
@@ -562,36 +563,55 @@ pub fn activate_provider_pack(
             .downloaded_version_per_env
             .insert(profile.to_string(), tag.clone());
 
-        // A download only registers a catalogue copy. The active source is recomputed from
-        // the preference (if any) and the newest build id — an older pack must not hijack a
-        // newer local build just because it arrived later.
-        // Placeholder build-info until refresh_build_info probes llama --version.
-        if let Some(inv) = provider.inventory_per_env.get_mut(profile) {
-            if let Some(entry) = inv.catalog.as_mut() {
-                let build_date = std::fs::metadata(server_exe)
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .map(|mt| {
-                        chrono::DateTime::<chrono::Local>::from(mt)
-                            .format("%Y-%m-%d %H:%M")
-                            .to_string()
-                    })
-                    .unwrap_or_else(|| "unknown".to_string());
-                let mut info = crate::types::BuildInfo {
-                    version: "catalog".to_string(),
-                    build_date,
-                    cuda_version: None,
-                    cuda_architectures: None,
-                };
-                info = crate::engine_utils::enrich_build_info_cuda_arch(
-                    info,
-                    &provider.build_profile,
-                );
-                entry.info = Some(info.clone());
-                provider
-                    .build_info_per_env
-                    .insert(profile.to_string(), info);
+        // Build catalog info from the probed binary (or mtime placeholder if probe failed).
+        let base_info = probed_info.unwrap_or_else(|| {
+            let build_date = std::fs::metadata(server_exe)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(|mt| {
+                    chrono::DateTime::<chrono::Local>::from(mt)
+                        .format("%Y-%m-%d %H:%M")
+                        .to_string()
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+            crate::types::BuildInfo {
+                version: "catalog".to_string(),
+                build_date,
+                cuda_version: None,
+                cuda_architectures: None,
             }
+        });
+        let catalog_info =
+            crate::engine_utils::enrich_build_info_cuda_arch(base_info, &provider.build_profile);
+
+        let prev_active_build = provider
+            .build_info_per_env
+            .get(profile)
+            .and_then(|b| crate::profile_binaries::version_build_number(&b.version));
+
+        // Upsert inv.catalog unconditionally (first-time pack download has inv.catalog == None).
+        let inv = provider
+            .inventory_per_env
+            .entry(profile.to_string())
+            .or_default();
+        inv.catalog = Some(crate::types::BinaryEntry {
+            path: crate::config::to_relative_path(server_exe),
+            info: Some(catalog_info.clone()),
+        });
+
+        // Auto-activate catalog when the downloaded pack is at least as new as the active build.
+        let new_build = crate::profile_binaries::version_build_number(&catalog_info.version);
+        let should_activate = match (new_build, prev_active_build) {
+            (Some(new_b), Some(cur_b)) => new_b >= cur_b,
+            (Some(_), None) => true,
+            (None, None) => !provider.binary_source_per_env.contains_key(profile),
+            (None, Some(_)) => false,
+        };
+        if should_activate {
+            provider.binary_source_per_env.insert(
+                profile.to_string(),
+                crate::profile_binaries::SOURCE_CATALOG.to_string(),
+            );
         }
 
         crate::profile_binaries::resolve_after_source_change(provider);

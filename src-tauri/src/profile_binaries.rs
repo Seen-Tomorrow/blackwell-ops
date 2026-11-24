@@ -126,13 +126,11 @@ fn scan_catalog(
         return Some((rel, info));
     }
 
-    // Plugins (and legacy core overwrite): stamp + runtime/ tree
-    if let Some(_tag) = product_tag {
-        let runtime_abs = bundled_exe_abs(provider_id, profile);
-        if runtime_abs.is_file() {
-            // For core, only treat runtime/ as catalog when overlay is missing (legacy).
-            // For plugins, runtime/ *is* the catalog install.
-            if !is_core_provider(provider_id) || !catalog_abs.is_file() {
+    // Plugins: stamp + runtime/ tree
+    if !is_core_provider(provider_id) {
+        if let Some(_tag) = product_tag {
+            let runtime_abs = bundled_exe_abs(provider_id, profile);
+            if runtime_abs.is_file() {
                 let rel = to_relative_path(&runtime_abs);
                 let info = build_info_from_mtime(&runtime_abs, "catalog")?;
                 return Some((rel, info));
@@ -145,7 +143,7 @@ fn scan_catalog(
 
 /// Build number from an engine identity: `b11887-6050b467`, or a legacy stored
 /// `version: 0.7.0-dev (build 11869, commit …)` string.
-fn version_build_number(version: &str) -> Option<u64> {
+pub fn version_build_number(version: &str) -> Option<u64> {
     let t = version.trim();
     if let Some(rest) = t.strip_prefix('b') {
         let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
@@ -317,11 +315,19 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig) {
             .filter(|s| is_known_source(s));
 
         // Explicit pref if that source exists; otherwise the deterministic default (no mtime).
+        // Compare using the merged probed BuildInfo in `inv` (not the raw mtime placeholders).
+        let inv_pair = |e: &Option<crate::types::BinaryEntry>| -> Option<(String, BuildInfo)> {
+            e.as_ref()
+                .and_then(|b| b.info.clone().map(|i| (b.path.clone(), i)))
+        };
+        let resolved_bundled = inv_pair(&inv.bundled);
+        let resolved_foundry = inv_pair(&inv.foundry);
+        let resolved_catalog = inv_pair(&inv.catalog);
         let source = match pref {
             Some(SOURCE_CATALOG) if catalog.is_some() => SOURCE_CATALOG,
             Some(SOURCE_BUNDLED) if show_bundled_as_nsis.is_some() => SOURCE_BUNDLED,
             Some(SOURCE_FOUNDRY) if foundry.is_some() => SOURCE_FOUNDRY,
-            _ => auto_pick_source(&show_bundled_as_nsis, &foundry, &catalog),
+            _ => auto_pick_source(&resolved_bundled, &resolved_foundry, &resolved_catalog),
         };
 
         let active = match source {

@@ -268,6 +268,22 @@ function App() {
     })();
   });
 
+  useTauriListen<{ providerId?: string }>("binary-update:download-complete", (payload) => {
+    void (async () => {
+      try {
+        const updated = await invoke<ProviderConfig[]>("refresh_build_info", {
+          providerId: payload.providerId || "ggml-master",
+        });
+        if (updated.length > 0) {
+          setProviders(updated);
+          window.dispatchEvent(new CustomEvent(EVENTS.reloadProviders));
+        }
+      } catch (err) {
+        console.error("Failed to refresh build info after pack download:", err);
+      }
+    })();
+  });
+
   /**
    * Check ONE selected model against the Hub.
    *

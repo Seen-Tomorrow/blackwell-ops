@@ -60,22 +60,11 @@ async fn stop_brain_handle(handle: BrainHandle) {
     }
 }
 
-/// Start the SSE fusion brain for an engine slot if `/events/sse` is supported.
+/// Start the SSE fusion brain for an engine slot.
 pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
-    let sse_capable = crate::engine_events::probe(config.port).await;
     let old = BRAIN_REGISTRY.lock().remove(&config.slot_idx);
     if let Some(handle) = old {
         stop_brain_handle(handle).await;
-    }
-
-    if !sse_capable {
-        log::info!(
-            "[fusion] slot={} port={} sse_capable=false — fusion off",
-            config.slot_idx,
-            config.port
-        );
-        emit::remove_fusion_snapshot(config.slot_idx);
-        return;
     }
 
     crate::engine_events::restart(config.port);

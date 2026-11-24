@@ -106,6 +106,11 @@ The CUDA runtime is now **the dominant payload** (383 of 523 MB; the engine is 1
 work belongs there, not in the engine — and the 12.8 runtime is 424 MB, which is why STABLE is a big
 optional pack.
 
+**Future optimization (MinGit):** `bin/git/` (96.6 MB raw / 23.5 MB compressed) is used exclusively by
+Foundry (`reactor_foundry/git.rs` and `reactor_foundry/mod.rs`). Moving MinGit from the NSIS installer
+into the Foundry Build Toolchain pack would trim ~23.5 MB off the base installer for users who never
+build locally (deferred for now).
+
 One exception to the byte invariance: on a driver below CUDA 13.4's minimum the seed cannot run
 (§0.1), so B costs that segment the engine twice. That is a segment judgement, not a byte one.
 

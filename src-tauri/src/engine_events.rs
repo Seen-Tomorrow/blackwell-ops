@@ -2,13 +2,12 @@
 //!
 //! The engine broadcasts the events its per-request stream already carries, so an observer that
 //! does not own the request (fusion) can meter PP and TG without polling `/slots`, scraping
-//! `/metrics` or parsing stderr. One reader task per port keeps a per-lane snapshot; the poll
-//! brain consumes it as an overlay and the SSE-only brain (`fusion/sse.rs`) reads it as its whole
-//! source. `probe()` is the one-shot launch capability check, and `request_epoch()` gives
-//! stream-only callers request boundaries that do not depend on catching a transient idle tick.
+//! `/metrics` or parsing stderr. One reader task per port keeps a per-lane snapshot; the SSE
+//! brain (`fusion/sse.rs`) reads it as its whole source. `request_epoch()` gives stream-only
+//! callers request boundaries that do not depend on catching a transient idle tick.
 //!
 //! `BLACKWELL_ENGINE_SSE=0|false|off|no` disables the reader (legacy escape hatch); otherwise it is
-//! on and an engine without the endpoint answers one 404 and leaves the poll path alone.
+//! on and an engine without `/events/sse` answers one 404 and stops the reader cleanly.
 //!
 //! Event shapes are defined by the engine patch `foundry/patches/ggml-master-telemetry-sse.patch`
 //! (`docs/ENGINE-TELEMETRY-SSE-HANDOFF.md`).
@@ -393,32 +392,6 @@ pub fn aggregate(port: u16) -> Option<SlotTelemetry> {
     Some(out)
 }
 
-/// One-shot capability probe: true when this port serves `/events/sse`.
-///
-/// The handler writes a comment frame immediately, so `send()` resolves at the response headers
-/// and the body is dropped at once — the probe costs one connection and leaves no reader behind.
-/// Bounded by a 300 ms timeout: a listening engine without the patch answers 404 immediately, a
-/// port that is not up yet refuses immediately, and a silent endpoint cannot stall the launch.
-///
-/// This reports what the *engine* can do; callers still gate the SSE brain on [`enabled`].
-pub async fn probe(port: u16) -> bool {
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_millis(300))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-    match client
-        .get(format!("http://127.0.0.1:{port}/events/sse"))
-        .send()
-        .await
-    {
-        Ok(resp) => resp.status().is_success(),
-        Err(_) => false,
-    }
-}
-
 /// Start the reader for a port. Idempotent; no-op unless `BLACKWELL_ENGINE_SSE=1`.
 pub fn ensure(port: u16) {
     if !enabled() {
@@ -451,32 +424,50 @@ pub fn restart(port: u16) {
     ensure(port);
 }
 
+enum StreamOutcome {
+    Closed,
+    NotFound,
+    Retryable(String),
+}
+
 async fn run(port: u16) {
     let url = format!("http://127.0.0.1:{port}/events/sse");
+    let mut connected_once = false;
     let mut failures: u32 = 0;
     loop {
         if !enabled() {
             return;
         }
-        match stream_once(port, &url).await {
-            Ok(()) => {
+        match stream_once(port, &url, &mut connected_once).await {
+            StreamOutcome::Closed => {
                 failures = 0;
                 // clean close = engine gone; its numbers must not outlive it
                 forget_port(port);
                 log::info!("[engine-events] stream closed port={port}");
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
-            Err(e) => {
-                failures = failures.saturating_add(1);
-                // An engine without the patch (or a restarted one) must not inherit this port's
-                // previous telemetry: clear it so callers fall back to polling immediately.
+            StreamOutcome::NotFound => {
                 forget_port(port);
-                // Console stays clean: a disconnect is expected whenever the engine is stopped,
-                // restarting, or running an unpatched binary. RUST_LOG=debug still shows it.
+                log::info!(
+                    "[engine-events] port={port} returned 404 — /events/sse unsupported; stopping reader"
+                );
+                if let Ok(mut map) = started().lock() {
+                    map.remove(&port);
+                }
+                return;
+            }
+            StreamOutcome::Retryable(e) => {
+                failures = failures.saturating_add(1);
+                forget_port(port);
                 log::debug!("[engine-events] port={port} disconnected: {e}");
+                let delay = if !connected_once && failures <= 20 {
+                    std::time::Duration::from_millis(250)
+                } else {
+                    std::time::Duration::from_secs(u64::from(failures.clamp(1, 5)))
+                };
+                tokio::time::sleep(delay).await;
             }
         }
-        let secs = (2u64 * u64::from(failures.max(1))).min(30);
-        tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
     }
 }
 
@@ -490,15 +481,18 @@ fn forget_port(port: u16) {
     }
 }
 
-async fn stream_once(port: u16, url: &str) -> Result<(), String> {
-    let resp = reqwest::Client::new()
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
+async fn stream_once(port: u16, url: &str, connected_once: &mut bool) -> StreamOutcome {
+    let resp = match reqwest::Client::new().get(url).send().await {
+        Ok(r) => r,
+        Err(e) => return StreamOutcome::Retryable(e.to_string()),
+    };
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return StreamOutcome::NotFound;
     }
+    if !resp.status().is_success() {
+        return StreamOutcome::Retryable(format!("HTTP {}", resp.status()));
+    }
+    *connected_once = true;
     log::info!("[engine-events] attached port={port}");
     if let Ok(mut live) = live_ports().lock() {
         live.insert(port);
@@ -523,14 +517,14 @@ async fn stream_once(port: u16, url: &str) -> Result<(), String> {
                 if let Ok(mut live) = live_ports().lock() {
                     live.remove(&port);
                 }
-                return Err(e.to_string());
+                return StreamOutcome::Retryable(e.to_string());
             }
         }
     }
     if let Ok(mut live) = live_ports().lock() {
         live.remove(&port);
     }
-    Ok(())
+    StreamOutcome::Closed
 }
 
 /// Split complete SSE records out of `buf`, leaving the trailing partial record in place.
@@ -729,21 +723,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn probe_reports_only_a_successful_stream() {
-        assert!(probe(fake_http("200 OK").await).await, "an SSE endpoint is capable");
-        assert!(
-            !probe(fake_http("404 Not Found").await).await,
-            "an unpatched engine (404) must not be called SSE-capable"
-        );
-    }
+    async fn stream_once_stops_on_404_and_retries_when_unready() {
+        let port_404 = fake_http("404 Not Found").await;
+        let mut connected = false;
+        let out = stream_once(
+            port_404,
+            &format!("http://127.0.0.1:{port_404}/events/sse"),
+            &mut connected,
+        )
+        .await;
+        assert!(matches!(out, StreamOutcome::NotFound));
+        assert!(!connected);
 
-    #[tokio::test]
-    async fn probe_is_false_when_nothing_listens() {
-        // Bind then drop: the port is closed again, so the connect is refused immediately.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
+        let closed_port = listener.local_addr().unwrap().port();
         drop(listener);
-        assert!(!probe(port).await);
+        let out = stream_once(
+            closed_port,
+            &format!("http://127.0.0.1:{closed_port}/events/sse"),
+            &mut connected,
+        )
+        .await;
+        assert!(matches!(out, StreamOutcome::Retryable(_)));
+        assert!(!connected);
     }
 
     #[test]
