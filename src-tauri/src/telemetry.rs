@@ -52,6 +52,8 @@ pub struct GpuInfo {
     pub pcie_tx_mib_per_s: Option<f32>,
     /// Current memory clock, MHz (NVML).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core_clock_mhz: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mem_clock_mhz: Option<u32>,
     /// `nvmlClocksThrottleReason_t` bitmask (thermal/power/idle reasons).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -347,6 +349,7 @@ fn nvml_gpus() -> Option<Vec<GpuInfo>> {
                     pcie_width_max: s.metrics.width_max,
                     pcie_rx_mib_per_s: s.metrics.rx_mib_per_s,
                     pcie_tx_mib_per_s: s.metrics.tx_mib_per_s,
+                    core_clock_mhz: s.metrics.core_clock_mhz,
                     mem_clock_mhz: s.metrics.mem_clock_mhz,
                     throttle_reasons: s.metrics.throttle_reasons,
                 }
@@ -457,6 +460,7 @@ async fn run_nvidia_smi() -> Result<Vec<GpuInfo>, String> {
             pcie_width_max: metrics.width_max,
             pcie_rx_mib_per_s: metrics.rx_mib_per_s,
             pcie_tx_mib_per_s: metrics.tx_mib_per_s,
+            core_clock_mhz: metrics.core_clock_mhz,
             mem_clock_mhz: metrics.mem_clock_mhz,
             throttle_reasons: metrics.throttle_reasons,
         });
@@ -831,6 +835,7 @@ mod tests {
             pcie_width_max: None,
             pcie_rx_mib_per_s: None,
             pcie_tx_mib_per_s: None,
+            core_clock_mhz: None,
             mem_clock_mhz: None,
             throttle_reasons: None,
         }

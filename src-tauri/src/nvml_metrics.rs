@@ -24,6 +24,8 @@ use std::time::{Duration, Instant};
 const NVML_PCIE_UTIL_TX_BYTES: u32 = 0;
 /// `nvmlPcieUtilCounter_t`: transaction bytes out of the device.
 const NVML_PCIE_UTIL_RX_BYTES: u32 = 1;
+/// `nvmlClocks_t`: graphics/core clock.
+const NVML_CLOCK_GRAPHICS: u32 = 0;
 /// `nvmlClocks_t`: memory clock.
 const NVML_CLOCK_MEM: u32 = 2;
 /// `nvmlTemperatureSensors_t`: die sensor.
@@ -79,6 +81,8 @@ pub struct GpuMetrics {
     pub rx_mib_per_s: Option<f32>,
     /// Bytes/s out of the GPU, MiB/s.
     pub tx_mib_per_s: Option<f32>,
+    /// Current graphics/core clock, MHz.
+    pub core_clock_mhz: Option<u32>,
     /// Current memory clock, MHz.
     pub mem_clock_mhz: Option<u32>,
     /// `nvmlClocksThrottleReason_t` bitmask.
@@ -275,6 +279,7 @@ unsafe fn read_fast_metrics(lib: &Library, dev: *mut c_void) -> GpuMetrics {
         gen_max: read_u32(lib, b"nvmlDeviceGetMaxPcieLinkGeneration\0", dev),
         width: read_u32(lib, b"nvmlDeviceGetCurrPcieLinkWidth\0", dev),
         width_max: read_u32(lib, b"nvmlDeviceGetMaxPcieLinkWidth\0", dev),
+        core_clock_mhz: read_u32_arg(lib, b"nvmlDeviceGetClockInfo\0", dev, NVML_CLOCK_GRAPHICS),
         mem_clock_mhz: read_u32_arg(lib, b"nvmlDeviceGetClockInfo\0", dev, NVML_CLOCK_MEM),
         throttle_reasons: read_u64(lib, b"nvmlDeviceGetCurrentClocksThrottleReasons\0", dev),
         // Filled by `read_throughput` — never read on the fast path (see PCIE_SAMPLE_TTL).

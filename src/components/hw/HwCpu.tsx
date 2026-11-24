@@ -9,13 +9,11 @@ const SURFACE = "phosphor-display-surface";
 interface HwCpuProps {
   cpu: CpuInfo;
   coresOpen: boolean;
-  /** Compact IS the closed-cores shape: header + average bar, nothing to expand. */
-  compact: boolean;
   onToggleCores: () => void;
 }
 
-export default function HwCpu({ cpu, coresOpen, compact, onToggleCores }: HwCpuProps) {
-  const showCores = coresOpen && !compact;
+export default function HwCpu({ cpu, coresOpen, onToggleCores }: HwCpuProps) {
+  const showCores = coresOpen;
   const avg = Math.round(cpu.avg_usage_percent);
   const liveMhz = cpu.current_clock_mhz ?? 0;
   const baseMhz = cpu.max_clock_mhz ?? 0;
@@ -49,11 +47,9 @@ export default function HwCpu({ cpu, coresOpen, compact, onToggleCores }: HwCpuP
         </p>
       </div>
       <div className="hw-cpu__head-right">
-        {!compact && (
-          <span className="hw-cpu__cores-badge" data-on={coresOpen ? "true" : "false"}>
-            CORES {coresOpen ? "ON" : "OFF"}
-          </span>
-        )}
+        <span className="hw-cpu__cores-badge" data-on={coresOpen ? "true" : "false"}>
+          CORES {coresOpen ? "ON" : "OFF"}
+        </span>
         <div className="hw-cpu__hero" data-mhz={showCores ? "true" : "false"} title={heroTitle}>
           <span className="hw-cpu__hero-val">{heroVal}</span>
           <span className="hw-cpu__hero-unit">{heroUnit}</span>
@@ -64,21 +60,17 @@ export default function HwCpu({ cpu, coresOpen, compact, onToggleCores }: HwCpuP
 
   return (
     <div className={`hw-cpu ${SURFACE}`} data-cores={showCores ? "open" : "closed"}>
-      {compact ? (
-        <div className="hw-cpu__head">{head}</div>
-      ) : (
-        <div
-          className="hw-cpu__head hw-cpu__head--toggle"
-          role="button"
-          tabIndex={0}
-          onClick={onToggleCores}
-          onKeyDown={onHeadKeyDown}
-          title={coresOpen ? "Hide per-core grid" : "Show per-core grid"}
-          aria-pressed={coresOpen}
-        >
-          {head}
-        </div>
-      )}
+      <div
+        className="hw-cpu__head hw-cpu__head--toggle"
+        role="button"
+        tabIndex={0}
+        onClick={onToggleCores}
+        onKeyDown={onHeadKeyDown}
+        title={coresOpen ? "Hide per-core grid" : "Show per-core grid"}
+        aria-pressed={coresOpen}
+      >
+        {head}
+      </div>
       <div className="hw-cpu__track">
         <HwFill className="hw-cpu__fill" fill={cpuAvgFill(avg)} percent={avg} />
       </div>

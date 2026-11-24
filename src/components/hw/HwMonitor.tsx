@@ -64,12 +64,9 @@ function HwMonitor({ placement }: { placement: HwMonitorPlacement }) {
     handleSelectGpu,
   } = useGpuControl({ pollDevices: ocOpen });
 
-  const toggleDensity = useCallback(() => {
-    setDensity((prev) => {
-      const next: HwMonitorDensity = prev === "full" ? "compact" : "full";
-      saveHwMonitorDensity(next);
-      return next;
-    });
+  const setDensityMode = useCallback((next: HwMonitorDensity) => {
+    setDensity(next);
+    saveHwMonitorDensity(next);
   }, []);
 
   const toggleCores = useCallback(() => {
@@ -150,19 +147,27 @@ function HwMonitor({ placement }: { placement: HwMonitorPlacement }) {
               OC
             </button>
           )}
-          <button
-            type="button"
-            className="hw-mon__chip"
-            onClick={toggleDensity}
-            aria-pressed={compact}
-            title={
-              compact
-                ? "Widget density: COMPACT — click for full readings (clocks, PCIe)"
-                : "Widget density: FULL — click for compact widgets (no clocks or PCIe rows)"
-            }
-          >
-            {compact ? "CMPT" : "FULL"}
-          </button>
+          <div className="hw-mon__seg" role="group" aria-label="HW monitor density">
+            <button
+              type="button"
+              className="hw-mon__seg-btn"
+              data-active={compact ? "1" : undefined}
+              onClick={() => setDensityMode("compact")}
+              title="Compact widgets (hide GPU clocks and PCIe rows)"
+            >
+              CMPT
+            </button>
+            <button
+              type="button"
+              className="hw-mon__seg-btn"
+              data-active={!compact ? "1" : undefined}
+              onClick={() => setDensityMode("full")}
+              title="Full readings (show GPU clocks and PCIe rows)"
+            >
+              FULL
+            </button>
+          </div>
+          <span className="hw-mon__sep" aria-hidden="true" />
           <label
             className="hw-mon__dim"
             title={`HW monitor dim — ${Math.round(dim * 100)}% (widgets only; header stays full)`}
@@ -184,14 +189,19 @@ function HwMonitor({ placement }: { placement: HwMonitorPlacement }) {
 
       {ocOpen && hasGpus && (
         <div className="hw-mon__oc" role="region" aria-label="GPU overclock">
-          <GpuOverclockPanel layout="rail" defaultExpanded {...ocPanelProps} />
+          <GpuOverclockPanel
+            layout="rail"
+            defaultExpanded
+            onClose={() => setOcOpen(false)}
+            {...ocPanelProps}
+          />
         </div>
       )}
 
       <div className="hw-mon__body">
         <HwTotals gpus={gpus} systemInfo={systemInfo} />
         {cpu && (
-          <HwCpu cpu={cpu} coresOpen={cpuCoresOpen} compact={compact} onToggleCores={toggleCores} />
+          <HwCpu cpu={cpu} coresOpen={cpuCoresOpen} onToggleCores={toggleCores} />
         )}
         {gpus.map((gpu) => (
           <HwGpu

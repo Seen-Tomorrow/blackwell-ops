@@ -94,7 +94,7 @@
   --setup-pad-y: clamp(8px, 1vh, 12px);
   --setup-gap: clamp(6px, 0.9vh, 10px);
   padding: var(--setup-pad-y) var(--setup-pad-x);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   min-height: 0;
   max-height: 100%;
   display: flex;
@@ -1109,7 +1109,7 @@
 .vram-fc__launch-summary {
   margin: 0;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(15px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
   letter-spacing: 0.015em;
@@ -1145,7 +1145,7 @@
 }
 
 .vram-fc-placement__label {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(9px * var(--vram-fc-scale, 1.12));
   font-weight: 600;
   letter-spacing: 0.12em;
@@ -1165,7 +1165,7 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--theme-provider-pill-bg) 55%, transparent);
   color: var(--theme-provider-pill-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(9px * var(--vram-fc-scale, 1.12));
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -1291,7 +1291,7 @@
 /* LEARNED / kind — same family as value-chip / provider pills */
 .vram-fc-measure__source .vram-fc-source__kind {
   padding: 1px 6px;
-  border-radius: 0.125rem;
+  border-radius: 0.1875rem;
   border: 1px solid var(--display-face-source-kind-border);
   background: var(--display-face-source-kind-bg);
   box-shadow: 0 1px 2px var(--fixed-black-a28);
@@ -1576,7 +1576,7 @@
 }
 .vram-fc-need-frame__precision-label {
   margin-right: 2px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(6.5px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1608,7 +1608,7 @@
   align-items: center;
   justify-content: center;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(13.5px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -1777,7 +1777,7 @@
   justify-content: center;
   gap: 2px;
   padding: 2px 3px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   color: var(--display-face-fc-label-fg, var(--display-face-text));
   background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent) 14%, transparent));
   border-right: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent) 26%, transparent));
@@ -1861,7 +1861,7 @@
   background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent) 14%, transparent));
   border-right: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent) 26%, transparent));
   color: var(--display-face-fc-label-fg, var(--display-face-text));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   line-height: 1;
   user-select: none;
   white-space: nowrap;
@@ -1901,7 +1901,7 @@
   padding: 0 6px;
   background: var(--display-face-fc-label-bg, color-mix(in srgb, var(--theme-accent) 14%, transparent));
   border-left: 1px solid var(--display-face-fc-label-border, color-mix(in srgb, var(--theme-accent) 26%, transparent));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   line-height: 1;
   white-space: nowrap;
   color: var(--display-face-fc-label-fg, var(--display-face-text));
@@ -2064,7 +2064,7 @@
   align-items: center;
   justify-content: flex-end;
   padding: 0 calc(8px * var(--vram-fc-scale, 1.12));
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-sans);
   /* Match NEED hero number */
   font-size: calc(20px * var(--vram-fc-scale, 1.12));
   font-weight: 800;
@@ -2135,7 +2135,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(6.4px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -2176,7 +2176,7 @@
   border: 1px solid var(--theme-provider-pill-border);
   background: var(--theme-provider-pill-bg);
   color: var(--theme-provider-pill-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: var(--type-label);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -2265,7 +2265,7 @@
   margin: 0 0 7px;
   padding-bottom: 6px;
   border-bottom: 1px solid color-mix(in srgb, var(--display-face-recap-text) 12%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: var(--type-body);
   font-weight: 600;
   line-height: 1.35;
@@ -2281,7 +2281,7 @@
   margin-top: 4px;
 }
 .vram-fc-recap__k {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: var(--type-micro);
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -2289,7 +2289,7 @@
   padding-top: 2px;
 }
 .vram-fc-recap__v {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-body);
   font-weight: 600;
   line-height: 1.35;
@@ -2313,7 +2313,7 @@
   margin-top: 7px;
   padding-top: 5px;
   border-top: 1px solid color-mix(in srgb, var(--display-face-recap-text) 10%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: var(--type-micro);
   letter-spacing: 0.08em;
   color: color-mix(in srgb, var(--display-face-recap-text-muted) 70%, transparent);
@@ -2357,7 +2357,7 @@
   justify-content: flex-end;
 }
 .vram-fc-source__curve-hint {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(7.5px * var(--vram-fc-scale, 1.12));
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -2418,7 +2418,7 @@
 }
 
 .vram-fc-source__lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: var(--vram-fc-fs-micro);
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -2433,7 +2433,7 @@
   align-items: center;
   gap: 3px;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(7.5px * var(--vram-fc-scale));
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -2739,7 +2739,7 @@
 .gpu-topology-overflow {
   flex: 0 0 auto;
   margin-top: 2px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(7px * var(--vram-fc-scale, 1.12));
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2774,7 +2774,7 @@
 .gpu-card-name {
   flex: 1 1 auto;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-sans);
   font-size: calc(9px * var(--vram-fc-scale, 1.12));
   line-height: 1.15;
   white-space: nowrap;
@@ -2784,7 +2784,7 @@
 
 .gpu-card__pct {
   flex-shrink: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: calc(8px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -2870,7 +2870,7 @@
 
 .gpu-card__bar-need,
 .gpu-card__bar-cap {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: calc(8px * var(--vram-fc-scale, 1.12));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -3159,7 +3159,7 @@
   width: auto;
   min-width: 0;
   flex-shrink: 0;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-sans);
   font-size: var(--type-micro);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3448,7 +3448,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   line-height: 1;
   white-space: nowrap;
@@ -3526,7 +3526,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
   justify-items: end;
   max-width: 100%;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   line-height: 1.1;
   color: color-mix(in srgb, var(--theme-text) 70%, transparent);
@@ -3681,7 +3681,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 
 .fusion-bench-latch__label {
   font-size: var(--type-hairline);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
@@ -3689,7 +3689,7 @@ mult chip. * (Do not chain unfinished selectors — a prior strip accidentally p
 
 .fusion-bench-latch__action {
   font-size: var(--type-hairline);
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
@@ -3744,7 +3744,7 @@ html[data-industrial-bezel="brush"] {
 /* ── Display texture toggle — outline pill on bezel top ─── */
 .display-texture-toggle,
 .industrial-bezel-texture-toggle {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 500;
   letter-spacing: 0.1em;
@@ -3962,7 +3962,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-share-bezel-brand__version {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 5px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -3982,7 +3982,7 @@ html[data-industrial-bezel="brush"] {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-label);
   line-height: 1.15;
   color: color-mix(in srgb, var(--theme-text) 78%, transparent);
@@ -4124,7 +4124,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-share-menu__btn {
   text-align: left;
-  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -4284,7 +4284,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-mult-chip {
   display: inline-block;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 
 
@@ -4530,7 +4530,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-micro-cell__label,
 .fusion-ops-chip,
 .fusion-mode-seg__btn {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .fusion-identity-rail__label {
@@ -4566,7 +4566,7 @@ html[data-industrial-bezel="brush"] {
   font-size: 13px;
   letter-spacing: 0.1em;
   color: color-mix(in srgb, var(--display-face-text) 62%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   max-width: 42%;
 }
 
@@ -4722,7 +4722,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-instrument__pct {
   font-size: var(--type-sm);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   line-height: 1;
@@ -4776,7 +4776,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-instrument__value {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
@@ -4906,7 +4906,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-micro-cell__value {
   font-size: var(--type-tiny);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   white-space: nowrap;
@@ -5075,7 +5075,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-bench-row-label,
 .fusion-bench-metric__label,
 .fusion-bench-running__text {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .fusion-slot-bank__title {
@@ -5223,7 +5223,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-bench-bay__armed-label,
 .fusion-bench-bay__last-label {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -5232,7 +5232,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-bay__armed-line {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -5256,7 +5256,7 @@ html[data-industrial-bezel="brush"] {
   align-items: baseline;
   gap: 3px;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -5270,7 +5270,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-bay__last-empty {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
 }
@@ -5392,7 +5392,7 @@ html[data-industrial-bezel="brush"] {
   border: 1px solid color-mix(in srgb, var(--theme-telemetry-amber) 60%, transparent);
   background: color-mix(in srgb, var(--theme-telemetry-amber) 18%, transparent);
   color: var(--theme-telemetry-amber);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-label);
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -5450,7 +5450,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-field__lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -5480,7 +5480,7 @@ html[data-industrial-bezel="brush"] {
   border-radius: 2px;
   border: 1px solid var(--fixed-amber-500-a45);
   background: var(--fixed-amber-500-a14);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -5548,7 +5548,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-ghost__lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -5568,7 +5568,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-bench-ghost__unit {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -5632,7 +5632,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot__title {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-tiny);
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -5650,7 +5650,7 @@ html[data-industrial-bezel="brush"] {
   padding: 1px 5px;
   border-radius: 2px;
   border: 1px solid color-mix(in srgb, var(--display-face-border) 55%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -5675,7 +5675,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot__timer {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-md);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -5689,7 +5689,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot__ident {
   margin-left: auto;
   min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-tiny);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -5745,7 +5745,7 @@ html[data-industrial-bezel="brush"] {
   flex-shrink: 0;
   width: 100%;
   margin-bottom: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -5816,7 +5816,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-gpu-col__id {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -5825,7 +5825,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-gpu-col__val {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-body);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -5839,7 +5839,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-gpu-col__unit {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 5.5px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -5882,7 +5882,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-disk__lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -5915,7 +5915,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-disk__unit {
   margin-top: 3px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -5924,7 +5924,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-disk__mbit {
   margin-top: 4px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: clamp(0.65rem, 1.65vh, 0.8rem);
   min-width: 11ch;
   font-variant-numeric: tabular-nums;
@@ -5978,7 +5978,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-phase__lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -6026,7 +6026,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot-phase__progress-val {
   flex: 0 0 auto;
   min-width: 3.2ch;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -6056,7 +6056,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-ticker__empty {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   font-style: italic;
   color: color-mix(in srgb, var(--display-face-text-muted) 45%, transparent);
@@ -6064,7 +6064,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-ticker__line {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   line-height: 1.35;
   white-space: nowrap;
@@ -6089,7 +6089,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-meta__lab {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -6097,7 +6097,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-meta__val {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-tiny);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -6106,7 +6106,7 @@ html[data-industrial-bezel="brush"] {
 }
 
 .fusion-boot-meta__unit {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-hairline);
   font-weight: 600;
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
@@ -6135,7 +6135,7 @@ html[data-industrial-bezel="brush"] {
 .fusion-boot-fail__reason {
   margin: 0;
   max-width: 22rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-label);
   line-height: 1.45;
   color: var(--fixed-c-fecaca-a92);
@@ -6143,7 +6143,7 @@ html[data-industrial-bezel="brush"] {
 
 .fusion-boot-fail__hint {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--type-micro);
   letter-spacing: 0.06em;
   color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
@@ -6203,30 +6203,6 @@ html[data-industrial-bezel="brush"] {
 /* NVRAM LOG — bezel control (top-right of the frame) + the full-glass snapshot overlay.
    The overlay is a veil, not a second glass: it dims the face and covers it. No blur —
    WebView2 pegs the iGPU for as long as a live backdrop-filter is composited. */
-/* Measurement provenance: CORE = patched engine reported its own allocation, LOG = stderr parse. */
-.display-bezel-memory-src {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 4px;
-  border: 1px solid color-mix(in srgb, var(--display-face-text-muted) 26%, transparent);
-  border-radius: 2px;
-  font-size: var(--type-micro);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  line-height: 1;
-  color: color-mix(in srgb, var(--display-face-text-muted) 70%, transparent);
-}
-
-.display-bezel-memory-src--differ {
-  color: var(--fixed-amber-500);
-  border-color: color-mix(in srgb, var(--fixed-amber-500) 60%, transparent);
-}
-
-.display-bezel-memory-src--core {
-  color: var(--fixed-telemetry-green, var(--fixed-amber-500));
-  border-color: color-mix(in srgb, var(--fixed-telemetry-green, var(--fixed-amber-500)) 55%, transparent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--fixed-telemetry-green, var(--fixed-amber-500)) 40%, transparent);
-}
 
 /* Embossed into the panel, not a pill on top of it: same face as the bezel, recessed shadow, mute
    ink until hover or while the log is open, then amber. */
@@ -6273,7 +6249,7 @@ html[data-industrial-bezel="brush"] {
   /* Opaque face, not a translucent veil: a 4% pass-through left the numbers behind legible. */
   background: var(--display-face-recap-bg);
   color: var(--display-face-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Header row is the table's own: ENGINE STATE + per-state columns. */
@@ -6492,39 +6468,65 @@ html[data-industrial-bezel="brush"] {
 .vram-fc-od-switch {
   display: inline-flex;
   align-items: center;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 65%, transparent);
-  border-radius: 2px;
-  overflow: hidden;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 22%, transparent);
+  background: var(--theme-panel-accent);
+  box-shadow:
+    inset 0 1px 2px color-mix(in srgb, var(--theme-text) 10%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 45%, transparent);
+  border-radius: 3px;
   flex-shrink: 0;
 }
 
 .vram-fc-od-switch__btn {
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-family: var(--font-sans);
   font-size: var(--type-micro);
-  letter-spacing: 0.08em;
-  padding: 0.1rem 0.45rem;
-  color: var(--theme-text-muted);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.15;
+  color: color-mix(in srgb, var(--theme-text) 52%, transparent);
   background: transparent;
-  border: none;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.vram-fc-od-switch__btn:hover:not([data-active="1"]) {
+  color: color-mix(in srgb, var(--theme-text) 82%, transparent);
 }
 
 .vram-fc-od-switch__btn[data-active="1"] {
-  color: var(--theme-accent);
-  background: color-mix(in srgb, var(--theme-accent) 16%, transparent);
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-bezel-edge-hi) 38%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+.vram-fc-od-switch__btn[data-mode="overdrive"][data-active="1"] {
+  color: var(--fixed-amber-500);
+  border-color: color-mix(in srgb, var(--fixed-amber-500) 60%, transparent);
+  background: color-mix(in srgb, var(--fixed-amber-500) 12%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--fixed-amber-500) 40%, transparent);
 }
 
 .vram-fc-od-switch__btn[data-nudge="1"]:not([data-active="1"]) {
-  color: var(--theme-accent-bright);
+  color: var(--fixed-amber-500);
   animation: expert-nudge-pulse 1.8s ease-in-out infinite;
 }
 
 .vram-fc-od-pill {
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-family: var(--font-sans);
   font-size: var(--type-micro);
-  letter-spacing: 0.08em;
-  padding: 0.08rem 0.4rem;
-  color: var(--theme-accent);
-  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
-  background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.15;
+  color: var(--fixed-amber-500);
+  border: 1px solid color-mix(in srgb, var(--fixed-amber-500) 55%, transparent);
+  background: color-mix(in srgb, var(--fixed-amber-500) 10%, transparent);
   flex-shrink: 0;
 }
 
@@ -6681,9 +6683,17 @@ html[data-industrial-bezel="brush"] {
 }
 
 .vram-fc-autocal-nudge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 0.1875rem;
+  font-family: var(--font-sans);
   font-size: var(--type-micro);
+  font-weight: 600;
   letter-spacing: 0.06em;
-  padding: 0 0.35rem;
+  line-height: 1.35;
+  white-space: nowrap;
   color: var(--theme-accent);
   border: 1px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
   background: color-mix(in srgb, var(--theme-accent) 10%, transparent);
@@ -6692,6 +6702,12 @@ html[data-industrial-bezel="brush"] {
 
 .vram-fc-autocal-nudge:hover {
   background: color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+
+.vram-fc-autocal-nudge[data-on="1"] {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 65%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 20%, transparent);
 }
 
 /* ── Full-glass 2-point memory calibration overlay ────────────────────────── */

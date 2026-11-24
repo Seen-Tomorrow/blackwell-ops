@@ -1,5 +1,7 @@
 /* Precomputed theme-invariant color-mix results (same computed color as before). */
 :root {
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "JetBrains Mono", "Roboto Mono", ui-monospace, Consolas, monospace;
   --fixed-amber-200-a0: rgba(253, 230, 138, 0);
   --fixed-amber-200-a22: rgba(253, 230, 138, 0.22);
   --fixed-amber-200-a35: rgba(253, 230, 138, 0.35);

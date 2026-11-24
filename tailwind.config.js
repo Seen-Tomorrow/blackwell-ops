@@ -8,7 +8,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['"JetBrains Mono"', '"Roboto Mono"', 'monospace'],
+        mono: ['"Cascadia Mono"', '"JetBrains Mono"', '"Roboto Mono"', 'monospace'],
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       animation: {

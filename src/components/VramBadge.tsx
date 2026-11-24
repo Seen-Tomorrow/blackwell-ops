@@ -691,29 +691,31 @@ export default function VramBadge({
             {memorySource || (modelIsMoe && (!fullAutoMode || manifest.moeOverdrive?.active)) ? (
               <div className="vram-fc-measure__source">
                 {modelIsMoe && !fullAutoMode && onEnableOverdrive && onDisableOverdrive ? (
-                  <div className="vram-fc-od-switch font-mono" role="group" aria-label="MoE placement mode">
+                  <div className="vram-fc-od-switch" role="group" aria-label="MoE placement mode">
                     <button
                       type="button"
                       className="vram-fc-od-switch__btn"
+                      data-mode="direct"
                       data-active={!manifest.moeOverdrive?.active ? "1" : undefined}
                       onClick={onDisableOverdrive}
-                      title="Plain GPU placement"
+                      title="Direct GPU placement"
                     >
-                      PLAIN
+                      DIRECT
                     </button>
                     <button
                       type="button"
                       className="vram-fc-od-switch__btn"
+                      data-mode="overdrive"
                       data-active={manifest.moeOverdrive?.active ? "1" : undefined}
                       data-nudge={expertNudge ? "1" : undefined}
                       onClick={onEnableOverdrive}
-                      title="Overdrive: experts in host RAM + hot expert cache in VRAM"
+                      title="MOE Overdrive: experts in host RAM + hot expert cache in VRAM"
                     >
-                      OVERDRIVE
+                      MOE OVERDRIVE
                     </button>
                   </div>
                 ) : modelIsMoe && fullAutoMode && manifest.moeOverdrive?.active ? (
-                  <span className="vram-fc-od-pill font-mono">OVERDRIVE · AUTO</span>
+                  <span className="vram-fc-od-pill">MOE OVERDRIVE · AUTO</span>
                 ) : null}
                 {manifest.moeOverdrive?.active && !fullAutoMode && onSetMoeCacheMib && (() => {
                   const od = manifest.moeOverdrive!;
@@ -764,7 +766,7 @@ export default function VramBadge({
                       (memorySource.kind === "fit_probe" || memorySource.exact === false) && (
                         <button
                           type="button"
-                          className="vram-fc-autocal-nudge font-mono"
+                          className="vram-fc-autocal-nudge"
                           data-on={twoPoint ? "1" : undefined}
                           onClick={() => {
                             const next = !twoPoint;
@@ -777,7 +779,7 @@ export default function VramBadge({
                               : "Arm Auto-Cal to lock an exact measured curve on next launch"
                           }
                         >
-                          {twoPoint ? "Auto-Cal armed · 2 loads on launch" : "Estimate · Lock curve on launch"}
+                          {twoPoint ? "Auto-Calibration armed · 2 loads" : "Measured · Lock curve"}
                         </button>
                       )}
                   </div>

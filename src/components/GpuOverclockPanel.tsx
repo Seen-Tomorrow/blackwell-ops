@@ -28,6 +28,8 @@ interface GpuOverclockPanelProps {
   onSetDriverModel?: (mode: "tcc" | "wddm") => void | Promise<void>;
   /** Notify parent when OC body expands (rail can free vertical space). */
   onExpandedChange?: (expanded: boolean) => void;
+  /** When provided (overlay mode), clicking the header closes the overlay instead of collapsing it. */
+  onClose?: () => void;
 }
 
 const modeBtn =
@@ -77,6 +79,7 @@ export default function GpuOverclockPanel({
   onResetGpu,
   onSetDriverModel,
   onExpandedChange,
+  onClose,
   layout = "page",
   defaultExpanded = false,
 }: GpuOverclockPanelProps) {
@@ -257,7 +260,8 @@ export default function GpuOverclockPanel({
     >
       <button
         type="button"
-        onClick={() => setExpandedAndNotify((v) => !v)}
+        onClick={() => (onClose ? onClose() : setExpandedAndNotify((v) => !v))}
+        title={onClose ? "Close GPU overclock panel" : undefined}
         className={`theme-surface-header gpu-oc-header w-full px-3 py-2 border-b flex flex-col items-stretch gap-1 text-left transition-colors ${
           ocActive ? "gpu-oc-header--active" : "hover:bg-white/[0.02]"
         }`}
@@ -267,7 +271,7 @@ export default function GpuOverclockPanel({
             OVERCLOCKING [at your own risk]
           </span>
           <span className="gpu-oc-header__toggle type-md font-mono leading-none ml-auto shrink-0">
-            {expanded ? "▴" : "▾"}
+            {onClose ? "×" : expanded ? "▴" : "▾"}
           </span>
         </span>
         <span

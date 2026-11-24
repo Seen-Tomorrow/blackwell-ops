@@ -65,9 +65,9 @@ export default function HwGpu({
   const clocks = compact
     ? null
     : {
-        core: oc ? oc.coreClockMhz : null,
+        core: gpu.core_clock_mhz ?? (oc ? oc.coreClockMhz : null),
         coreOffset: oc && oc.coreOffsetMhz > 0 ? oc.coreOffsetMhz : 0,
-        mem: oc ? oc.memClockMhz * 2 : null,
+        mem: gpu.mem_clock_mhz != null ? gpu.mem_clock_mhz * 2 : oc ? oc.memClockMhz * 2 : null,
         memOffset: oc && oc.memOffsetMhz > 0 ? oc.memOffsetMhz * 2 : 0,
       };
   const pcie = compact ? null : pcieReadout(gpu, peak);

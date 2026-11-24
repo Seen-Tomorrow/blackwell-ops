@@ -212,17 +212,6 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
   const showStopAll = liveEngineSlots.length > 1;
   // The NVRAM snapshot log is a bezel control for the owner and power users: it is always there.
   const [snapLogOpen, setSnapLogOpen] = useState(false);
-  // Which measurement path the last ready engine used: the patched /memory ledger or the stderr
-  // parse. Shown in the bezel so the numbers on screen have a visible provenance.
-  const [memorySource, setMemorySource] = useState<{
-    source: "core" | "stderr";
-    agrees: boolean;
-  } | null>(null);
-  useTauriListen<{ source?: string; agrees?: boolean }>("memory-source", (payload) => {
-    if (payload?.source === "core" || payload?.source === "stderr") {
-      setMemorySource({ source: payload.source, agrees: payload.agrees !== false });
-    }
-  }, []);
   const showTopChrome = showFitOrDeviceChrome || showStopAll || true;
 
   const onGpuPerRow = useCallback((n: DisplayCardsPerRow) => {
@@ -414,31 +403,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                     ? "Close the memory log (Esc)"
                     : "Memory log - one launch as IDLE -> RUNNING -> STOPPED"
                 }
-                className="display-bezel-nvram-log font-mono uppercase tracking-wider shrink-0 ml-auto"
+                className="display-bezel-nvram-log uppercase tracking-wider shrink-0 ml-auto"
                 data-snap-log={snapLogOpen ? "open" : "closed"}
               >
-                {memorySource ? (
-                  <span
-                    className={`display-bezel-memory-src${
-                      memorySource.source === "core" ? " display-bezel-memory-src--core" : ""
-                    }${memorySource.agrees ? "" : " display-bezel-memory-src--differ"}`}
-                    data-memory-src={memorySource.source}
-                    data-memory-agrees={memorySource.agrees ? "1" : "0"}
-                    title={
-                      memorySource.source !== "core"
-                        ? "Measured by parsing engine stderr - engine has no /memory endpoint"
-                        : memorySource.agrees
-                          ? "Measured by the patched engine: /memory ledger reports what it allocated, and it matched the stderr parse"
-                          : "Measured by the patched engine, but the ledger and the stderr parse disagree - see the app log for both numbers"
-                    }
-                  >
-                    {memorySource.source === "core"
-                      ? memorySource.agrees
-                        ? "CORE"
-                        : "CORE !"
-                      : "LOG"}
-                  </span>
-                ) : null}
                 MEMORY LOG
               </button>
               {snapLogOpen ? (
@@ -448,7 +415,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                     void invoke("capture_nvram_snapshot", { path: null, phase: "manual" });
                   }}
                   title="Capture a snapshot of what the app can see right now"
-                  className="display-bezel-nvram-log font-mono uppercase tracking-wider shrink-0"
+                  className="display-bezel-nvram-log uppercase tracking-wider shrink-0"
                   data-snap-capture="1"
                 >
                   CAPTURE
@@ -459,7 +426,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                   type="button"
                   onClick={() => void onStopAllEngines()}
                   title="Stop all running engines"
-                  className="display-bezel-stop-all font-mono uppercase tracking-wider shrink-0"
+                  className="display-bezel-stop-all uppercase tracking-wider shrink-0"
                 >
                   STOP ALL
                 </button>
