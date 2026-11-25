@@ -378,6 +378,9 @@ mod shim_tests {
         };
         let v: serde_json::Value = serde_json::from_str(&raw).expect("bundle package.json");
         let shipped = v.get("version").and_then(|x| x.as_str()).unwrap_or_default();
+        if shipped == "0.0.0-ci" {
+            return; // fabricated CI placeholder (.github/workflows/test.yml)
+        }
         assert_eq!(
             shipped, pinned,
             "shipped pi-subagents bundle is not the pinned version — run Distribution > UPDATE HARNESS"
@@ -398,6 +401,9 @@ mod shim_tests {
             return; // gitignored on a clean checkout
         };
         let v: serde_json::Value = serde_json::from_str(&raw).expect("bundle package.json");
+        if v.get("version").and_then(|x| x.as_str()) == Some("0.0.0-ci") {
+            return; // fabricated CI placeholder (.github/workflows/test.yml)
+        }
         assert!(
             v.get("dependencies").and_then(|d| d.get("typebox")).is_none(),
             "typebox must not be a dependency — pi provides it as a host module"
