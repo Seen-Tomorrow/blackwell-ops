@@ -60,7 +60,7 @@ fn ballast_exe() -> Result<PathBuf, String> {
     let path = dir.join("vram-ballast.exe");
     if !path.exists() {
         return Err(format!(
-            "vram-ballast.exe is not next to the app ({}). Build it with: cargo build --bin vram-ballast",
+            "vram-ballast.exe is not next to the app ({}). Build it with: cargo build --bin vram-ballast --features dev-ballast",
             path.display()
         ));
     }

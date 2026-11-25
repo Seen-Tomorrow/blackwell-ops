@@ -1,4 +1,4 @@
-# Pack lean App update archive: blackwell-ops.exe + factory templates + foundry
+﻿# Pack lean App update archive: blackwell-ops.exe + factory templates + foundry
 # vendor patches + bundled 7z + (hash-gated) pi-subagents extension.
 # Target size ~5 MB. Layout (prefixed for safe extract):
 #
@@ -128,8 +128,7 @@ Copy-Item -LiteralPath $GsudoExe -Destination (Join-Path $bin_dst 'gsudo.exe') -
 $PiExtSrc = Join-Path $root 'src-tauri\pi-ext\pi-subagents'
 $PiExtPkg = Join-Path $PiExtSrc 'package.json'
 if (-not (Test-Path -LiteralPath $PiExtPkg)) {
-    Write-Host '[pack-app-update] Missing src-tauri\pi-ext\pi-subagents (gitignored).' -ForegroundColor Yellow
-    Write-Host '  App update will NOT carry the pi-subagents extension. Refresh it via Harness UPDATE.' -ForegroundColor Yellow
+    throw "pack-app-update: missing $PiExtPkg — refresh via Harness UPDATE before packing."
 } else {
     $piext_version = $null
     try {

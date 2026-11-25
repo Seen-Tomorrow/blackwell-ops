@@ -844,8 +844,15 @@ Section Uninstall
   RMDir /r "$INSTDIR\config\logs"
   RMDir /r "$INSTDIR\config\nsys"
   RMDir /r "$INSTDIR\config\bench"
+  RMDir /r "$INSTDIR\config\llama-bench"
+  RMDir /r "$INSTDIR\config\nobsproof"
   RMDir /r "$INSTDIR\config\engine-locks"
   RMDir /r "$INSTDIR\config\remote"
+  RMDir /r "$INSTDIR\config\cache\sccache"
+  RMDir /r "$INSTDIR\config\cache\app-updates"
+  RMDir /r "$INSTDIR\config\cache\provider-packs"
+  RMDir /r "$INSTDIR\config\cache\foundry-src-backups"
+  RMDir /r "$INSTDIR\config\cache\github"
   RMDir "$INSTDIR\foundry"
   RMDir "$INSTDIR\external-tools"
   ${EndIf}
@@ -856,7 +863,6 @@ Section Uninstall
   {{#each resources_ancestors}}
   RMDir /REBOOTOK "$INSTDIR\\{{this}}"
   {{/each}}
-  RMDir "$INSTDIR"
 
   ; Remove shortcuts if not updating
   ${If} $UpdateMode <> 1
@@ -922,6 +928,7 @@ Section Uninstall
     RMDir /r "$APPDATA\${BUNDLEID}"
     RMDir /r "$LOCALAPPDATA\${BUNDLEID}"
   ${EndIf}
+  RMDir "$INSTDIR"
 
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
     !insertmacro NSIS_HOOK_POSTUNINSTALL

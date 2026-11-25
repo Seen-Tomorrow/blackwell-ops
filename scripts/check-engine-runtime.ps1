@@ -1,4 +1,4 @@
-# Engine runtime diagnostic for an installed Blackwell Ops root.
+﻿# Engine runtime diagnostic for an installed Blackwell Ops root.
 #
 # Answers the one question the app cannot: an engine that dies in the Windows loader exits with
 # 0xC0000135 STATUS_DLL_NOT_FOUND and prints nothing, so "cannot boot any model" and "FIT binary
@@ -94,7 +94,8 @@ function Test-CudaRuntime([string]$cudaVersion) {
 
 function Invoke-EngineProbe([string]$exe, [string]$argList, [string]$pathPrefix) {
     if (-not (Test-Path -LiteralPath $exe)) { return }
-    $env:PATH = "$pathPrefix;$exe;C:\Windows\system32;C:\Windows"
+    $dir = Split-Path -Parent $exe
+    $env:PATH = "$pathPrefix;$dir;C:\Windows\system32;C:\Windows"
     $out = & $exe $argList 2>&1
     $code = $LASTEXITCODE
     $name = Split-Path -Leaf $exe

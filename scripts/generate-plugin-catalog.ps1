@@ -1,4 +1,4 @@
-# Build runtime-catalog/plugins.json from optional provider factory templates.
+﻿# Build runtime-catalog/plugins.json from optional provider factory templates.
 # Usage: .\scripts\generate-plugin-catalog.ps1 [-OutDir path]
 
 param(
@@ -57,7 +57,7 @@ $catalog = [PSCustomObject]@{
 }
 
 $out_path = Join-Path $OutDir 'plugins.json'
-$json = $catalog | ConvertTo-Json -Depth 6
+$json = ($catalog | ConvertTo-Json -Depth 6) -replace "`r`n", "`n"
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($out_path, $json + "`n", $utf8NoBom)
 Write-Host ("[plugin-catalog] Wrote {0} ({1} plugin(s))" -f $out_path, $plugins.Count) -ForegroundColor Cyan

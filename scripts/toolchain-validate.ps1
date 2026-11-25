@@ -42,7 +42,7 @@ foreach ($prof in $manifest.profiles) {
 }
 
 Test-ToolchainFile "portable cmake" "cmake/bin/cmake.exe" | Out-Null
-Test-ToolchainFile "Windows SDK" "Windows Kits/10/Include/10.0.26100.0/um/windows.h" | Out-Null
+Test-ToolchainFile "Windows SDK" "Windows Kits/10/Include/$($manifest.windows_sdk_version)/um/windows.h" | Out-Null
 foreach ($dll in @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'vcomp140.dll')) {
     Test-ToolchainFile "MSVC runtime $dll" "msvc-runtime/x64/$dll" | Out-Null
 }

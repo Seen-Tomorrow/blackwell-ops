@@ -14,9 +14,11 @@ path = "src/main.rs"
 [[bin]]
 name = "vram-ballast"
 path = "src/bin/vram-ballast.rs"
+required-features = ["dev-ballast"]
 
 [features]
 default = []
+dev-ballast = []
 
 [dependencies]
 # Floor = the version this app is actually built and tested against, so a deleted

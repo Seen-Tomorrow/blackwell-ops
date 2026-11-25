@@ -44,6 +44,19 @@ try {
     if (-not $exe) {
         throw "App archive has no blackwell-ops.exe: $ArchivePath"
     }
+    $appRoot = Split-Path -Parent $exe.FullName
+    foreach ($rel in @(
+        'bin\7z.exe',
+        'bin\7z.dll',
+        'bin\gsudo.exe',
+        'runtime\ggml-master\config\ggml-master-default-config.json',
+        'runtime-catalog\plugins.json',
+        'pi-ext\pi-subagents\package.json'
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $appRoot $rel))) {
+            throw "App archive missing required payload '$rel': $ArchivePath"
+        }
+    }
 
     $patches = Get-ChildItem -LiteralPath $work -Recurse -Filter '*.patch' -File -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -match '[\\/]foundry[\\/]patches[\\/]' }

@@ -12,11 +12,11 @@ lives in `src-tauri/nsis/languages/English.nsh`.
 
 | Path (inside the install folder) | Why |
 |---|---|
-| `config\app_config.json` | model paths (including external folders), HF token, download default |
+| `config\app_config.json` | model paths (including external folders), download default (HF token lives in OS Credential Manager) |
 | `config\*-user-config.json` | per-engine user params / overrides |
 | `config\runtime_settings.json` | session logging, CPU affinity |
 | `config\automation\` | user automation scripts |
-| `config\cache\` | `fit_scan_full`, `learned-vram`, `gpu-calibration`, `model_cache`, `download_history` — measured VRAM/FIT and learned metadata; expensive to relearn, tiny on disk |
+| `config\cache\` | `learned-vram`, `gpu-calibration`, `model_cache`, `download_history` — measured VRAM and learned metadata; expensive to relearn, tiny on disk |
 | `config\external-tools\pi-home\` | pi harness `auth.json`, `models.json`, sessions, missions, `AGENTS.md` |
 | Model files | every path in `app_config.model_paths` (`C:\AI-MASTER\models` by default); never touched by the uninstaller |
 
@@ -34,7 +34,7 @@ The vitals are ~35 MB in a typical install.
 | `foundry\artifacts\` | built engines (~0.6 GB) | rebuild in Foundry |
 | `runtime-catalog\` | downloaded engine packs | re-download from the engines channel |
 | `external-tools\pi` | pi harness binary (~113 MB) | Harness UPDATE |
-| `config\logs\`, `config\nsys\`, `config\bench\`, `config\engine-locks\`, `config\remote\` | diagnostics / runtime state | — |
+| `config\logs\`, `config\nsys\`, `config\bench\`, `config\llama-bench\`, `config\nobsproof\`, `config\engine-locks\`, `config\remote\`, `config\cache\{sccache,app-updates,provider-packs,foundry-src-backups,github}\` | diagnostics / runtime state / re-downloadable caches | — |
 
 That is roughly 14–17 GB on a full install.
 
@@ -58,5 +58,5 @@ folder it is uninstalling.
 
 ## Update in place
 
-Updates never run this logic: `--UPDATE` skips the checkbox and uninstall section entirely, so
+Updates never run this logic: `/UPDATE` skips the checkbox and uninstall section entirely, so
 config, engines, toolchain and foundry builds stay in place across updates.
