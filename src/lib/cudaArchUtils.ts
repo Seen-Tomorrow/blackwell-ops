@@ -2,7 +2,7 @@ import type { BuildInfo, ProviderConfig } from "./types";
 
 /** Foundry build targets — matches shipping sm_86 / sm_89 / sm_120 matrix. */
 export const CUDA_ARCH_BUILD_OPTIONS = [
-  { code: "86", label: "Ampere", hint: "RTX 30xx · A100 · A40" },
+  { code: "86", label: "Ampere", hint: "RTX 30xx · RTX A6000 · A40" },
   { code: "89", label: "Ada Lovelace", hint: "RTX 40xx · L40 · L4" },
   { code: "120", label: "Blackwell", hint: "RTX 50xx · RTX PRO 6000" },
 ] as const;
@@ -59,7 +59,11 @@ export function mergeBuildProfileWithArchitectures(baseFlags: string, archCodes:
 
 export function orderCudaArchCodes(codes: string[]): string[] {
   const set = new Set(codes.map((c) => c.trim()).filter(Boolean));
-  return CUDA_ARCH_BUILD_OPTIONS.map((o) => o.code).filter((c) => set.has(c));
+  const presetOrder = CUDA_ARCH_BUILD_OPTIONS.map((o) => o.code).filter((c) => set.has(c));
+  const extra = [...set]
+    .filter((c) => /^\d+$/.test(c) && !presetOrder.includes(c as (typeof presetOrder)[number]))
+    .sort((a, b) => Number(a) - Number(b));
+  return [...presetOrder, ...extra];
 }
 
 export function resolveSelectedCudaArchitectures(flags: string): string[] {

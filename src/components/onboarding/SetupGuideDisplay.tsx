@@ -126,9 +126,16 @@ export default function SetupGuideDisplay({
     if (edgeDriverOk) {
       return `Driver ${driverVersion} — OK for EDGE (CUDA ${ENV_META.edge.cuda})`;
     }
-    return `Driver ${driverVersion} — below EDGE minimum (need ${getMinDriverMajorForCuda(
+    const stableMin = getMinDriverMajorForCuda(ENV_META.stable.cuda);
+    const driverMajor = parseInt(driverVersion.split(".")[0] ?? "0", 10);
+    if (driverMajor >= stableMin) {
+      return `Driver ${driverVersion} — below EDGE minimum (need ${getMinDriverMajorForCuda(
+        ENV_META.edge.cuda,
+      )}+); STABLE still works`;
+    }
+    return `Driver ${driverVersion} — below minimum (${stableMin}+ required for STABLE, ${getMinDriverMajorForCuda(
       ENV_META.edge.cuda,
-    )}+); STABLE still works`;
+    )}+ for EDGE)`;
   }, [driverLoading, driverVersion, edgeDriverOk, finishStep]);
 
   const handleDeferModels = useCallback(() => {

@@ -142,10 +142,25 @@ struct NvmlUtilization {
     memory: u32,
 }
 
+static NVML_FAIL_UNTIL: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
 pub(crate) fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Option<T> {
     let mut guard = NVML_LIB.lock().ok()?;
     if guard.is_none() {
-        let lib = unsafe { Library::new("nvml.dll").ok()? };
+        if let Ok(fail_guard) = NVML_FAIL_UNTIL.lock() {
+            if fail_guard.is_some_and(|until| std::time::Instant::now() < until) {
+                return None;
+            }
+        }
+        let lib = match unsafe { Library::new("nvml.dll") } {
+            Ok(l) => l,
+            Err(_) => {
+                if let Ok(mut fail_guard) = NVML_FAIL_UNTIL.lock() {
+                    *fail_guard = Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+                }
+                return None;
+            }
+        };
         // nvmlInit_v2 exists on every driver that ships nvml.dll; keep the v1 fallback.
         let init = unsafe {
             lib.get::<unsafe extern "C" fn() -> u32>(b"nvmlInit_v2\0")
@@ -153,6 +168,9 @@ pub(crate) fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Option<T> {
         }
         .ok()?;
         if unsafe { init() } != 0 {
+            if let Ok(mut fail_guard) = NVML_FAIL_UNTIL.lock() {
+                *fail_guard = Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+            }
             return None;
         }
         *guard = Some(lib);

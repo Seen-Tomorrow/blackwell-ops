@@ -676,6 +676,14 @@ pub async fn open_nsys_profile_cmd(
 /// DEV: report profiler + CUPTI availability so the UI can gate the button honestly.
 #[tauri::command]
 pub fn nsys_profile_status() -> Result<serde_json::Value, String> {
+    if !cfg!(debug_assertions) {
+        return Ok(serde_json::json!({
+            "armed": false,
+            "nsys_exe": null,
+            "nsys_error": null,
+            "cupti_dir": null,
+        }));
+    }
     let nsys = find_nsys_exe();
     let cupti = find_cupti_lib_dir();
     Ok(serde_json::json!({

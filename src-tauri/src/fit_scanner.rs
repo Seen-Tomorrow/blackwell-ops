@@ -1090,7 +1090,13 @@ pub async fn fit_scan_model(
         return Err(BlackwellError::FitProbeSkipped { message: note.to_string() });
     }
 
-    let fit_binary = resolve_fit_binary(&cfg, &backend_type, "")
+    let fit_profile = if crate::foundry_toolchain::ensure_driver_supports_profile("edge").await.is_ok() {
+        "edge"
+    } else {
+        "stable"
+    };
+    let fit_binary = resolve_fit_binary(&cfg, &backend_type, fit_profile)
+        .or_else(|_| resolve_fit_binary(&cfg, &backend_type, ""))
         .map_err(crate::errors::classify_fit_probe)?;
 
     let ctx_int: usize = match &ctx_size {

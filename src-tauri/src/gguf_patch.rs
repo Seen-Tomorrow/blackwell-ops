@@ -703,7 +703,11 @@ async fn download_range(url: &str, start: u64, end: u64, verbose: bool) -> Resul
             BlackwellOutputConsoleLineStyle::Command,
         );
     }
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
     let resp = client
         .get(url)
         .header("Range", &range)

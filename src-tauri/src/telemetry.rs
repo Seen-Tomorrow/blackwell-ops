@@ -258,7 +258,10 @@ fn smi_gate() -> SmiGate {
     SmiGate::Proceed
 }
 
+static SMI_FAILURE_STREAK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn smi_record_success(gpus: &[GpuInfo]) {
+    SMI_FAILURE_STREAK.store(false, std::sync::atomic::Ordering::Relaxed);
     let mut state = SMI_STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     state.last_good = Some(gpus.to_vec());
     state.retry_after = None;
@@ -266,9 +269,8 @@ fn smi_record_success(gpus: &[GpuInfo]) {
 
 fn smi_record_failure(error: &str) {
     let mut state = SMI_STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    // Only the first failure of a streak logs. The retry attempts are silent, because
-    // one line per poll is exactly the flood this replaces.
-    let streak_started = state.retry_after.is_none();
+    // Only the first failure of a streak logs.
+    let streak_started = !SMI_FAILURE_STREAK.swap(true, std::sync::atomic::Ordering::Relaxed);
     state.retry_after = Some(Instant::now() + SMI_COOLDOWN);
     if streak_started {
         log::warn!(
@@ -551,16 +553,17 @@ fn manufactured_vram(name: &str) -> u64 {
     let lower = name.to_lowercase();
     
     // NVIDIA Blackwell / Ada data center GPUs — known manufactured capacities
-    if lower.contains("pro 6000 blackwell") || lower.contains("rtx 6000 ada") { 98304 }      // 96 GB
+    if lower.contains("pro 6000 blackwell") { 98304 }                                         // 96 GB
+    else if lower.contains("rtx 6000 ada") { 49152 }                                          // 48 GB
     else if lower.contains("pro 5000 blackwell") || lower.contains("rtx 5880") { 49152 }     // 48 GB
-    else if lower.contains("quadro rtx 8000") { 53248 }                                       // 52 GB
+    else if lower.contains("quadro rtx 8000") { 49152 }                                       // 48 GB
     else if lower.contains("a100") && lower.contains("80") { 81920 }                          // 80 GB
     else if lower.contains("a100") { 40960 }                                                   // 40 GB
     else if lower.contains("h100") || lower.contains("h200") { 81920 }                       // 80 GB
     else if lower.contains("l40") || lower.contains("a6000") { 49152 }                   // 48 GB (L4/L40/L40S, RTX A6000)
     else if lower.contains("v100") && lower.contains("32") { 32768 }                          // 32 GB
     else if lower.contains("v100") { 16384 }                                                  // 16 GB
-    else if lower.contains("rtx 4090") { 25600 }                                              // 24 GB
+    else if lower.contains("rtx 4090") { 24576 }                                              // 24 GB
     else if lower.contains("rtx 4080") { 16384 }                                          // 16 GB (incl. Super)
     else if lower.contains("rtx 4070") { 12288 }                                              // 12 GB
     else if lower.contains("rtx 3090") { 24576 }                                          // 24 GB (incl. Ti)
@@ -776,6 +779,12 @@ pub fn detect_gpu_count() -> usize {
 }
 
 fn detect_gpu_count_uncached() -> usize {
+    if let Some(gpus) = crate::nvml_metrics::scan() {
+        if !gpus.is_empty() {
+            log::info!("[telemetry] Detected {} GPU(s) via NVML", gpus.len());
+            return gpus.len();
+        }
+    }
     let fallback = 1;
     let smi = crate::engine_utils::resolve_nvidia_smi_path();
     if let Ok(output) = std::process::Command::new(&smi)

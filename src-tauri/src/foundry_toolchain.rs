@@ -359,7 +359,14 @@ pub async fn ensure_ninja_available() -> Result<PathBuf, String> {
     let zip_path = download_dir.join(NINJA_WIN_ZIP);
     let url = ninja_download_url();
     log::info!("[toolchain] Downloading ninja {NINJA_VERSION} from {url}");
-    let resp = reqwest::get(&url)
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+    let resp = client
+        .get(&url)
+        .send()
         .await
         .map_err(|e| format!("Failed to download ninja ({url}): {e}"))?;
     if !resp.status().is_success() {

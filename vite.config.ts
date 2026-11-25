@@ -8,10 +8,6 @@ import { dirname, resolve } from "path";
 const host = process.env.TAURI_DEV_HOST || "127.0.0.1";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ── Build mode ────────────────────────────────────────────────────────
-const isDev = process.env.NODE_ENV === "development";
-const buildMode = isDev ? "dev" : "release";
-
 // ── Auto-incrementing build counter (shared, every build) ─────────────
 let buildNumber = 0;
 {
@@ -23,27 +19,18 @@ let buildNumber = 0;
   } catch {}
 }
 
-// ── Tauri app version from tauri.conf.json ────────────────────────────
-let tauriVersion = "0.0.0";
-{
+export default defineConfig(async ({ command, mode }) => {
+  const isDev = command === "serve" || mode === "development";
+  const buildMode = isDev ? "dev" : "release";
+  let tauriVersion = "0.0.0";
   try {
     const confPath = resolve(__dirname, "src-tauri", isDev ? "tauri.conf.dev.json" : "tauri.conf.json");
     const conf = JSON.parse(readFileSync(confPath, "utf-8"));
     tauriVersion = conf.version || "0.0.0";
   } catch {}
-}
-
-// ── Version string ────────────────────────────────────────────────────
-const modeLabel = isDev ? "DEV" : "REL";
-const appVersion = `${modeLabel} ${buildNumber}`;
-
-// https://tauri.app/start
-// NOTE: the dep-optimizer cache key includes the resolved config (plugin list,
-// resolve aliases, define, optimizeDeps). Keep this config STATIC across runs or
-// every dev server start re-bundles node_modules deps ("Re-optimizing dependencies
-// because vite config has changed"). The async factory is fine; just don't inject
-// per-run values (timestamps, counters) into any hashed field.
-export default defineConfig(async () => ({
+  const modeLabel = isDev ? "DEV" : "REL";
+  const appVersion = `${modeLabel} ${buildNumber}`;
+  return {
   plugins: [react()],
   resolve: {
     alias: {
@@ -126,4 +113,5 @@ export default defineConfig(async () => ({
     target: "esnext",
     minify: true,
   },
-}));
+};
+});

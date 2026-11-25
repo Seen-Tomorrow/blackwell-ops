@@ -333,6 +333,7 @@ pub async fn open_llama_bench_cmd(
     config.port = 9_090;
 
     let assembled = engine::assemble_launch_command(&cfg, &config, &backend_type)?;
+    crate::foundry_toolchain::ensure_driver_supports_profile(&assembled.binary_profile).await?;
     let bench_exe = find_llama_bench_exe(&assembled.binary_path)?;
     let defaults = load_or_seed_defaults()?;
 

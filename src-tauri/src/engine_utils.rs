@@ -191,11 +191,26 @@ pub fn force_fit_off(args: &mut Vec<String>) {
 /// Resolve the nvidia-smi executable in a Windows-friendly way.
 /// Prefers the driver-installed copy in System32 (bypasses PATH hijacks / CWD lookup).
 /// Falls back to `where` result (if it exists), then bare "nvidia-smi" (PATH).
+static NVIDIA_SMI_CACHE: std::sync::Mutex<Option<(Option<PathBuf>, std::time::Instant)>> =
+    std::sync::Mutex::new(None);
+
 pub fn resolve_nvidia_smi_path() -> PathBuf {
     #[cfg(windows)]
     {
+        if let Ok(guard) = NVIDIA_SMI_CACHE.lock() {
+            if let Some((cached, at)) = guard.as_ref() {
+                if at.elapsed() < std::time::Duration::from_secs(60) {
+                    return cached
+                        .clone()
+                        .unwrap_or_else(|| PathBuf::from("nvidia-smi"));
+                }
+            }
+        }
         let system32 = PathBuf::from(r"C:\Windows\System32\nvidia-smi.exe");
         if system32.exists() {
+            if let Ok(mut guard) = NVIDIA_SMI_CACHE.lock() {
+                *guard = Some((Some(system32.clone()), std::time::Instant::now()));
+            }
             return system32;
         }
 
@@ -213,11 +228,17 @@ pub fn resolve_nvidia_smi_path() -> PathBuf {
                     if !trimmed.is_empty() {
                         let p = PathBuf::from(trimmed);
                         if p.exists() {
+                            if let Ok(mut guard) = NVIDIA_SMI_CACHE.lock() {
+                                *guard = Some((Some(p.clone()), std::time::Instant::now()));
+                            }
                             return p;
                         }
                     }
                 }
             }
+        }
+        if let Ok(mut guard) = NVIDIA_SMI_CACHE.lock() {
+            *guard = Some((None, std::time::Instant::now()));
         }
     }
 

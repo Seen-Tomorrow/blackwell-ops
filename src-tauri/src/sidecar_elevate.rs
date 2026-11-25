@@ -110,11 +110,14 @@ pub fn resolve_bundle_bin(app: &AppHandle, name: &str) -> Result<PathBuf, String
         }
     }
 
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("bin")
-        .join(name);
-    if manifest.is_file() {
-        return Ok(manifest);
+    #[cfg(debug_assertions)]
+    {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("bin")
+            .join(name);
+        if manifest.is_file() {
+            return Ok(manifest);
+        }
     }
 
     let portable = portable_bin_dir().join(name);
@@ -184,17 +187,20 @@ fn resolve_bundle_git_root(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("bin")
-        .join("git")
-        .join("cmd")
-        .join("git.exe");
-    if manifest.is_file() {
-        return manifest
-            .parent()
-            .and_then(|cmd| cmd.parent())
-            .map(|root| root.to_path_buf())
-            .ok_or_else(|| format!("invalid git bundle layout at {}", manifest.display()));
+    #[cfg(debug_assertions)]
+    {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("bin")
+            .join("git")
+            .join("cmd")
+            .join("git.exe");
+        if manifest.is_file() {
+            return manifest
+                .parent()
+                .and_then(|cmd| cmd.parent())
+                .map(|root| root.to_path_buf())
+                .ok_or_else(|| format!("invalid git bundle layout at {}", manifest.display()));
+        }
     }
 
     let staged = portable_bin_dir()

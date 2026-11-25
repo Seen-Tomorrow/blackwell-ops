@@ -115,7 +115,7 @@ export default function AppUpdateMenu({
             </p>
           </div>
 
-          {appOffering ? (
+          {appOffering && (appOffering.available || appOffering.version) ? (
             <div
               className={`rounded-sm border p-2.5 space-y-2 ${
                 appOffering.available

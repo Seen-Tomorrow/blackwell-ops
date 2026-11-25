@@ -87,8 +87,8 @@ mod imp {
         get_handle: FnGetHandleByIndex,
         get_default_pl: FnGetDefaultPowerLimit,
         set_pl: FnSetPowerLimit,
-        get_clock_offsets: FnGetClockOffsets,
-        set_clock_offsets: FnSetClockOffsets,
+        get_clock_offsets: Option<FnGetClockOffsets>,
+        set_clock_offsets: Option<FnSetClockOffsets>,
     }
 
     impl Drop for NvmlSession {
@@ -124,12 +124,14 @@ mod imp {
                 let set_pl: FnSetPowerLimit = *lib
                     .get::<FnSetPowerLimit>(b"nvmlDeviceSetPowerManagementLimit\0")
                     .map_err(|e| format!("Missing nvmlDeviceSetPowerManagementLimit: {e}"))?;
-                let get_clock_offsets: FnGetClockOffsets = *lib
+                let get_clock_offsets: Option<FnGetClockOffsets> = lib
                     .get::<FnGetClockOffsets>(b"nvmlDeviceGetClockOffsets\0")
-                    .map_err(|e| format!("Missing nvmlDeviceGetClockOffsets: {e}"))?;
-                let set_clock_offsets: FnSetClockOffsets = *lib
+                    .ok()
+                    .map(|s| *s);
+                let set_clock_offsets: Option<FnSetClockOffsets> = lib
                     .get::<FnSetClockOffsets>(b"nvmlDeviceSetClockOffsets\0")
-                    .map_err(|e| format!("Missing nvmlDeviceSetClockOffsets: {e}"))?;
+                    .ok()
+                    .map(|s| *s);
 
                 let rc = init();
                 if rc != NVML_SUCCESS {
@@ -183,47 +185,57 @@ mod imp {
                 return Err(nvml.err(&format!("GPU{} set power limit", t.gpu_index), rc));
             }
 
-            // Core clock offset (GRAPHICS P0)
-            let mut core = NvmlClockOffsetV1 {
-                version: NVML_CLOCK_OFFSET_VER1,
-                clock_type: NVML_CLOCK_GRAPHICS,
-                pstate: NVML_PSTATE_0,
-                clock_offset_mhz: 0,
-                min_clock_offset_mhz: 0,
-                max_clock_offset_mhz: 0,
-            };
-            let rc = unsafe { (nvml.get_clock_offsets)(dev, &mut core) };
-            if rc != NVML_SUCCESS {
-                return Err(nvml.err(&format!("GPU{} get core offset", t.gpu_index), rc));
-            }
-            core.clock_offset_mhz = t
-                .core_offset_mhz
-                .clamp(core.min_clock_offset_mhz, core.max_clock_offset_mhz);
-            let rc = unsafe { (nvml.set_clock_offsets)(dev, &core) };
-            if rc != NVML_SUCCESS {
-                return Err(nvml.err(&format!("GPU{} set core offset", t.gpu_index), rc));
-            }
+            if let (Some(get_co), Some(set_co)) = (nvml.get_clock_offsets, nvml.set_clock_offsets) {
+                // Core clock offset (GRAPHICS P0)
+                let mut core = NvmlClockOffsetV1 {
+                    version: NVML_CLOCK_OFFSET_VER1,
+                    clock_type: NVML_CLOCK_GRAPHICS,
+                    pstate: NVML_PSTATE_0,
+                    clock_offset_mhz: 0,
+                    min_clock_offset_mhz: 0,
+                    max_clock_offset_mhz: 0,
+                };
+                let rc = unsafe { get_co(dev, &mut core) };
+                if rc != NVML_SUCCESS {
+                    if t.core_offset_mhz != 0 {
+                        return Err(nvml.err(&format!("GPU{} get core offset", t.gpu_index), rc));
+                    }
+                } else {
+                    core.clock_offset_mhz = t
+                        .core_offset_mhz
+                        .clamp(core.min_clock_offset_mhz, core.max_clock_offset_mhz);
+                    let rc = unsafe { set_co(dev, &core) };
+                    if rc != NVML_SUCCESS && t.core_offset_mhz != 0 {
+                        return Err(nvml.err(&format!("GPU{} set core offset", t.gpu_index), rc));
+                    }
+                }
 
-            // Memory clock offset (MEM P0 — NVML expects effective MT/s = 2 * base MHz)
-            let mut mem = NvmlClockOffsetV1 {
-                version: NVML_CLOCK_OFFSET_VER1,
-                clock_type: NVML_CLOCK_MEM,
-                pstate: NVML_PSTATE_0,
-                clock_offset_mhz: 0,
-                min_clock_offset_mhz: 0,
-                max_clock_offset_mhz: 0,
-            };
-            let rc = unsafe { (nvml.get_clock_offsets)(dev, &mut mem) };
-            if rc != NVML_SUCCESS {
-                return Err(nvml.err(&format!("GPU{} get mem offset", t.gpu_index), rc));
-            }
-            mem.clock_offset_mhz = t
-                .mem_offset_mhz
-                .saturating_mul(2)
-                .clamp(mem.min_clock_offset_mhz, mem.max_clock_offset_mhz);
-            let rc = unsafe { (nvml.set_clock_offsets)(dev, &mem) };
-            if rc != NVML_SUCCESS {
-                return Err(nvml.err(&format!("GPU{} set mem offset", t.gpu_index), rc));
+                // Memory clock offset (MEM P0 — NVML expects effective MT/s = 2 * base MHz)
+                let mut mem = NvmlClockOffsetV1 {
+                    version: NVML_CLOCK_OFFSET_VER1,
+                    clock_type: NVML_CLOCK_MEM,
+                    pstate: NVML_PSTATE_0,
+                    clock_offset_mhz: 0,
+                    min_clock_offset_mhz: 0,
+                    max_clock_offset_mhz: 0,
+                };
+                let rc = unsafe { get_co(dev, &mut mem) };
+                if rc != NVML_SUCCESS {
+                    if t.mem_offset_mhz != 0 {
+                        return Err(nvml.err(&format!("GPU{} get mem offset", t.gpu_index), rc));
+                    }
+                } else {
+                    mem.clock_offset_mhz = t
+                        .mem_offset_mhz
+                        .saturating_mul(2)
+                        .clamp(mem.min_clock_offset_mhz, mem.max_clock_offset_mhz);
+                    let rc = unsafe { set_co(dev, &mem) };
+                    if rc != NVML_SUCCESS && t.mem_offset_mhz != 0 {
+                        return Err(nvml.err(&format!("GPU{} set mem offset", t.gpu_index), rc));
+                    }
+                }
+            } else if t.core_offset_mhz != 0 || t.mem_offset_mhz != 0 {
+                return Err("Clock offsets require NVIDIA driver R555 or newer".to_string());
             }
         }
         Ok(())

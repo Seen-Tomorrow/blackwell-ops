@@ -45,38 +45,60 @@ struct NvmlProcessInfo {
     compute_instance_id: u32,
 }
 
-unsafe fn processes_for_device(lib: &Library, device: *mut c_void) -> Option<Vec<(u32, u64)>> {
-    let get = lib
-        .get::<unsafe extern "C" fn(*mut c_void, *mut u32, *mut NvmlProcessInfo) -> u32>(
-            b"nvmlDeviceGetComputeRunningProcesses_v2\0",
-        )
-        .or_else(|_| {
-            lib.get::<unsafe extern "C" fn(*mut c_void, *mut u32, *mut NvmlProcessInfo) -> u32>(
-                b"nvmlDeviceGetComputeRunningProcesses\0",
-            )
-        })
-        .ok()?;
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct NvmlProcessInfoV1 {
+    pid: u32,
+    used_gpu_memory: u64,
+}
 
-    // The null-buffer probe returns NVML_ERROR_INSUFFICIENT_SIZE (7) on Windows, but it
-    // still writes the required count - treating that rc as failure reported "no processes"
-    // while an engine was live.
-    let mut count: u32 = 0;
-    let probe = get(device, &mut count, std::ptr::null_mut());
-    if count == 0 {
-        return if probe == 0 { Some(Vec::new()) } else { None };
+unsafe fn processes_for_device(lib: &Library, device: *mut c_void) -> Option<Vec<(u32, u64)>> {
+    if let Ok(get_v2) = lib.get::<unsafe extern "C" fn(*mut c_void, *mut u32, *mut NvmlProcessInfo) -> u32>(
+        b"nvmlDeviceGetComputeRunningProcesses_v2\0",
+    ) {
+        let mut count: u32 = 0;
+        let rc = get_v2(device, &mut count, std::ptr::null_mut());
+        if rc != 0 && rc != 7 {
+            return None;
+        }
+        if count == 0 {
+            return Some(Vec::new());
+        }
+        let mut buf = vec![NvmlProcessInfo::default(); (count as usize).saturating_add(4)];
+        let mut cap = buf.len() as u32;
+        if get_v2(device, &mut cap, buf.as_mut_ptr()) != 0 {
+            return None;
+        }
+        return Some(
+            buf[..(cap as usize).min(buf.len())]
+                .iter()
+                .map(|p| (p.pid, p.used_gpu_memory))
+                .collect(),
+        );
     }
-    let mut infos = vec![NvmlProcessInfo::default(); count as usize];
-    let mut written: u32 = count;
-    if get(device, &mut written, infos.as_mut_ptr()) != 0 {
+
+    let get_v1 = lib
+        .get::<unsafe extern "C" fn(*mut c_void, *mut u32, *mut NvmlProcessInfoV1) -> u32>(
+            b"nvmlDeviceGetComputeRunningProcesses\0",
+        )
+        .ok()?;
+    let mut count: u32 = 0;
+    let rc = get_v1(device, &mut count, std::ptr::null_mut());
+    if rc != 0 && rc != 7 {
         return None;
     }
-    infos.truncate(written.min(count) as usize);
+    if count == 0 {
+        return Some(Vec::new());
+    }
+    let mut buf = vec![NvmlProcessInfoV1::default(); (count as usize).saturating_add(4)];
+    let mut cap = buf.len() as u32;
+    if get_v1(device, &mut cap, buf.as_mut_ptr()) != 0 {
+        return None;
+    }
     Some(
-        infos
-            .into_iter()
-            // NVML pads the tail with placeholder rows when it over-estimates the count.
-            .filter(|i| i.pid != 0 && i.pid != u32::MAX)
-            .map(|i| (i.pid, i.used_gpu_memory))
+        buf[..(cap as usize).min(buf.len())]
+            .iter()
+            .map(|p| (p.pid, p.used_gpu_memory))
             .collect(),
     )
 }

@@ -1437,10 +1437,18 @@ impl DownloadManager {
     async fn download_worker(task_id: String, manager: Arc<RwLock<Self>>) {
         // HF's /resolve/main/ returns 302 → signed CAS URL. We need Range header preserved through redirect,
         // but reqwest strips custom headers on cross-host redirects by default. Manual follow:
-        let base_client = reqwest::Client::builder()
+        let base_client = match reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(20))
+            .read_timeout(std::time::Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .expect("failed to build HTTP client");
+        {
+            Ok(c) => c,
+            Err(e) => {
+                mark_failed(&manager, &task_id, format!("Failed to build HTTP client: {e}")).await;
+                return;
+            }
+        };
 
         // Wait for a slot to open (under max_concurrent), respecting queue priority.
         // Higher-priority tasks (lower priority number) are allowed to skip ahead.
@@ -1557,13 +1565,25 @@ impl DownloadManager {
         // HF's /resolve/main/ returns 302 → signed CAS URL; follow redirects manually to preserve Range.
         let mut download_url = url.clone();
         let mut retry_count: u32 = 0;
+        let mut redirects: usize = 0;
         let resp: reqwest::Response = loop {
             let mut req = base_client.get(&download_url);
             if start_offset > 0 {
                 req = req.header(RANGE, format!("bytes={}-", start_offset));
             }
             if use_github_auth {
-                req = crate::github_releases::apply_github_auth(req);
+                let is_github_host = reqwest::Url::parse(&download_url)
+                    .ok()
+                    .and_then(|u| {
+                        u.host_str().map(|h| {
+                            h.eq_ignore_ascii_case("github.com")
+                                || h.eq_ignore_ascii_case("api.github.com")
+                        })
+                    })
+                    .unwrap_or(false);
+                if is_github_host {
+                    req = crate::github_releases::apply_github_auth(req);
+                }
             }
             // Gated HF models need Bearer on hub /resolve only — not on CDN after redirect.
             req = apply_hf_auth_if_hub(req, &download_url);
@@ -1600,10 +1620,14 @@ impl DownloadManager {
 
             let status = interim.status();
             // HF uses 302 (and sometimes 307/308) hub → signed LFS/CAS URL.
-            if status.is_redirection() {
+            if status.is_redirection() && redirects < 10 {
                 if let Some(loc) = interim.headers().get(reqwest::header::LOCATION) {
                     if let Ok(loc_str) = loc.to_str() {
-                        download_url = loc_str.to_string();
+                        download_url = reqwest::Url::parse(&download_url)
+                            .and_then(|base| base.join(loc_str))
+                            .map(|u| u.to_string())
+                            .unwrap_or_else(|_| loc_str.to_string());
+                        redirects += 1;
                         continue;
                     }
                 }
@@ -1644,6 +1668,9 @@ impl DownloadManager {
             let code = status_code.as_u16();
             let reason = status_code.canonical_reason().unwrap_or("Unknown");
             let error_msg = match code {
+                401 | 403 if use_github_auth => format!(
+                    "GitHub denied access ({code} {reason}). Check rate limits or GitHub PAT in Config → SECRETS."
+                ),
                 401 | 403 => format!(
                     "HF denied access ({code} {reason}). Gated model requires a Hugging Face token \
                      in Config → SECRETS (hf_token) and accepted model access on the Hub page."

@@ -63,7 +63,9 @@ pub fn emit_dbg(line: &str) {
 /// agent release URLs (GitHub / atomgit) redirect to a storage host.
 pub async fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
     let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(20))
         .timeout(std::time::Duration::from_secs(600))
+        .user_agent("blackwell-ops")
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("http client: {e}"))?;

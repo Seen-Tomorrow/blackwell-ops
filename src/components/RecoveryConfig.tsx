@@ -131,8 +131,7 @@ export default function RecoveryConfig() {
               (back to factory <span className="text-white/70">models/</span>), GGUF metadata cache,
               VRAM fit scan cache, learned VRAM, download queue state, and per-provider parameter
               overrides. Replays the setup checklist on reload. Does not clear localStorage (use CLEAR
-              LOCAL STORAGE / CLR LS). Optional plugins only reappear if their engines are still on disk.
-              Same path as header ↺ SETUP.
+              LOCAL STORAGE below). Optional plugins only reappear if their engines are still on disk.
             </p>
             <ul className="type-label font-mono config-muted leading-relaxed mb-3 list-disc pl-4 space-y-1">
               <li>Does <span className="cfg-acc">not</span> delete GGUF model files on disk</li>

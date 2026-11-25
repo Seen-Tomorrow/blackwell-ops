@@ -178,6 +178,7 @@ static GATEWAY_MEM: LazyLock<PlMutex<GatewayMem>> = LazyLock::new(|| {
 /// Shared HTTP client (connection pooling — the old code built a new client per call).
 static GITHUB_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(30))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())

@@ -482,6 +482,9 @@ fn read_link_build_log_tail(max_lines: usize) -> Vec<String> {
 /// app itself stays responsive and survives a dev restart.
 #[tauri::command]
 pub async fn remote_link_build_start(profile: String) -> Result<(), String> {
+    if !cfg!(debug_assertions) {
+        return Err("DEV-only command".to_string());
+    }
     let profile = profile.trim().to_lowercase();
     if profile != "dev" && profile != "rel" && profile != "installer" {
         return Err("profile must be dev, rel or installer".into());
@@ -555,6 +558,9 @@ pub async fn remote_link_build_start(profile: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn remote_link_build_status() -> Result<LinkBuildStatus, String> {
+    if !cfg!(debug_assertions) {
+        return Err("DEV-only command".to_string());
+    }
     let raw = match std::fs::read_to_string(link_build_status_path()) {
         Ok(raw) => raw,
         Err(_) => {

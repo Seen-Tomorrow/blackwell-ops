@@ -700,7 +700,14 @@ pub(crate) async fn apply_foundry_github_pr(
     let patch_url = format!(
         "https://patch-diff.githubusercontent.com/raw/{owner_repo}/pull/{pr_num}.diff"
     );
-    let patch_resp = reqwest::get(&patch_url)
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+    let patch_resp = client
+        .get(&patch_url)
+        .send()
         .await
         .map_err(|e| format!("HTTP fetch failed: {e}"))?;
     if !patch_resp.status().is_success() {
