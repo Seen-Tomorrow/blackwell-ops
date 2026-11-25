@@ -203,15 +203,6 @@ export function engineVersionParts(version: string | null | undefined): {
   return { name: text, build: null };
 }
 
-/** Plain-text form, for lines that cannot host chips. */
-export function formatEngineVersion(version: string | null | undefined): string {
-  const { name, build } = engineVersionParts(version);
-  if (!name && !build) return "unknown";
-  if (name && build) return `version: ${name}, build: ${build}`;
-  if (build) return `build: ${build}`;
-  return name as string;
-}
-
 export type PackDownloadAction = "download" | "redownload" | "update";
 
 /**

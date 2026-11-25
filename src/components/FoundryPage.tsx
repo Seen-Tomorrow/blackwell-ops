@@ -12,8 +12,6 @@ import { ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/fo
 import { phaseKey, phaseLabel } from "../lib/foundryPhases";
 import "../styles/foundry-page.css";
 
-export type { FoundrySubTab } from "../lib/appNav";
-
 interface FoundryPageProps {
   providers: ProviderConfig[];
   subTab: FoundrySubTab;

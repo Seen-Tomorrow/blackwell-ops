@@ -274,19 +274,10 @@ pub fn aggregate_gguf_entries(
 // ── Internal types for HF API response deserialization ───────────────────
 
 #[derive(Debug, Deserialize)]
-struct HfApiLink {
-    #[serde(rename = "self")]
-    #[allow(dead_code)]
-    self_url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
 struct HfSibling {
     rfilename: String,
     #[serde(default)]
     size: u64,
-    #[serde(default)]
-    _links: Option<HfApiLink>,
 }
 
 #[derive(Debug, Deserialize)]

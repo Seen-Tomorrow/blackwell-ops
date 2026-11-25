@@ -350,14 +350,6 @@ export function endpointRoleForPath(
   return endpoints.find((e) => normalizePath(e.path) === n)?.role ?? null;
 }
 
-export function brainEndpoint(endpoints: EndpointSet): Endpoint | null {
-  return endpoints.find((e) => e.role === "brain") ?? null;
-}
-
-export function workerEndpoints(endpoints: EndpointSet): Endpoint[] {
-  return endpoints.filter((e) => e.role === "worker");
-}
-
 /** Short chip label from a model path. */
 export function catalogPathChipLabel(path: string, name?: string): string {
   if (name && name.trim()) {

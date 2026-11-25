@@ -7,7 +7,6 @@
 //! tensor data touched, no engine spawned.
 //!
 //! Facts only — the role decision lives in the classifier (step 2), not here.
-#![allow(dead_code)] // Not everything here is consumed yet; `engine.rs` reads `architecture` today.
 
 use std::path::{Path, PathBuf};
 

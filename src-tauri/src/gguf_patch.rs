@@ -430,7 +430,6 @@ fn find_header_end_from_file(model_path: &str) -> Result<u64, String> {
 }
 
 /// Open a file and walk its header, returning the facts `gguf_shape` needs.
-#[allow(dead_code)] // Consumed by `gguf_shape`; the patcher itself only needs header_end.
 pub(crate) fn parse_header_from_file(path: &Path) -> Result<HeaderFacts, String> {
     if !path.exists() {
         return Err(format!("Model file not found: {}", path.display()));

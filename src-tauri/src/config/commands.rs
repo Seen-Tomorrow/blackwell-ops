@@ -17,8 +17,7 @@ pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
     build_config_with_providers_full(cfg)
 }
 
-/// Tauri command: Load config from disk (no app handle needed for frontend queries).
-#[tauri::command]
+/// Load config from disk (no app handle needed).
 pub fn load_config() -> AppConfig {
     let (cfg, persist_defaults) = load_or_fresh_config();
     if persist_defaults {

@@ -359,7 +359,6 @@ pub(crate) async fn probe_binary_version(path: &std::path::Path) -> Result<Strin
         .map_err(|e| format!("version probe join failed: {e}"))?
 }
 
-#[tauri::command]
 pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::BuildInfo, String> {
     let path = crate::config::resolve_path(&binary_path);
 

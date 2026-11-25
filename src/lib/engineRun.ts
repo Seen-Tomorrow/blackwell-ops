@@ -17,10 +17,6 @@ export async function readStack(): Promise<StackEntry[]> {
   return invoke<StackEntry[]>("get_stack_status");
 }
 
-export function activeEntries(entries: StackEntry[]): StackEntry[] {
-  return entries.filter((entry) => ACTIVE_STATUSES.has(entry.status));
-}
-
 /** Poll until the slot is RUNNING. Throws on idle/error/timeout/abort. */
 export async function waitForRunning(
   slotIdx: number,

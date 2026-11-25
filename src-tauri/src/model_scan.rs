@@ -25,7 +25,6 @@ pub fn get_path_size_bytes(path: String) -> Result<u64, String> {
     Ok(n)
 }
 #[tauri::command]
-#[allow(unused_variables)] // provider id is still sent by the UI; the scan needs no binary
 pub async fn scan_model_metadata_cmd(
     model_path: String,
     provider_id: Option<String>,

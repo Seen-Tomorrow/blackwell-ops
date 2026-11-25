@@ -435,12 +435,6 @@ export function envBinaryLookup(
   return profileEnvLookup(provider.inventoryPerEnv, env)?.[source];
 }
 
-/** True when a foundry artifact exists for this profile. */
-export function isFoundryProfileBuilt(provider: ProviderConfig | undefined, env: string): boolean {
-  const entry = envBinaryLookup(provider, env, "foundry");
-  return !!(entry?.path?.trim() || entry?.info);
-}
-
 /** True when the active launch binary exists for this profile. */
 export function isProfileBuilt(provider: ProviderConfig | undefined, env: string): boolean {
   if (!provider) return false;
@@ -481,23 +475,6 @@ export function isProfileSourceActive(
  * Derive provider origin for a given environment.
  * - foundry: path under foundry/artifacts/
  * - catalog / downloaded: active catalog source or product-tag stamp
- * - bundled: NSIS runtime/
- */
-function getProviderOrigin(provider: ProviderConfig, env: string): ProviderOrigin {
-  const norm = (profileEnvLookup(provider.binaryPathPerEnv, env) ?? '').replace(/\\/g, '/').toLowerCase();
-  if (norm.includes('foundry/artifacts/')) return 'foundry';
-  if (norm.includes('runtime-catalog/')) return 'catalog';
-  const pref = profileEnvLookup(provider.binarySourcePerEnv, env);
-  if (pref === 'catalog') return 'catalog';
-  if (profileEnvLookup(provider.downloadedVersionPerEnv, env) && provider.optionalDownload) {
-    return 'downloaded';
-  }
-  if (envBinaryLookup(provider, env, 'catalog')?.path && pref === 'catalog') {
-    return 'catalog';
-  }
-  return 'bundled';
-}
-
 /** Full provider template — loaded from templates.json */
 export interface ProviderTemplate {
   binary_name: string;

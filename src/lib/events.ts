@@ -18,11 +18,6 @@ export type NavigateConfigDetail = {
   downloadsView?: "models" | "software";
 };
 
-export type NavigateFoundryDetail = {
-  providerId: string;
-  environment: "edge" | "stable";
-};
-
 export const EVENTS = {
   reloadProviders: `${STORAGE_PREFIX}reload-providers`,
   companionsChanged: `${STORAGE_PREFIX}companions-changed`,
@@ -136,10 +131,6 @@ export function consumePendingConfigSubTab(): NavigateConfigDetail["subTab"] | n
 export function dispatchNavigateConfig(detail?: NavigateConfigDetail): void {
   if (detail?.subTab) pendingConfigSubTab = detail.subTab;
   dispatchAppEvent(EVENTS.navigateConfig, detail);
-}
-
-export function dispatchNavigateCatalog(): void {
-  dispatchAppEvent(EVENTS.navigateCatalog);
 }
 
 export function dispatchNavigateModelHub(): void {

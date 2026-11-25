@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ToolchainManifest {
-    #[allow(dead_code)]
     pub version: u32,
     pub windows_sdk_version: String,
     pub vs: VsManifest,

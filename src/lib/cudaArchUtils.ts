@@ -102,20 +102,3 @@ function cudaArchFamilies(codes: string[]): string[] {
   }
   return families;
 }
-
-/** Inline nerd hint — "optimized for AMPERE/ADA/BLACKWELL", or null if unknown. */
-export function cudaArchOptimizedLabel(codes: string[]): string | null {
-  const families = cudaArchFamilies(codes);
-  if (families.length === 0) return null;
-  return `optimized for ${families.join("/")}`;
-}
-
-/** Stored per-profile arch list, else parse from provider cmake flags. */
-export function resolveProfileCudaArchitectures(
-  provider: ProviderConfig,
-  buildInfo?: BuildInfo,
-): string[] {
-  const stored = buildInfo?.cudaArchitectures?.filter(Boolean);
-  if (stored && stored.length > 0) return stored;
-  return parseCudaArchitecturesFromCmake(provider.build_profile ?? "");
-}

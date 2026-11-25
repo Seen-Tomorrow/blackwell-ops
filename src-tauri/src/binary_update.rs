@@ -151,10 +151,6 @@ pub fn get_build_provenance(app_handle: tauri::AppHandle) -> BuildProvenance {
 /// Keep in sync with `BINARY_UPDATES_ENABLED` in `src/lib/foundry_constants.ts`.
 pub const BINARY_UPDATES_ENABLED: bool = true;
 
-/// Bundled providers that ship with bundled binaries.
-#[allow(dead_code)]
-const BUNDLED_PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ggml-tom"];
-
 /// `Deserialize` for the `ipc_contract` key probe (see `StackEntry`).
 ///
 /// `rename_all` matches its siblings (`StartupUpdateStatus`, `ProviderBinaryUpdates`)

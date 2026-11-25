@@ -48,7 +48,6 @@ pub struct BenchResult {
     pub success: bool,
     pub error: Option<String>,
     /// Concurrent `/completion` feeds on the measured run (1 = legacy single-request bench).
-    #[serde(default = "default_parallel_one")]
     pub parallel_requests: usize,
     /// Total generated tokens / wall seconds when `parallel_requests > 1`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,11 +55,6 @@ pub struct BenchResult {
     /// Mean per-request engine `gen_tps` when `parallel_requests > 1`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub per_request_gen_tps: Option<f64>,
-}
-
-#[allow(dead_code)]
-fn default_parallel_one() -> usize {
-    1
 }
 
 fn bench_stopped_result(parallel_requests: usize) -> BenchResult {

@@ -137,7 +137,6 @@ fn collect(lib: &Library) -> Vec<GpuProcessUsage> {
 }
 
 /// Every process NVML attributes to a GPU, with its per-device share.
-#[tauri::command]
 pub fn get_gpu_process_memory() -> Vec<GpuProcessUsage> {
     crate::nvml_metrics::with_lib(collect).unwrap_or_default()
 }
