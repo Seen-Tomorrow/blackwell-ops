@@ -19,7 +19,7 @@ export interface ParamMetaForm {
 interface ParamMetaEditorProps {
   editingKey: string;
   form: ParamMetaForm;
-  onFieldChange: (field: string, val: any) => void;
+  onFieldChange: <K extends keyof ParamMetaForm>(field: K, val: ParamMetaForm[K]) => void;
   onSave: () => void;
   onCancel: () => void;
   existingGroups: string[];

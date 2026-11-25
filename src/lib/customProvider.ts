@@ -11,7 +11,7 @@ const CUSTOM_TEMPLATE_TYPE = "custom";
 
 export function isCustomTemplateType(templateType: string | undefined | null): boolean {
   const t = (templateType ?? "").trim();
-  return !t || t.toLowerCase() === CUSTOM_TEMPLATE_TYPE;
+  return t.toLowerCase() === CUSTOM_TEMPLATE_TYPE;
 }
 
 /** Optional spawn / product features for custom providers (all off by default). */

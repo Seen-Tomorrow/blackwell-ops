@@ -17,10 +17,10 @@ import TabPageHeader from "./TabPageHeader";
 
 
 interface ModelCatalogProps {
-  models: any[];
+  models: import("../lib/types").ModelEntry[];
   /** Attachment GGUFs (PLE/Engram tables, projectors) from extras roots. */
   extras?: ExtraFileEntry[];
-  onLaunch: (config: EngineConfig) => Promise<any>;
+  onLaunch: (config: EngineConfig) => Promise<import("../lib/types").StackEntry>;
   error: string | null;
   onReload: () => void;
   providers?: ProviderConfig[];

@@ -283,7 +283,7 @@ export function renderParamRow(
     );
   }
 
-  const renderedValues = baseValues.filter((v: any) => !(v?._hidden));
+  const renderedValues = baseValues;
 
   return (
     <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-start min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>

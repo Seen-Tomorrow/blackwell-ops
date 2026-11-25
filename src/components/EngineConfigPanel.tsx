@@ -130,7 +130,6 @@ import {
   type EndpointBag,
 } from "../lib/endpointBags";
 
-import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorMessage } from "../lib/blackwellError";
 import {
   type DraftRole,
@@ -312,7 +311,7 @@ interface EngineConfigPanelProps {
   committedVramMib: number;
   systemInfo?: SystemInfo | null;
   stack: StackEntry[];
-  onLaunch: (config: EngineConfig) => Promise<any>;
+  onLaunch: (config: EngineConfig) => Promise<StackEntry>;
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;
@@ -2987,10 +2986,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       dispatchAppEvent(EVENTS.launchError, {
         message: "Select a draft model (.gguf) for speculative decoding before launch.",
       });
-      return;
-    }
-    if (tomMtpBlocked(effectiveBackendType, model)) {
-      dispatchAppEvent(EVENTS.launchError, { message: TOM_MTP_SKIP_MESSAGE });
       return;
     }
     const now = Date.now();

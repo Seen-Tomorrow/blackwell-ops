@@ -29,7 +29,7 @@ const StatusContext = createContext<StatusBarCtx>({
   clearAttention: () => {},
 });
 
-export const StatusProvider: React.FC<{ value: any; children?: React.ReactNode }> = ({ value, children }) => {
+export const StatusProvider: React.FC<{ value: Pick<StatusBarCtx, "totalParams" | "hiddenCount" | "onShowAll">; children?: React.ReactNode }> = ({ value, children }) => {
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [attention, setAttention] = useState<EngineFault | null>(null);
 

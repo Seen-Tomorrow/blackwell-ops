@@ -9,7 +9,6 @@ import {
   writeJsonStorage,
   type ModelSpecOverride,
 } from "./storage";
-import { isTomProvider } from "./tomMtp";
 import {
   isAnySpecProfileActive,
   isSpecProfileParamKey,
@@ -571,17 +570,15 @@ export function specCapabilitiesForMain(
   if (isExternalDraftOnly(main)) return [];
 
   const caps: SpecCapability[] = [];
-  if (!isTomProvider(providerId)) {
-    if (findDraftCandidates(main, models, "external_dflash").length > 0) {
-      caps.push("dflash");
-    }
-    if (findDraftCandidates(main, models, "external_eagle3").length > 0) {
-      caps.push("eagle3");
-    }
-    // External MTP heads ride the MTP lane: `draft-mtp` + `-md` (mtp_draft_model).
-    if (findDraftCandidates(main, models, "external_mtp").length > 0) {
-      caps.push("mtp");
-    }
+  if (findDraftCandidates(main, models, "external_dflash").length > 0) {
+    caps.push("dflash");
+  }
+  if (findDraftCandidates(main, models, "external_eagle3").length > 0) {
+    caps.push("eagle3");
+  }
+  // External MTP heads ride the MTP lane: `draft-mtp` + `-md` (mtp_draft_model).
+  if (findDraftCandidates(main, models, "external_mtp").length > 0) {
+    caps.push("mtp");
   }
   // Baked-in MTP does not exclude external DFlash — user picks spec_type at launch.
   // Outside the Tom lane this is the same cap the external-MTP branch just pushed.

@@ -219,19 +219,15 @@ function App() {
 
   useEffect(() => {
     if (!BINARY_UPDATES_ENABLED) return;
-    invoke<any>("get_startup_updates")
+    invoke<import("./lib/types").StartupUpdateStatus>("get_startup_updates")
       .then((data) => {
         if (data.updateOfferings) {
           setUpdateOfferings(data.updateOfferings);
         }
-        const binaryPending = (data.binaryUpdates || []).some((bu: { updates?: { available?: boolean }[] }) =>
+        const binaryPending = (data.binaryUpdates || []).some((bu) =>
           (bu.updates || []).some((u) => u.available),
         );
         setHasBinaryUpdates(binaryPending || !!data.updateOfferings?.anyAvailable);
-        saveStartupUpdatesCache({
-          timestamp: Date.now(),
-          binaryUpdates: data.binaryUpdates || [],
-        });
       })
       .catch(() => {});
   }, []);
@@ -523,9 +519,9 @@ function App() {
   }, []);
 
   const handleLaunchEngine = useCallback(
-    async (config: any) => {
+    async (config: import("./lib/types").EngineConfig) => {
       try {
-        const result: any = await invoke("launch_engine", { config });
+        const result = await invoke<import("./lib/types").StackEntry>("launch_engine", { config });
         // Dispatch event for catalog to pick up the launched slot index + model path.
         // Stack update comes via push event from Rust — no manual setStack needed.
         dispatchAppEvent(EVENTS.engineLaunched, {

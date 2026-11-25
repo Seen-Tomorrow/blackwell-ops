@@ -661,7 +661,7 @@ export interface PluginCatalogResponse {
 }
 
 /** Combined startup update status from get_startup_updates IPC command. */
-interface StartupUpdateStatus {
+export interface StartupUpdateStatus {
   appUpdate: AppUpdateInfo;
   updateOfferings: UpdateOfferings;
   binaryUpdates: ProviderBinaryUpdates[];

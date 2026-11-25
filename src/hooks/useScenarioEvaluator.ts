@@ -10,7 +10,6 @@ import { gpuMemoryBucketKey, vramManifestSnapshotEqual, vramTopoTag } from "../l
 import { MEMORY_SOURCE_LABELS } from "../services/vram/forecast/memorySource";
 import { sanitizeLearnedCurve } from "../services/vram/shared";
 import type { GpuCalibrationRow } from "../lib/vramLayerPlan";
-import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { errorKind, errorMessage } from "../lib/blackwellError";
 import {
   isNonLaunchableModel,
@@ -373,19 +372,20 @@ function validDraftForForecast(
 // Shared scenarios-tab emission helper to avoid duplicating IPC calls to Blackwell Output Console
 function emitScenarioConsole(
   modelName: string,
-  modelMeta: any,
+  modelMeta: ModelEntry["metadata"] | undefined,
   scenario: string,
   vramWeightsGb: number,
   totalNeedGb: number,
-  gpuAllocations: any[],
+  gpuAllocations: VramManifest["gpuAllocations"],
   validatedVramMib: number | null,
-  validatedComponentsMib: any[] | null,
-  uiTemplate: any,
+  validatedComponentsMib: NonNullable<VramManifest["validatedComponentsMib"]> | null,
+  uiTemplate: boolean | unknown,
   engineConfig: EngineConfig,
   memorySourceLabel?: string,
 ) {
   const lines: string[] = [];
-  lines.push(`[SCENARIO] Model: ${modelName} | Meta: ${modelMeta ? 'YES' : 'NO'} | Arch: ${modelMeta?.architecture || '?'} | Layers: ${modelMeta?.n_layer ?? '?'} | Params: ${modelMeta?.total_params_str || '?'} | Size: ${(modelMeta?.file_size_bytes / (1024**3)).toFixed(1)}G`);
+  const sizeGb = modelMeta?.file_size_bytes != null ? (modelMeta.file_size_bytes / (1024**3)).toFixed(1) : '?';
+  lines.push(`[SCENARIO] Model: ${modelName} | Meta: ${modelMeta ? 'YES' : 'NO'} | Arch: ${modelMeta?.architecture || '?'} | Layers: ${modelMeta?.n_layer ?? '?'} | Params: ${modelMeta?.total_params_str || '?'} | Size: ${sizeGb}G`);
 
   lines.push(`[SCENARIO] Scenario: ${scenario} | W:${vramWeightsGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
 
@@ -393,7 +393,7 @@ function emitScenarioConsole(
     lines.push(`[SCENARIO] SOURCE: ${memorySourceLabel}`);
   }
 
-  const allocText = gpuAllocations.map((a: any) => {
+  const allocText = gpuAllocations.map((a) => {
     const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
     return `GPU-${a.gpuIndex}=${a.projectedLoadGb.toFixed(1)}G(${pct}%)`;
   }).join(', ');
@@ -406,7 +406,7 @@ function emitScenarioConsole(
   }
 
   if (validatedComponentsMib && validatedComponentsMib.length > 0) {
-    const compText = validatedComponentsMib.map((c: any, i: number) => `GPU${i}:W=${c.model_mib} KV=${c.ctx_mib} C=${c.compute_mib}`).join(' | ');
+    const compText = validatedComponentsMib.map((c, i: number) => `GPU${i}:W=${c.model_mib} KV=${c.ctx_mib} C=${c.compute_mib}`).join(' | ');
     lines.push(`[SCENARIO] Components: ${compText}`);
   }
 
@@ -1056,11 +1056,6 @@ export function useScenarioEvaluator({
     if (!model || validatingRef.current) return null;
     if (isNonLaunchableModel(model)) return null;
     const curConfig = configRef.current;
-    const providerId = curConfig.backend_type || "";
-    if (tomMtpBlocked(providerId, model)) {
-      toastTomMtpSkip(TOM_MTP_SKIP_MESSAGE);
-      return null;
-    }
     validatingRef.current = true;
     setIsValidating(true);
     try {
@@ -1258,7 +1253,7 @@ export function useScenarioEvaluator({
       switch (errorKind(e)) {
         case "fit_probe_skipped":
           // Only a real skip is informational; the message names the reason.
-          toastTomMtpSkip(msg);
+          window.__blackopsToasts?.addToast(msg, "info");
           break;
         case "fit_binary_missing":
         case "fit_binary_mismatch":
@@ -1329,8 +1324,6 @@ export function useScenarioEvaluator({
       committedSlotsFromStack(stackRef.current),
     );
     if (Math.max(...free, 0) < 2.5) return;
-    const providerId = String(configRef.current.backend_type || "");
-    if (tomMtpBlocked(providerId, model)) return;
     forceProbeRef.current = false;
     autoProbeKeyRef.current = attemptKey;
     void validate();
