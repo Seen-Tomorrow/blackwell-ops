@@ -572,6 +572,7 @@ async fn main() {
             gateway_cmds::remote_link_build_start,
             gateway_cmds::remote_link_build_status,
             telemetry::scan_gpus,
+            telemetry::rescan_gpus,
             telemetry::scan_cpu,
             telemetry::scan_system_info,
             telemetry::get_nvidia_driver_version,

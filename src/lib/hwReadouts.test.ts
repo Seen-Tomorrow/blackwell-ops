@@ -9,6 +9,7 @@ import {
   formatPcieRate,
   hwTotals,
   pcieReadout,
+  pcieLinkTone,
   powerFill,
   shouldAnimate,
   tempTone,
@@ -251,5 +252,15 @@ describe("CPU clock", () => {
     const baseOnly = cpuClockTitle({ name: "CPU", cores: 8, threads: 16, max_clock_mhz: 4_300, avg_usage_percent: 10, core_usages: [] });
     expect(baseOnly).toContain("Base 4300");
     expect(cpuClockTitle({ name: "CPU", cores: 8, threads: 16, max_clock_mhz: 0, avg_usage_percent: 1, core_usages: [] })).toBe("CPU clock unavailable");
+  });
+
+  it("classifies PCIe link speed tones", () => {
+    expect(pcieLinkTone(5, 16)).toBe("good");
+    expect(pcieLinkTone(5, 8)).toBe("good");
+    expect(pcieLinkTone(4, 16)).toBe("good");
+    expect(pcieLinkTone(5, 4)).toBe("warn");
+    expect(pcieLinkTone(4, 8)).toBe("warn");
+    expect(pcieLinkTone(3, 4)).toBe("slow");
+    expect(pcieLinkTone(undefined, 16)).toBe("neutral");
   });
 });

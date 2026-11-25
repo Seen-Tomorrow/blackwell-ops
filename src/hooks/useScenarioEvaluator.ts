@@ -132,6 +132,16 @@ export function learnedIdentityKey(config: Record<string, unknown>, autoVramLaun
   ].join("|");
 }
 
+function scenarioProbeKey(
+  config: Record<string, unknown>,
+  autoVramLaunch: boolean,
+  fullAutoMode?: boolean,
+  excludedAutoSplitGpus?: number[],
+): string {
+  const excl = fullAutoMode ? `|excl=${(excludedAutoSplitGpus ?? []).join(",")}` : "";
+  return `${fitProbeKey(config, autoVramLaunch)}|dev=${String(config.device ?? "")}${excl}`;
+}
+
 export function liveEvalKey(
   config: Record<string, unknown>,
   autoVramLaunch: boolean,
@@ -260,6 +270,7 @@ interface UseScenarioEvaluatorProps {
   catalogModels?: ModelEntry[];
   /** Per-card planned MiB when the config carries an applied `-ts` (see ForecastInput). */
   layerSplitMib?: number[];
+  excludedAutoSplitGpus?: number[];
 }
 
 /** Effective CLI spec_type for forecast/learn — cockpit may only have Boost state until launch. */
@@ -472,6 +483,7 @@ export function useScenarioEvaluator({
   gpuCalibration,
   catalogModels,
   layerSplitMib,
+  excludedAutoSplitGpus,
 }: UseScenarioEvaluatorProps) {
   // GPU count/capacity — stable across NVML noise (needed before useState seed).
   const gpuTopologyKeyInit = gpus.length > 0
@@ -556,16 +568,20 @@ export function useScenarioEvaluator({
   const configRef = useRef(config);
   /** Applied `-ts` split from the layer plan — read per eval, so a plan change repaints. */
   const layerSplitRef = useRef<number[] | undefined>(layerSplitMib);
+  const excludedAutoSplitRef = useRef<number[] | undefined>(excludedAutoSplitGpus);
   gpusRef.current = gpus;
   stackRef.current = stack;
   systemInfoRef.current = systemInfo;
   configRef.current = config;
   layerSplitRef.current = layerSplitMib;
+  excludedAutoSplitRef.current = excludedAutoSplitGpus;
+  fullAutoModeRef.current = fullAutoMode;
 
   // Combined key triggers re-eval / cache / learned fetch.
   // Split is a probe hard-key — none/layer/tensor drops the session and re-probes.
-  const configKey = liveEvalKey(config, autoVramLaunch);
-  const probeKey = fitProbeKey(config, autoVramLaunch);
+  const excludedKey = (excludedAutoSplitGpus ?? []).join(",");
+  const configKey = `${liveEvalKey(config, autoVramLaunch)}|excl=${excludedKey}`;
+  const probeKey = scenarioProbeKey(config, autoVramLaunch, fullAutoMode, excludedAutoSplitGpus);
   const learnedKey = learnedIdentityKey(config, autoVramLaunch);
 
   useEffect(() => {
@@ -577,6 +593,7 @@ export function useScenarioEvaluator({
     autoProbeKeyRef.current = null;
     if (manifestRef.current != null) {
       commitManifest(null);
+      setIsEvaluating(true);
     }
     paintIdentityRef.current = { modelPath: path, probeKey };
     if (hardKnobsChanged) {
@@ -649,7 +666,12 @@ export function useScenarioEvaluator({
       total_memory_manufactured_mib: 0,
     };
 
-    const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
+    const curProbeKey = scenarioProbeKey(
+      curConfig,
+      autoVramLaunchRef.current,
+      fullAutoModeRef.current,
+      excludedAutoSplitRef.current,
+    );
     const curPlacementKey = placementConfigKey(curConfig);
     const session = probeSessionRef.current;
     const sessionFields = probeScenarioFields(
@@ -700,6 +722,7 @@ export function useScenarioEvaluator({
       learnedAnchorCtx: learnedBundleRef.current?.anchorCtx,
       learnedCurve: learnedBundleRef.current?.curve ?? [],
       layerSplitMib: layerSplitRef.current,
+      excludedAutoSplitGpus: excludedAutoSplitRef.current,
       ...sessionFields,
     };
 
@@ -1077,7 +1100,12 @@ export function useScenarioEvaluator({
       const anchorCtx = parseCtx(curConfig.ctx ?? "32768");
       const result: FitScanResult = await invoke("fit_scan_model", probeArgs(anchorCtx));
 
-      const curProbeKey = fitProbeKey(curConfig, autoVramLaunchRef.current);
+      const curProbeKey = scenarioProbeKey(
+      curConfig,
+      autoVramLaunchRef.current,
+      fullAutoModeRef.current,
+      excludedAutoSplitRef.current,
+    );
       const curPlacementKey = placementConfigKey(curConfig);
       const prevSession = probeSessionRef.current;
       const mergedByCtx = new Map<
@@ -1193,6 +1221,7 @@ export function useScenarioEvaluator({
         learnedAnchorCtx: learnedBundleRef.current?.anchorCtx,
         learnedCurve: learnedBundleRef.current?.curve ?? [],
         layerSplitMib: layerSplitRef.current,
+      excludedAutoSplitGpus: excludedAutoSplitRef.current,
         fitProbeVramMib: result.vram_mib,
         fitProbeHostMib: result.host_mib,
         fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,

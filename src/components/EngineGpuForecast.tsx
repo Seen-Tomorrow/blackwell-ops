@@ -33,6 +33,7 @@ import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { stopAllEngines } from "../lib/engineStack";
 import GpuAssignPanel from "./GpuAssignPanel";
 import { useTheme } from "../context/ThemeContext";
+import { useTelemetry } from "../context/TelemetryContext";
 import DisplayBezelGridControls from "./DisplayBezelGridControls";
 import VramBadge from "./VramBadge";
 import FitLaunchToggle from "./FitLaunchToggle";
@@ -84,10 +85,13 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     launchChrome,
     hideTensorSplit,
     onDeviceChange,
+    onDeviceToggle,
     onSplitChange,
     onDeviceSelect,
     manifest,
     selectedGpuIndices,
+    excludedAutoSplitGpus,
+    onToggleExcludeAutoSplit,
     isValidating,
     onValidate,
     placementActive = false,
@@ -146,6 +150,12 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
     onSetMoeCacheMib,
   } = props;
   const { theme } = useTheme();
+  const { rescanGpus } = useTelemetry();
+  const [rescanningGpus, setRescanningGpus] = useState(false);
+  const handleRescanGpus = useCallback(() => {
+    setRescanningGpus(true);
+    void rescanGpus().finally(() => setRescanningGpus(false));
+  }, [rescanGpus]);
 
   const [gpuPerRow, setGpuPerRow] = useState<DisplayCardsPerRow>(loadDisplayGpuPerRow);
   const [enginesPerRow, setEnginesPerRow] = useState<DisplayCardsPerRow>(
@@ -389,7 +399,9 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                   splitLocked={launchChrome.splitLocked}
                   hideSplitNone={false}
                   hideTensorSplit={hideTensorSplit}
+                  selectedGpuIndices={selectedGpuIndices}
                   onDeviceChange={onDeviceChange}
+                  onDeviceToggle={onDeviceToggle}
                   onSplitChange={onSplitChange}
                   manifest={manifest}
                 />
@@ -445,6 +457,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                 selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined
               }
               onDeviceSelect={onDeviceSelect}
+              excludedAutoSplitGpus={excludedAutoSplitGpus}
+              onToggleExcludeAutoSplit={onToggleExcludeAutoSplit}
               isValidating={isValidating}
               onValidate={onValidate}
               placementActive={placementActive}
@@ -504,6 +518,8 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
             enginesPerRow={enginesPerRow}
             onGpuPerRow={onGpuPerRow}
             onEnginesPerRow={onEnginesPerRow}
+            onRescanGpus={handleRescanGpus}
+            rescanningGpus={rescanningGpus}
             showGpuDensity={
               !(
                 selectedSlotIdx != null &&
@@ -577,11 +593,14 @@ export interface EngineGpuForecastProps {
   /** `!tensorSplitSupported && !isCustomProvider` — hide tensor split option. */
   hideTensorSplit: boolean;
   onDeviceChange: (v: string) => void;
+  onDeviceToggle?: (gpuIndex: number) => void;
   onSplitChange: (v: string | number) => void;
   onDeviceSelect: (gpuIndex: number) => void;
   manifest: VramManifest | null;
   /** Highlighted GPU indices from the forecast — pass empty to hide. */
   selectedGpuIndices: number[];
+  excludedAutoSplitGpus?: number[];
+  onToggleExcludeAutoSplit?: (gpuIndex: number) => void;
   isValidating: boolean;
   /** Normal full-need FIT probe (the low-VRAM free-aware variant is parked). */
   onValidate?: () => void;

@@ -131,14 +131,28 @@ pub fn compute_gpu_mask(config: &EngineConfig, gpu_count: usize, test_has_split:
 /// Compute CUDA_VISIBLE_DEVICES mask from raw device + split_mode strings.
 pub fn compute_gpu_mask_from_params(device: &str, split_mode: &str, gpu_count: usize, test_has_split: bool) -> String {
     let split_active = (!split_mode.is_empty() && split_mode.to_uppercase() != "NONE") || test_has_split;
+    let mut parsed: Vec<usize> = Vec::new();
+    for part in device.split(',') {
+        let trimmed = part.trim();
+        let stripped = trimmed
+            .strip_prefix("GPU-")
+            .or_else(|| trimmed.strip_prefix("gpu-"))
+            .unwrap_or(trimmed);
+        if let Ok(idx) = stripped.parse::<usize>() {
+            if idx < gpu_count && !parsed.contains(&idx) {
+                parsed.push(idx);
+            }
+        }
+    }
 
     if split_active {
-        (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+        if parsed.len() >= 2 {
+            parsed.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+        } else {
+            (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+        }
     } else {
-        let idx = device.strip_prefix("GPU-")
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(0);
-        if idx < gpu_count { idx.to_string() } else { "0".to_string() }
+        parsed.first().copied().unwrap_or(0).to_string()
     }
 }
 
@@ -697,5 +711,14 @@ mod occupancy_tests {
             absent[absent.len() - 2..].to_vec(),
             vec!["--fit".to_string(), "off".to_string()]
         );
+    }
+
+    #[test]
+    fn compute_gpu_mask_supports_selective_subset_and_fallbacks() {
+        assert_eq!(compute_gpu_mask_from_params("GPU-0,GPU-1", "layer", 3, false), "0,1");
+        assert_eq!(compute_gpu_mask_from_params("GPU-2", "none", 3, false), "2");
+        assert_eq!(compute_gpu_mask_from_params("GPU-0", "layer", 3, false), "0,1,2");
+        assert_eq!(compute_gpu_mask_from_params("GPU-0,GPU-9,GPU-2", "tensor", 3, false), "0,2");
+        assert_eq!(compute_gpu_mask_from_params("GPU-9", "none", 3, false), "0");
     }
 }

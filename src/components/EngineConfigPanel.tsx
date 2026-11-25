@@ -1,6 +1,13 @@
 // Model-specific parameter configuration and launch control.
 
 import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  eligibleAutoSplitIndices,
+  formatDeviceSelection,
+  parseDeviceSelection,
+  reconcileDeviceOnSplitChange,
+  toggleDeviceSelection,
+} from "../lib/gpuSelection";
 import { createPortal } from "react-dom";
 import { deniedKnobRule, useEngineDenials } from "../hooks/useEngineDenials";
 import type { ConfigViewMode, ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
@@ -12,6 +19,8 @@ import {
   migrateGlobalSpecOutOfCatalogOverrides,
   normalizeModelPathKey,
   loadCtxCockpitDock,
+  loadExcludedAutoSplitGpus,
+  saveExcludedAutoSplitGpus,
   loadFullAutoGoal,
   loadEnginesInRail,
   loadHwMonitorDock,
@@ -870,10 +879,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   useEffect(() => {
     if (gpus.length === 0) return;
-    const allowed = new Set(gpus.map((g) => `GPU-${g.index}`));
-    const cur = String(config.device ?? "GPU-0");
-    if (!allowed.has(cur)) {
-      updateParam("device", `GPU-${gpus[0].index}`);
+    const parsed = parseDeviceSelection(config.device, gpus);
+    const normalized = formatDeviceSelection(parsed);
+    if (String(config.device ?? "").trim() !== normalized) {
+      updateParam("device", normalized);
     }
     if (gpus.length === 1 && isSplitModeActive(config.split)) {
       updateParam("split", "none");
@@ -1080,14 +1089,59 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       model?.metadata,
     ],
   );
+  const [excludedAutoSplitGpus, setExcludedAutoSplitGpus] = useState<number[]>(
+    loadExcludedAutoSplitGpus,
+  );
+  const toggleExcludeAutoSplit = useCallback(
+    (gpuIndex: number) => {
+      const isExcluded = excludedAutoSplitGpus.includes(gpuIndex);
+      const next = isExcluded
+        ? excludedAutoSplitGpus.filter((i) => i !== gpuIndex)
+        : [...excludedAutoSplitGpus, gpuIndex].sort((a, b) => a - b);
+      setExcludedAutoSplitGpus(next);
+      saveExcludedAutoSplitGpus(next);
+
+      if (!fullAutoMode && isSplitModeActive(config.split)) {
+        const current = parseDeviceSelection(config.device, gpus);
+        if (!isExcluded) {
+          const remaining = current.filter((i) => i !== gpuIndex);
+          if (remaining.length >= 2) {
+            updateParam("device", formatDeviceSelection(remaining));
+          } else if (remaining.length === 1) {
+            updateParam("device", formatDeviceSelection(remaining));
+            updateParam("split", "none");
+          }
+        } else if (!current.includes(gpuIndex)) {
+          updateParam("device", formatDeviceSelection([...current, gpuIndex]));
+        }
+      }
+    },
+    [excludedAutoSplitGpus, fullAutoMode, config.split, config.device, gpus, updateParam],
+  );
+
   const planModelPath = model && !isExternalDraftOnly(model) && !isAttachmentModel(model) ? model.path : null;
+  const planGpus = useMemo(() => {
+    if (gpus.length <= 1) return gpus;
+    if (fullAutoMode) {
+      const eligible = new Set(eligibleAutoSplitIndices(gpus, excludedAutoSplitGpus));
+      const sub = gpus.filter((g) => eligible.has(g.index));
+      return sub.length >= 2 ? sub : gpus;
+    }
+    const picked = parseDeviceSelection(config.device, gpus);
+    if (picked.length >= 2) {
+      const pickedSet = new Set(picked);
+      const sub = gpus.filter((g) => pickedSet.has(g.index));
+      if (sub.length >= 2) return sub;
+    }
+    return gpus;
+  }, [gpus, fullAutoMode, excludedAutoSplitGpus, config.device]);
   const {
     plan: layerPlan,
     kvSource: planKvSource,
     squeezed: planSqueezed,
   } = useLayerPlan(
     planModelPath,
-    gpus,
+    planGpus,
     gpuCalibration,
     planKnobs,
     committedSlotsFromStack(stack),
@@ -1096,10 +1150,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // to a proportional split, which is the drift the plan exists to remove.
   const assistedLayerSplit =
     String(config.split ?? "none").trim().toLowerCase() === "layer";
-  const layerSplitMib =
-    layerPlan && assistedLayerSplit && tensorSplitSupported && gpus.length > 1
-      ? layerPlan.totalMib
-      : undefined;
+  const layerSplitMib = useMemo(() => {
+    if (!layerPlan || !assistedLayerSplit || !tensorSplitSupported || planGpus.length < 2) {
+      return undefined;
+    }
+    const byGpuIdx = new Map<number, number>();
+    planGpus.forEach((g, i) => {
+      byGpuIdx.set(g.index, layerPlan.totalMib[i] ?? 0);
+    });
+    return gpus.map((g) => byGpuIdx.get(g.index) ?? 0);
+  }, [layerPlan, assistedLayerSplit, tensorSplitSupported, planGpus, gpus]);
 
   const vramCalc = useScenarioEvaluator({
     model,
@@ -1112,17 +1172,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     gpuCalibration,
     catalogModels: models,
     layerSplitMib,
+    excludedAutoSplitGpus,
   });
 
   // Placement ownership: the app places every multi-card layer split. Full Auto only
   // promotes a split when the forecast needs more than the best single card, so it counts
   // only when that decision is true. There is no operator switch: a single card has no
   // split to place, so the engine keeps its own fit there.
+  const eligibleAvailForAutoSplit = useMemo(() => {
+    const allAvail = computeGpuAvailableList(gpus, committedSlotsFromStack(stack));
+    const eligible = new Set(eligibleAutoSplitIndices(gpus, excludedAutoSplitGpus));
+    return allAvail.filter((_, i) => eligible.has(gpus[i]?.index ?? -1));
+  }, [gpus, stack, excludedAutoSplitGpus]);
   const fullAutoWillSplit =
     fullAutoMode &&
+    eligibleAvailForAutoSplit.length >= 2 &&
     needsAutoLayerSplit(
       vramCalc.manifest?.vramTotalGb ?? 0,
-      computeGpuAvailableList(gpus, committedSlotsFromStack(stack)),
+      eligibleAvailForAutoSplit,
     );
   const placementOwned = Boolean(
     layerPlan &&
@@ -1797,14 +1864,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [selectedBinaryProfile, resolvedProviders, effectiveBackendType, selectedSlotIdx, stack]);
 
   const selectedGpuIndices = useMemo(() => {
-    if (splitModeActive && gpus.length > 0) {
-      return gpus.map((g) => g.index);
+    if (fullAutoMode) {
+      if (!vramCalc.manifest) return [];
+      return vramCalc.manifest.gpuAllocations
+        .filter((a) => a.projectedLoadGb > 0.1)
+        .map((a) => a.gpuIndex);
     }
-    if (!vramCalc.manifest) return [];
-    return vramCalc.manifest.gpuAllocations
-      .filter((a) => a.projectedLoadGb > 0.1)
-      .map((a) => a.gpuIndex);
-  }, [vramCalc.manifest, splitModeActive, gpus]);
+    return parseDeviceSelection(config.device, gpus);
+  }, [fullAutoMode, vramCalc.manifest, config.device, gpus]);
 
   const booterProps = useMemo(() => {
     const gpuLoadTargetsMib: Record<number, number> = {};
@@ -1822,7 +1889,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       };
     }
     const entry = stack.find((s) => s.idx === selectedSlotIdx);
-    const maskFromConfig = config.device?.replace(/^GPU-/i, "").replace(/\s+/g, ",");
+    const maskFromConfig = parseDeviceSelection(config.device, gpus).join(",");
     return {
       gpuMask: entry?.gpu || maskFromConfig || "",
       vramTargetMib: entry?.vram_mib ?? committedVramMib,
@@ -2532,14 +2599,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const split = String(extra?.split ?? "none").trim().toLowerCase();
       const multi = split.length > 0 && split !== "none";
       if (multi && gpus.length > 1) {
-        const n = gpus.length;
+        const picked = parseDeviceSelection(extra?.device, gpus);
+        const activeIndices = picked.length >= 2 ? picked : gpus.map((g) => g.index);
+        const activeSet = new Set(activeIndices);
+        const n = activeIndices.length;
         return {
           alias,
           modelShort: (m.name || alias).slice(0, 30),
           vramMib: est,
           // computeGpuAvailableList matches numeric CUDA indices in the mask
-          gpuMask: gpus.map((g) => String(g.index)).join(","),
-          gpuBreakdownMib: gpus.map(() => est / n),
+          gpuMask: activeIndices.join(","),
+          gpuBreakdownMib: gpus.map((g) => (activeSet.has(g.index) ? est / n : 0)),
         };
       }
       const deviceStr = String(extra?.device ?? "GPU-0");
@@ -3203,9 +3273,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           updateParam("device", v);
           if (isSplitModeActive(config.split)) updateParam("split", "none");
         }}
+        onDeviceToggle={(gpuIndex) => {
+          if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
+          const next = toggleDeviceSelection(
+            parseDeviceSelection(config.device, gpus),
+            gpuIndex,
+            config.split,
+            gpus.map((g) => g.index),
+          );
+          updateParam("device", next.device);
+          updateParam("split", next.split);
+        }}
         onSplitChange={(v) => {
           if (launchChrome.chromeDisabled || launchChrome.splitLocked) return;
-          updateParam("split", v);
+          const next = reconcileDeviceOnSplitChange(
+            String(v),
+            parseDeviceSelection(config.device, gpus),
+            gpus,
+            excludedAutoSplitGpus,
+          );
+          updateParam("split", next.split);
+          updateParam("device", next.device);
         }}
         onDeviceSelect={(gpuIndex) => {
           if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
@@ -3216,7 +3304,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }}
         manifest={vramCalc.manifest}
         selectedGpuIndices={selectedGpuIndices}
-        isValidating={vramCalc.isValidating}
+        excludedAutoSplitGpus={excludedAutoSplitGpus}
+        onToggleExcludeAutoSplit={toggleExcludeAutoSplit}
+        isValidating={vramCalc.isValidating || vramCalc.isEvaluating}
         onValidate={vramCalc.validate}
         placementActive={placementOwned}
         layerPlan={layerPlan}

@@ -153,9 +153,21 @@ export function formatPcieRate(mib: number | undefined): string {
   return `${mib.toFixed(1)} MB/s`;
 }
 
+export type PcieLinkTone = "good" | "warn" | "slow" | "neutral";
+
+export function pcieLinkTone(gen: number | undefined, width: number | undefined): PcieLinkTone {
+  if (gen == null || width == null || gen <= 0 || width <= 0) return "neutral";
+  const perLaneGb = 0.25 * Math.pow(2, gen - 1);
+  const totalGb = perLaneGb * width;
+  if (totalGb >= 32) return "good";
+  if (totalGb >= 16) return "warn";
+  return "slow";
+}
+
 export interface PcieReadout {
   gen?: number;
   width?: number;
+  tone: PcieLinkTone;
   /** Negotiated-now vs card capability, shown on hover. */
   title?: string;
   rx: string;
@@ -179,6 +191,7 @@ export function pcieReadout(
   return {
     gen,
     width,
+    tone: pcieLinkTone(gen, width),
     title,
     rx: formatPcieRate(gpu.pcie_rx_mib_per_s),
     tx: formatPcieRate(gpu.pcie_tx_mib_per_s),

@@ -20,12 +20,14 @@ interface TelemetryState {
   gpus: GpuInfo[];
   cpu: CpuInfo | null;
   systemInfo: SystemInfo | null;
+  rescanGpus: () => Promise<void>;
 }
 
 const TelemetryContext = createContext<TelemetryState>({
   gpus: [],
   cpu: null,
   systemInfo: null,
+  rescanGpus: async () => {},
 });
 
 export function useTelemetry() {
@@ -183,6 +185,20 @@ export function TelemetryProvider({
       if (tier !== "fast" && gpuScanSnapshotEqual(gpusRef.current, data, gpuVramBucketMib(tier))) {
         return;
       }
+      gpusRef.current = data;
+      setRealGpus(data);
+    } catch {
+      /* keep last */
+    } finally {
+      gpuScanInFlight.current = false;
+    }
+  }, []);
+
+  const rescanGpus = useCallback(async () => {
+    if (gpuScanInFlight.current) return;
+    gpuScanInFlight.current = true;
+    try {
+      const data = await invoke<GpuInfo[]>("rescan_gpus");
       gpusRef.current = data;
       setRealGpus(data);
     } catch {
@@ -355,8 +371,8 @@ export function TelemetryProvider({
   }, [realGpus, devFakeRev]);
 
   const value = useMemo(
-    () => ({ gpus, cpu, systemInfo }),
-    [gpus, cpu, systemInfo],
+    () => ({ gpus, cpu, systemInfo, rescanGpus }),
+    [gpus, cpu, systemInfo, rescanGpus],
   );
 
   /** Fit-relevant fingerprint — 64 MiB buckets, so bar jitter cannot re-render the catalog. */

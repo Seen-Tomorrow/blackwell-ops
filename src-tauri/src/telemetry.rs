@@ -311,6 +311,13 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
     }
 }
 
+/// Re-initialize NVML (clears the persistent session) and return a fresh GPU scan.
+#[tauri::command]
+pub async fn rescan_gpus() -> Result<Vec<GpuInfo>, String> {
+    let _ = tauri::async_runtime::spawn_blocking(crate::nvml_metrics::reset).await;
+    scan_gpus().await
+}
+
 /// NVML calls block inside the driver (the link counters sample ~32 ms), so they run on the
 /// blocking pool — a slow read must never occupy an async worker that IPC also needs.
 async fn nvml_gpus_off_thread() -> Option<Vec<GpuInfo>> {

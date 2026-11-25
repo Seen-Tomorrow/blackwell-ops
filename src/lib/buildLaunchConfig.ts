@@ -123,6 +123,7 @@ export type BuildLaunchConfigInput = {
    * on more than one GPU.
    */
   placement?: LayerPlacement;
+  excludedAutoSplitGpus?: number[];
 };
 
 /**
@@ -258,6 +259,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
           manifest: vramManifest,
           fullAutoMode,
           memoryMode: fullAutoMode ? "full_auto" : "assisted",
+          excludedAutoSplitGpus: input.excludedAutoSplitGpus,
         })
       : buildLaunchExtraParams({
           config: filteredConfig,

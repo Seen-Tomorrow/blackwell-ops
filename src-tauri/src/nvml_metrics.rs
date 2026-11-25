@@ -179,6 +179,30 @@ pub(crate) fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Option<T> {
     Some(f(lib))
 }
 
+/// Tear down the persistent NVML session and clear cached slow readings so the
+/// next [`scan`] re-initializes `nvml.dll` and picks up hot-plugged GPUs or
+/// WDDM/TCC switches.
+pub fn reset() {
+    if let Ok(mut guard) = NVML_LIB.lock() {
+        if let Some(lib) = guard.take() {
+            if let Ok(shutdown) =
+                unsafe { lib.get::<unsafe extern "C" fn() -> u32>(b"nvmlShutdown\0") }
+            {
+                unsafe {
+                    let _ = shutdown();
+                }
+            }
+        }
+    }
+    if let Ok(mut fail_guard) = NVML_FAIL_UNTIL.lock() {
+        *fail_guard = None;
+    }
+    if let Ok(mut cache) = SLOW_CACHE.lock() {
+        cache.pcie.clear();
+        cache.model.clear();
+    }
+}
+
 unsafe fn handle_by_bus(lib: &Library, bus_id: &str) -> Option<*mut c_void> {
     let bus = CString::new(bus_id).ok()?;
     let get = lib

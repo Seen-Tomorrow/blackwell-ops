@@ -5,6 +5,7 @@ import {
   type RunningSlotInfo,
 } from "../services/vram/shared";
 import { fullAutoSingleDeviceLabel } from "./fullAutoGpuPick";
+import { eligibleAutoSplitIndices, formatDeviceSelection } from "./gpuSelection";
 
 export function gpuHeadroomGb(capacityGb: number): number {
   return Math.max(1.0, capacityGb * 0.03);
@@ -83,11 +84,17 @@ export function buildAutoVramLaunchParams(opts: {
   manifest: VramManifest | null;
   fullAutoMode?: boolean;
   memoryMode?: "full_auto" | "assisted";
+  excludedAutoSplitGpus?: number[];
 }): Record<string, unknown> {
-  const { config, launchKeys, paramDefs, gpus, runningSlots, manifest, fullAutoMode, memoryMode } = opts;
+  const { config, launchKeys, paramDefs, gpus, runningSlots, manifest, fullAutoMode, memoryMode, excludedAutoSplitGpus } = opts;
 
   const perGpu = computeGpuAvailableList(gpus, runningSlots);
-  const autoSplit = resolveAutoLayerSplit({ manifest, perGpuAvailable: perGpu });
+  const eligibleSet = new Set(eligibleAutoSplitIndices(gpus, excludedAutoSplitGpus ?? []));
+  const eligibleGpus = gpus.filter((g) => eligibleSet.has(g.index));
+  const eligiblePerGpu = perGpu.filter((_, i) => eligibleSet.has(gpus[i]?.index ?? -1));
+  const autoSplit =
+    eligibleGpus.length >= 2 &&
+    resolveAutoLayerSplit({ manifest, perGpuAvailable: eligiblePerGpu });
 
   const params: Record<string, unknown> = {
     __auto_vram: true,
@@ -110,7 +117,9 @@ export function buildAutoVramLaunchParams(opts: {
       if (autoSplit) {
         params.split = "layer";
         params.gpu_sync = config.gpu_sync ?? "1";
-        // Split mask = all GPUs; device chrome ignored by CUDA mask helper.
+        if (eligibleGpus.length < gpus.length) {
+          params.device = formatDeviceSelection(eligibleGpus.map((g) => g.index));
+        }
       } else {
         // Single-GPU Full Auto: freest card among same-arch peers (not always GPU-0).
         params.device = fullAutoSingleDeviceLabel(gpus, perGpu);

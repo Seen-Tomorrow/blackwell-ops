@@ -37,6 +37,8 @@ interface VramBadgeProps {
   modelMeta?: ModelMetadata;
   selectedGpuIndices?: number[];
   onDeviceSelect?: (gpuIndex: number) => void;
+  excludedAutoSplitGpus?: number[];
+  onToggleExcludeAutoSplit?: (gpuIndex: number) => void;
   isValidating?: boolean;
   onValidate?: () => void;
   activeEngineAlias?: string;
@@ -171,7 +173,7 @@ type AttachmentKind = keyof typeof ATTACHMENT_FACE_COPY;
  * Glass height is owned by EngineGpuForecast — do not write ancestor styles here.
  */
 export default function VramBadge({
-  manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
+  manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, excludedAutoSplitGpus, onToggleExcludeAutoSplit, isValidating, onValidate,
   activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib,
   hideFitProbe = false, draftOnly = false, attachmentKind = null, incomplete = null, onRestage, restageStatus = null, className,
@@ -225,15 +227,15 @@ export default function VramBadge({
           batch: batch ?? null,
           ubatch: ubatch ?? null,
           placementActive: placementActive === true,
-          sourceKind: manifest.memorySource?.kind ?? null,
-          sourceExact: manifest.memorySource?.exact ?? null,
-          sourceDetail: manifest.memorySource?.detail ?? null,
+          sourceKind: manifest?.memorySource?.kind ?? null,
+          sourceExact: manifest?.memorySource?.exact ?? null,
+          sourceDetail: manifest?.memorySource?.detail ?? null,
           vramNeedGb: displayVramNeedGb,
-          ramNeedGb: manifest.ramTotalGb ?? null,
-          fits: manifest.fits ?? null,
-          needTone: manifest.style.vramNeedTone ?? null,
-          launchPaint: manifest.style.launchPaint ?? null,
-          gpuLoadsGb: manifest.gpuAllocations?.map((alloc) => alloc.projectedLoadGb) ?? null,
+          ramNeedGb: manifest?.ramTotalGb ?? null,
+          fits: manifest?.fits ?? null,
+          needTone: manifest?.style?.vramNeedTone ?? null,
+          launchPaint: manifest?.style?.launchPaint ?? null,
+          gpuLoadsGb: manifest?.gpuAllocations?.map((alloc) => alloc.projectedLoadGb) ?? null,
           plan: layerPlan
             ? {
                 totalMib: layerPlan.sumMib,
@@ -518,8 +520,12 @@ export default function VramBadge({
               <span className="vram-forecast-measuring__core font-mono">VRAM</span>
             </div>
             <div className="vram-forecast-measuring__copy font-mono">
-              <span className="vram-forecast-measuring__title">{EVALUATING_COPY.title}</span>
-              <span className="vram-forecast-measuring__sub">{EVALUATING_COPY.sub}</span>
+              <span className="vram-forecast-measuring__title">
+                {isValidating ? "MEASURING VRAM…" : EVALUATING_COPY.title}
+              </span>
+              <span className="vram-forecast-measuring__sub">
+                {isValidating ? "probing this ctx" : EVALUATING_COPY.sub}
+              </span>
             </div>
             <div className="vram-forecast-measuring__bar" aria-hidden>
               <span className="vram-forecast-measuring__bar-fill" />
@@ -530,9 +536,12 @@ export default function VramBadge({
                 className="vram-fc-source__reprobe vram-fc-skeleton__probe"
                 onClick={() => onValidate()}
                 disabled={isValidating}
+                aria-hidden={isValidating || undefined}
+                tabIndex={isValidating ? -1 : 0}
+                style={isValidating ? { visibility: "hidden", pointerEvents: "none" } : undefined}
                 title="Run the normal full-need FIT probe at this CTX"
               >
-                {isValidating ? "PROBING…" : "PROBE THIS CTX"}
+                PROBE THIS CTX
               </button>
             ) : null}
           </div>
@@ -1112,6 +1121,8 @@ export default function VramBadge({
               gpuIdleBaselineMib={gpuIdleBaselineMib}
               selectedGpuIndices={selectedGpuIndices}
               onDeviceSelect={onDeviceSelect}
+              excludedAutoSplitGpus={excludedAutoSplitGpus}
+              onToggleExcludeAutoSplit={onToggleExcludeAutoSplit}
               perRow={gpuPerRow}
               fill
             />

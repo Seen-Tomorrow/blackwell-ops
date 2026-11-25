@@ -178,6 +178,8 @@ export const KEYS = {
   libraryBackfill: `${STORAGE_PREFIX}library-backfill`,
   /** Onboarding: user chose to download models later (skip library link + metadata scan). */
   setupModelsDeferred: `${STORAGE_PREFIX}setup-models-deferred`,
+  /** GPU indices manually excluded from automatic multi-GPU splits. */
+  excludedAutoSplitGpus: `${STORAGE_PREFIX}excluded-auto-split-gpus`,
   benchControls: `${STORAGE_PREFIX}bench-controls`,
   /** Daily fusion share PNG sequence (1–999), keyed by YYYY-MM-DD. */
   fusionShareSeq: `${STORAGE_PREFIX}fusion-share-seq`,
@@ -1378,4 +1380,28 @@ export function loadForecastTwoPoint(): boolean {
 
 export function saveForecastTwoPoint(on: boolean): void {
   writeStorage(KEYS.forecastTwoPoint, on ? "1" : "0");
+}
+
+/** GPU indices manually excluded from automatic multi-GPU splits. */
+export function loadExcludedAutoSplitGpus(): number[] {
+  const raw = readStorage(KEYS.excludedAutoSplitGpus);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return Array.from(
+      new Set(
+        parsed.filter((v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0),
+      ),
+    ).sort((a, b) => a - b);
+  } catch {
+    return [];
+  }
+}
+
+export function saveExcludedAutoSplitGpus(indices: number[]): void {
+  const clean = Array.from(
+    new Set(indices.filter((v) => Number.isInteger(v) && v >= 0)),
+  ).sort((a, b) => a - b);
+  writeStorage(KEYS.excludedAutoSplitGpus, JSON.stringify(clean));
 }

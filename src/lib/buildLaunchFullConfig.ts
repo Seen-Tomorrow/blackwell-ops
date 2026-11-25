@@ -38,6 +38,7 @@ export type BuildLaunchFullConfigInput = {
   placement?: LayerPlacement;
   /** When true and Full Auto Smart, inject high batch/ubatch for this launch only. */
   smartBatchPush?: boolean;
+  excludedAutoSplitGpus?: number[];
 };
 
 /** Same EngineConfig payload the app sends to `launch_engine` (port resolved on backend). */
@@ -62,5 +63,6 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     testFlagsMode: input.testFlagsMode,
     placement: input.placement,
     smartBatchPush: input.smartBatchPush,
+    excludedAutoSplitGpus: input.excludedAutoSplitGpus,
   });
 }

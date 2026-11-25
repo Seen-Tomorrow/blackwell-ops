@@ -218,7 +218,7 @@ export default function HwGpu({
           {pcie && (
             <div className="hw-gpu__io">
               <span className="hw-gpu__label hw-gpu__io-label">PCIE</span>
-              <span className="hw-gpu__io-link" title={pcie.title}>
+              <span className="hw-gpu__io-link" data-tone={pcie.tone} title={pcie.title}>
                 {pcie.gen != null ? `Gen${pcie.gen}` : "—"}
                 {pcie.width != null ? ` · x${pcie.width}` : ""}
               </span>

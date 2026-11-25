@@ -13,6 +13,8 @@ interface GpuTopologyProps {
   gpuIdleBaselineMib?: Record<number, number>;
   selectedGpuIndices?: number[];
   onDeviceSelect?: (gpuIndex: number) => void;
+  excludedAutoSplitGpus?: number[];
+  onToggleExcludeAutoSplit?: (gpuIndex: number) => void;
   /** Cards per row (2 default, 3 for denser multi-GPU). */
   perRow?: 2 | 3;
   /**
@@ -50,6 +52,8 @@ export default function GpuTopology({
   gpuIdleBaselineMib,
   selectedGpuIndices,
   onDeviceSelect,
+  excludedAutoSplitGpus,
+  onToggleExcludeAutoSplit,
   perRow = 2,
   fill = false,
 }: GpuTopologyProps) {
@@ -156,6 +160,7 @@ export default function GpuTopology({
                 : barColorHex;
 
           const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;
+          const isExcluded = excludedAutoSplitGpus?.includes(alloc.gpuIndex) ?? false;
           const overheadLabel = breakdownUnderReports ? "KV/runtime" : "CUDA/runtime";
           const externalDetail = formatExternalTooltip(systemReservedMib, foreignAppsMib);
 
@@ -180,12 +185,32 @@ export default function GpuTopology({
                     ? " cursor-pointer gpu-card--hoverable"
                     : ""
               }`}
+              data-auto-split-excluded={isExcluded ? "true" : undefined}
               title={tooltipText}
             >
               <div className="gpu-card__meta">
                 <span className="gpu-card-name" title={alloc.name}>
                   {alloc.name}
                 </span>
+                {total > 1 && onToggleExcludeAutoSplit && (
+                  <button
+                    type="button"
+                    className="gpu-card__split-toggle"
+                    data-excluded={isExcluded ? "true" : "false"}
+                    aria-pressed={isExcluded}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleExcludeAutoSplit(alloc.gpuIndex);
+                    }}
+                    title={
+                      isExcluded
+                        ? "Excluded from automatic multi-GPU splits (solo/manual still allowed). Click to include."
+                        : "Included in automatic multi-GPU splits. Click to exclude."
+                    }
+                  >
+                    {isExcluded ? "NO SPLIT" : "AUTO"}
+                  </button>
+                )}
                 <span className="gpu-card__readout">
                   <span
                     className={`gpu-card__stat gpu-card__bar-need gpu-card__bar-need--${needTone}`}

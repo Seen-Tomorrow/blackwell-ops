@@ -537,6 +537,26 @@
   box-shadow: none;
 }
 
+.gpu-card__split-toggle {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--type-micro);
+  line-height: 1.15;
+  letter-spacing: 0.04em;
+  color: var(--theme-text-muted);
+  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-text-muted) 24%, transparent);
+  cursor: pointer;
+}
+
+.gpu-card__split-toggle[data-excluded="true"] {
+  color: var(--theme-telemetry-amber);
+  background: color-mix(in srgb, var(--theme-telemetry-amber) 14%, transparent);
+  border-color: color-mix(in srgb, var(--theme-telemetry-amber) 45%, transparent);
+}
+
 
 
 /* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */

@@ -642,4 +642,41 @@ describe("forecast resolver states", () => {
     const noVision = evaluate(input({ learnedCurve: [launchPoint(65_536, 40)], mmprojSizeMib: 1024, visionOn: false }))!;
     expect(withVision.vramTotalGb - noVision.vramTotalGb).toBeCloseTo(1.0, 2);
   });
+
+  it("selective 2-of-3 GPU split reports 2 GPUs and leaves unselected GPU at 0", () => {
+    const gpus3 = [
+      { ...gpu(), index: 0, memory_free: 95 * 1024 },
+      { ...gpu(), index: 1, memory_free: 95 * 1024 },
+      { ...gpu(), index: 2, memory_total: 32_768, memory_total_manufactured: 32_768, memory_free: 31 * 1024 },
+    ];
+    const m = evaluate(
+      input({
+        gpus: gpus3,
+        engineConfig: {
+          ...input({}).engineConfig,
+          extra_params: { ctx: "65536", kv_quant: "q8_0", split: "layer", device: "GPU-0,GPU-1" },
+        },
+        fitProbeVramMib: 60 * 1024,
+        fitProbeHostMib: 1500,
+        fitProbeHostModelMib: 0,
+      }),
+    )!;
+    expect(m.style.uiTemplate.heroText).toContain("split across 2 GPUs");
+    expect(m.gpuAllocations[2].projectedLoadGb).toBe(0);
+    expect(m.gpuAllocations[0].projectedLoadGb).toBeGreaterThan(20);
+    expect(m.gpuAllocations[1].projectedLoadGb).toBeGreaterThan(20);
+  });
+
+  it("high-CTX host compute buffer over 2.5 GB with 0 host model weights does not paint spill/amber", () => {
+    const m = evaluate(
+      input({
+        fitProbeVramMib: 30 * 1024,
+        fitProbeHostMib: 2650,
+        fitProbeHostModelMib: 0,
+      }),
+    )!;
+    expect(m.fits).toBe(true);
+    expect(m.style.launchPaint).toBe("fit");
+    expect(m.style.vramNeedTone).toBe("ok");
+  });
 });

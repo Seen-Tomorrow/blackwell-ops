@@ -19,6 +19,7 @@ import {
   autoSplitPerGpuLoad,
   needsAutoLayerSplit,
 } from "../../../../lib/autoVramLaunch";
+import { parseDeviceSelection } from "../../../../lib/gpuSelection";
 import {
   buildGpuAllocations,
   barStyleFromNeedTone,
@@ -135,9 +136,27 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const kvQuant = String(input.engineConfig.extra_params?.kv_quant ?? "f16");
   const fullAuto = input.fullAutoMode === true;
   const gpuAvailable = computeGpuAvailableList(input.gpus, input.runningSlots);
-  const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
   const tgt = targetGpuIdx(input, gpuAvailable);
   const userSplitMultiGpu = splitActive(input) && input.gpus.length > 1;
+  const excludedSet = new Set(input.excludedAutoSplitGpus ?? []);
+  const eligiblePositions = input.gpus
+    .map((g, pos) => (!excludedSet.has(g.index) ? pos : -1))
+    .filter((pos) => pos >= 0);
+  const selectedPositions = (() => {
+    if (!userSplitMultiGpu) return [tgt];
+    const picked = parseDeviceSelection(input.engineConfig.extra_params?.device, input.gpus);
+    if (picked.length >= 2) {
+      const idxToPos = new Map(input.gpus.map((g, pos) => [g.index, pos]));
+      const positions = picked.map((idx) => idxToPos.get(idx) ?? -1).filter((pos) => pos >= 0);
+      if (positions.length >= 2) return positions;
+    }
+    return input.gpus.map((_, pos) => pos);
+  })();
+  const eligibleAvail = eligiblePositions.map((pos) => gpuAvailable[pos] ?? 0);
+  const multiTotalAvailable = (fullAuto ? eligiblePositions : selectedPositions).reduce(
+    (sum, pos) => sum + (gpuAvailable[pos] ?? 0),
+    0,
+  );
   const draftPathConfigured = specDraftPathConfigured(input);
   // A draft SIZE without a draft IDENTITY (spec off, stale path from another model, or a
   // file-picker sentinel) is not a launch component.
@@ -410,7 +429,24 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   // ASSISTED: NONE means this GPU + offload, never auto-promote to layer.
   // FULL AUTO may still shift when need exceeds the best single card.
   const autoSplit =
-    input.fullAutoMode === true && needsAutoLayerSplit(estimateGb + visionAddonGb, gpuAvailable);
+    input.fullAutoMode === true &&
+    eligiblePositions.length >= 2 &&
+    needsAutoLayerSplit(estimateGb + visionAddonGb, eligibleAvail);
+  const activePositions = autoSplit
+    ? eligiblePositions
+    : userSplitMultiGpu
+      ? selectedPositions
+      : [tgt];
+  const splitSubsetLoads = (): number[] => {
+    const subGpus = activePositions.map((pos) => input.gpus[pos]);
+    const subAvail = activePositions.map((pos) => gpuAvailable[pos] ?? 0);
+    const subLoads = autoSplitPerGpuLoad(estimateGb, subGpus, subAvail);
+    const out = Array(input.gpus.length).fill(0);
+    activePositions.forEach((pos, idx) => {
+      out[pos] = subLoads[idx] ?? 0;
+    });
+    return out;
+  };
   const targetAvail = autoSplit || userSplitMultiGpu
     ? multiTotalAvailable
     : (gpuAvailable[tgt] ?? Math.max(...gpuAvailable, 0));
@@ -423,8 +459,37 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   // host figure (125.9 GB on DeepSeek-V4.1). Counting it as spill made every such model
   // paint OVER FREE · SPILL even when the launch offloads nothing.
   const engramNeedGb = engramGb;
-  // Only host bytes ABOVE the by-design table can be a weight spill.
-  const hostSpillLikeGb = Math.max(0, (hostMeasuredGb ?? 0) - engramNeedGb);
+  const cpuExperts = input.moeCpuExperts === true;
+  const autoCache = cpuExperts && input.moeCacheAuto === true;
+  // Conservation check: non-Engram model weights on host cannot exceed (file_size - engram).
+  // On models like DeepSeek-V4.1, `llama-fit-params` includes the 125.9 GB Engram table in
+  // its Host column (272.8 GB > 279.8 - 125.9 = 153.9 GB), whereas Qwen3.8-Flash lazy-read
+  // PLE is excluded from Host (32.3 GB <= 61.9 - 26.8 = 35.1 GB).
+  const LAZY_ENGRAM_THRESHOLD_GB = 4.0;
+  const engramIsLazy = engramNeedGb > LAZY_ENGRAM_THRESHOLD_GB;
+  const nonEngramModelGb = Math.max(0, weightGb - engramNeedGb);
+  const hostAlreadyIncludesEngram =
+    engramNeedGb > 0
+    && hostMeasuredGb != null
+    && hostMeasuredGb >= engramNeedGb
+    && (!cpuExperts || hostMeasuredGb > nonEngramModelGb + 2.0);
+  const rawHostModelGb =
+    input.fitProbeHostModelMib != null
+      ? input.fitProbeHostModelMib / 1024
+      : input.learnedHostModelMib != null
+        ? input.learnedHostModelMib / 1024
+        : null;
+  const residentHostModelGb =
+    rawHostModelGb != null && hostAlreadyIncludesEngram && engramIsLazy
+      ? Math.max(0, rawHostModelGb - engramNeedGb)
+      : rawHostModelGb;
+  // Only host MODEL weights above the by-design lookup table are a weight spill.
+  // Total host memory at high CTX (e.g. 512K+) includes compute/context buffers that can
+  // exceed 2.5 GB even when 0 weights spill and VRAM has ample headroom.
+  const hostSpillLikeGb =
+    rawHostModelGb != null
+      ? Math.max(0, rawHostModelGb - (rawHostModelGb >= engramNeedGb ? engramNeedGb : 0))
+      : Math.max(0, (hostMeasuredGb ?? 0) - (hostAlreadyIncludesEngram ? engramNeedGb : 0));
   const hostOffloadGb = isWeightClassHostSpill(hostSpillLikeGb) ? hostSpillLikeGb : 0;
   const currentPlacementKey = `${input.engineConfig.extra_params?.device || ""}|${input.engineConfig.extra_params?.split || ""}|${input.engineConfig.extra_params?.gpu_sync || ""}`;
   const probePlacementMatches =
@@ -449,7 +514,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
       ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
-        ? autoSplitPerGpuLoad(estimateGb, input.gpus, gpuAvailable)
+        ? splitSubsetLoads()
         : (() => {
             const loads0 = Array(input.gpus.length).fill(0);
             loads0[tgt] = estimateGb;
@@ -464,14 +529,14 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
     perGpuLoad = !userSplitMultiGpu || breakdownSpansMultipleGpus(loads)
       ? scaleLoads(loads)
       : autoSplit || userSplitMultiGpu
-        ? autoSplitPerGpuLoad(estimateGb, input.gpus, gpuAvailable)
+        ? splitSubsetLoads()
         : (() => {
             const loads0 = Array(input.gpus.length).fill(0);
             loads0[tgt] = estimateGb;
             return loads0;
           })();
   } else if (autoSplit || userSplitMultiGpu) {
-    perGpuLoad = autoSplitPerGpuLoad(estimateGb, input.gpus, gpuAvailable);
+    perGpuLoad = splitSubsetLoads();
   } else {
     perGpuLoad = Array(input.gpus.length).fill(0);
     perGpuLoad[tgt] = estimateGb;
@@ -491,7 +556,7 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   }
 
   if (visionAddonGb > 0) {
-    const mmprojGpu = autoSplit || userSplitMultiGpu ? 0 : tgt;
+    const mmprojGpu = autoSplit || userSplitMultiGpu ? (activePositions[0] ?? 0) : tgt;
     if (perGpuLoad[mmprojGpu] != null) {
       perGpuLoad[mmprojGpu] += visionAddonGb;
     }
@@ -508,20 +573,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   // `-cmoe` reserves an expert cache in VRAM. In AUTO mode it fills remaining headroom up to
   // `free - reserve` across active GPUs; in MANUAL mode it adds `moeCacheMib` proportionally.
-  const cpuExperts = input.moeCpuExperts === true;
-  const autoCache = cpuExperts && input.moeCacheAuto === true;
-  // Conservation check: non-Engram model weights on host cannot exceed (file_size - engram).
-  // On models like DeepSeek-V4.1, `llama-fit-params` includes the 125.9 GB Engram table in
-  // its Host column (272.8 GB > 279.8 - 125.9 = 153.9 GB), whereas Qwen3.8-Flash lazy-read
-  // PLE is excluded from Host (32.3 GB <= 61.9 - 26.8 = 35.1 GB).
-  const LAZY_ENGRAM_THRESHOLD_GB = 4.0;
-  const engramIsLazy = engramNeedGb > LAZY_ENGRAM_THRESHOLD_GB;
-  const nonEngramModelGb = Math.max(0, weightGb - engramNeedGb);
-  const hostAlreadyIncludesEngram =
-    engramNeedGb > 0
-    && hostMeasuredGb != null
-    && hostMeasuredGb >= engramNeedGb
-    && (!cpuExperts || hostMeasuredGb > nonEngramModelGb + 2.0);
   const hostExpertsGb = cpuExperts
     ? Math.max(0, (hostMeasuredGb ?? 0) - (hostAlreadyIncludesEngram ? engramNeedGb : 0))
     : 0;
@@ -599,22 +650,23 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
   const multiGpuLoad = perGpuLoad.filter((gb) => gb > 0.1).length > 1;
 
   const fitHint = "ENGINE pre-tunes on load";
+  const activeGpuCount = activePositions.length;
   const splitHint = autoSplit
-    ? `auto split across ${input.gpus.length} GPU(s) + ${fitHint}`
+    ? `auto split across ${activeGpuCount} GPU(s) + ${fitHint}`
     : userSplitMultiGpu
-      ? `split across ${input.gpus.length} GPU(s) + ${fitHint}`
+      ? `split across ${activeGpuCount} GPU(s) + ${fitHint}`
       : fitHint;
 
   const hostOffloadLaunch = useOffloadPalette || realSpill;
   const multiNote =
-    autoSplit || multiGpuLoad || (!fullAuto && splitActive(input) && input.gpus.length > 1);
+    autoSplit || multiGpuLoad || (!fullAuto && splitActive(input) && activeGpuCount > 1);
   const gpuWord =
     multiNote
       ? autoSplit
-        ? `auto layer-split across ${input.gpus.length} GPUs`
-        : `split across ${input.gpus.length} GPUs`
+        ? `auto layer-split across ${activeGpuCount} GPUs`
+        : `split across ${activeGpuCount} GPUs`
       : input.gpus.length > 1
-        ? `full on GPU-${tgt}`
+        ? `full on GPU-${input.gpus[tgt]?.index ?? tgt}`
         : "full on GPU";
 
   const recommendation = ssdPaged
@@ -713,16 +765,6 @@ function evaluateGgmlMaster(input: ForecastInput): VramManifest | null {
 
   // The lookup table is host by design and is deliberately absent from the engine's host
   // buffer ledger. Put it back into the RAM total; it is not VRAM and not a weight spill.
-  const rawHostModelGb =
-    input.fitProbeHostModelMib != null
-      ? input.fitProbeHostModelMib / 1024
-      : input.learnedHostModelMib != null
-        ? input.learnedHostModelMib / 1024
-        : null;
-  const residentHostModelGb =
-    rawHostModelGb != null && hostAlreadyIncludesEngram && engramIsLazy
-      ? Math.max(0, rawHostModelGb - engramNeedGb)
-      : rawHostModelGb;
   const hostSplit = splitHostRamGb({
     hostGb: residentHostGb,
     hostModelGb: residentHostModelGb,

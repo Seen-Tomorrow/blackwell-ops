@@ -3197,6 +3197,28 @@
   white-space: nowrap;
 }
 
+.segment-switch.segment-switch--gpu-bezel.segment-switch--gpu-multi {
+  gap: 2px;
+}
+
+.segment-switch.segment-switch--gpu-bezel.segment-switch--gpu-multi .segment-switch__option {
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.segment-switch.segment-switch--gpu-bezel.segment-switch--gpu-multi .segment-switch__option.segment-switch__option--active {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent-bright) 22%, var(--theme-panel)) 0%,
+    color-mix(in srgb, var(--theme-accent) 14%, var(--theme-panel-accent)) 100%
+  );
+  border-color: color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
+    inset 0 1px 0 var(--fixed-white-a12);
+  color: var(--theme-chip-active-text, var(--theme-accent-bright));
+}
+
 .segment-switch.segment-switch--gpu-bezel .segment-switch__thumb {
   top: var(--seg-thumb-top, 2px);
   left: var(--seg-thumb-left, 2px);

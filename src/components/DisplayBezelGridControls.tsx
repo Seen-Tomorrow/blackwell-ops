@@ -31,6 +31,8 @@ export interface DisplayBezelGridControlsProps {
   onToggleMonitor?: () => void;
   /** Forecast GPU-density control — hidden while fusion metrics overlay is on. */
   showGpuDensity?: boolean;
+  onRescanGpus?: () => void;
+  rescanningGpus?: boolean;
   showHarnessConnect?: boolean;
   harnessConnectActive?: boolean;
   harnessConnectReady?: boolean;
@@ -56,6 +58,8 @@ export default function DisplayBezelGridControls({
   monitorFocus = false,
   onToggleMonitor,
   showGpuDensity = true,
+  onRescanGpus,
+  rescanningGpus = false,
   showHarnessConnect = false,
   harnessConnectActive = false,
   harnessConnectReady = false,
@@ -85,6 +89,17 @@ export default function DisplayBezelGridControls({
               selectedId={String(gpuPerRow)}
               onSelect={(id) => onGpuPerRow(id === "3" ? 3 : 2)}
             />
+            {onRescanGpus ? (
+              <button
+                type="button"
+                disabled={rescanningGpus}
+                onClick={onRescanGpus}
+                title="Re-initialize NVML to detect hot-plugged GPUs (e.g. TB3 eGPU) or WDDM/TCC switches"
+                className="display-bezel-fusion-chip font-mono uppercase tracking-wider"
+              >
+                {rescanningGpus ? "SCAN…" : "RESCAN"}
+              </button>
+            ) : null}
           </div>
         ) : null}
         {showEnginesControl ? (

@@ -1,4 +1,5 @@
 import type { GpuInfo, VramManifest } from "../lib/types";
+import { parseDeviceSelection } from "../lib/gpuSelection";
 import SegmentSwitch from "./SegmentSwitch";
 
 const DEVICE_LABEL_CLASS =
@@ -60,7 +61,9 @@ interface GpuAssignPanelProps {
   deviceValue: unknown;
   splitValue: unknown;
   splitValues: (string | number)[];
+  selectedGpuIndices?: number[];
   onDeviceChange: (value: string) => void;
+  onDeviceToggle?: (gpuIndex: number) => void;
   onSplitChange: (value: string | number) => void;
   /** FULL AUTO — hatched, non-interactive chrome. */
   chromeDisabled?: boolean;
@@ -80,7 +83,9 @@ export default function GpuAssignPanel({
   deviceValue,
   splitValue,
   splitValues,
+  selectedGpuIndices,
   onDeviceChange,
+  onDeviceToggle,
   onSplitChange,
   chromeDisabled = false,
   deviceLocked = false,
@@ -91,8 +96,18 @@ export default function GpuAssignPanel({
 }: GpuAssignPanelProps) {
   if (gpus.length === 0) return null;
 
-  const splitActive = isSplitModeActive(splitValue) || hideSplitNone;
-  const deviceOptions = gpus.map((g) => `GPU-${g.index}`);
+  const activeIndices = selectedGpuIndices?.length
+    ? selectedGpuIndices
+    : parseDeviceSelection(deviceValue, gpus);
+  const activeSet = new Set(activeIndices);
+  const deviceOptions = gpus.map((g) => ({ index: g.index, label: `GPU-${g.index}` }));
+  const handleDeviceClick = (gpuIndex: number, label: string) => {
+    if (onDeviceToggle) {
+      onDeviceToggle(gpuIndex);
+    } else {
+      onDeviceChange(label);
+    }
+  };
   const visibleSplitValues = splitValues.filter((val) => {
     const mode = String(val).toLowerCase();
     if (hideSplitNone && mode === "none") return false;
@@ -107,14 +122,6 @@ export default function GpuAssignPanel({
   const chipDisabled = (locked: boolean) => chromeDisabled || locked;
 
   if (bezel) {
-    const deviceSegOpts = splitActive
-      ? [{ id: "__all__", label: `ALL (${gpus.length})`, title: "Split mode uses all GPUs" }]
-      : deviceOptions.map((val) => ({ id: val, label: val }));
-    const deviceSelectedId = splitActive
-      ? "__all__"
-      : deviceOptions.includes(String(deviceValue ?? ""))
-        ? String(deviceValue)
-        : (deviceSegOpts[0]?.id ?? "");
     const splitSegOpts = visibleSplitValues.map((val) => ({
       id: String(val),
       label: String(val).toUpperCase(),
@@ -125,6 +132,7 @@ export default function GpuAssignPanel({
       );
       return hit?.id ?? splitSegOpts[0]?.id ?? "";
     })();
+    const devDisabled = chipDisabled(deviceLocked);
 
     return (
       <div
@@ -153,21 +161,47 @@ export default function GpuAssignPanel({
           )}
           <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
             <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Device</span>
-            <GpuSegmentSwitch
-              ariaLabel="Device"
-              disabled={chipDisabled(deviceLocked) || splitActive}
-              selectedId={deviceSelectedId}
-              options={deviceSegOpts}
-              onSelect={(id) => {
-                if (id === "__all__" || splitActive) return;
-                onDeviceChange(id);
-              }}
-              title={
-                splitActive
-                  ? "Split mode uses all detected GPUs. Set SPLIT to none to pick a single GPU."
-                  : undefined
-              }
-            />
+            <div
+              className={[
+                "segment-switch",
+                "segment-switch--multi",
+                "segment-switch--size-compact",
+                "segment-switch--tone-accent",
+                "segment-switch--gpu-bezel",
+                "segment-switch--gpu-multi",
+                devDisabled ? "segment-switch--disabled segment-switch--gpu-bezel-disabled" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              role="group"
+              aria-label="Device"
+              title="Click GPUs to toggle (1 = solo, 2+ = split)"
+            >
+              {deviceOptions.map((opt) => {
+                const isSelected = activeSet.has(opt.index);
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    disabled={devDisabled}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      if (devDisabled) return;
+                      handleDeviceClick(opt.index, opt.label);
+                    }}
+                    className={[
+                      "segment-switch__option",
+                      isSelected ? "segment-switch__option--active" : "",
+                      devDisabled ? "segment-switch__option--disabled" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -207,30 +241,21 @@ export default function GpuAssignPanel({
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
           <span className={DEVICE_LABEL_CLASS}>Device</span>
           <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
-            {splitActive ? (
-              <span
-                className={`${paramChipClass(true, chromeDisabled)} opacity-90 cursor-default`}
-                title={
-                  chromeDisabled
-                    ? "AUTOPILOT — engine picks GPU placement"
-                    : "Split mode uses all detected GPUs. Set SPLIT to none to pick a single GPU."
-                }
-              >
-                ALL ({gpus.length})
-              </span>
-            ) : (
-              deviceOptions.map((val) => (
+            {deviceOptions.map((opt) => {
+              const isSelected = activeSet.has(opt.index);
+              return (
                 <button
-                  key={val}
+                  key={opt.label}
                   type="button"
                   disabled={chipDisabled(deviceLocked)}
-                  onClick={() => onDeviceChange(val)}
-                  className={paramChipClass(String(deviceValue) === val, chromeDisabled || deviceLocked)}
+                  aria-pressed={isSelected}
+                  onClick={() => handleDeviceClick(opt.index, opt.label)}
+                  className={paramChipClass(isSelected, chromeDisabled || deviceLocked)}
                 >
-                  {val}
+                  {opt.label}
                 </button>
-              ))
-            )}
+              );
+            })}
           </div>
         </div>
       </div>
