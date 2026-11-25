@@ -94,9 +94,6 @@ When the user says "use automation" (or asks for a UI check, a launch, a memory-
   instances also duplicate the automation queue, so both would run the same job.
 - **No port answering** = the running instance predates the default, or it is a REL build. Ask for
   one restart (`npm run dev`); never launch a parallel instance to get a port.
-- **Closing DEV** (only when a rebuild is required, and after asking):
-  `(Get-Process -Id <pid>).CloseMainWindow()`, which exits 0. `Stop-Process -Force` leaves
-  `0xffffffff` in the log and looks like a crash.
 
 The queue itself is DEV-only (`automation::spawn` returns immediately in release):
 
