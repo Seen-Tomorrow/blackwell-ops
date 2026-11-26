@@ -157,7 +157,7 @@ export default function RuntimeConfig() {
   }
 
   const envLocked = status.session_log_env != null;
-  const affinityOff = status.cpu_affinity === "off";
+  const affinityMode = status.cpu_affinity;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -210,21 +210,27 @@ export default function RuntimeConfig() {
             <div className="min-w-0">
               <p className="type-body font-mono theme-accent-text tracking-wider">CPU AFFINITY</p>
               <p className="type-tiny font-mono cfg-mut mt-0.5 leading-relaxed">
-                PIN injects the V-Cache mask (ff00 on 9950X3D), --threads 8, --cpu-strict 1.
-                OFF leaves llama on the full process mask. Measured win on small dense models;
-                bypass here to test large / CPU-resident tables.
+                PIN 8T pins the high half of the V-Cache CCD (ff00 on 9950X3D, --threads 8).
+                PIN 16T pins the full V-Cache CCD (ffff on 9950X3D, --threads 16). Both apply
+                decode + batch strict masks and OS process affinity. OFF leaves llama on all cores.
               </p>
             </div>
             <div className="flex gap-1 flex-shrink-0">
               <Chip
-                label="PIN"
-                active={!affinityOff}
+                label="PIN 8T"
+                active={affinityMode === "auto"}
                 disabled={busy}
                 onClick={() => void save({ cpu_affinity: "auto" })}
               />
               <Chip
+                label="PIN 16T"
+                active={affinityMode === "vcache16"}
+                disabled={busy}
+                onClick={() => void save({ cpu_affinity: "vcache16" })}
+              />
+              <Chip
                 label="OFF"
-                active={affinityOff}
+                active={affinityMode === "off"}
                 disabled={busy}
                 onClick={() => void save({ cpu_affinity: "off" })}
               />

@@ -51,11 +51,15 @@ fn settings_path() -> std::path::PathBuf {
 }
 
 pub fn normalize_affinity(raw: &str) -> String {
-    if AffinityMode::parse(raw) == AffinityMode::Off {
-        "off".to_string()
-    } else {
-        "auto".to_string()
+    match AffinityMode::parse(raw) {
+        AffinityMode::Off => "off".to_string(),
+        AffinityMode::Vcache16 => "vcache16".to_string(),
+        _ => "auto".to_string(),
     }
+}
+
+pub fn affinity_mode() -> AffinityMode {
+    AffinityMode::parse(&normalize_affinity(&load().cpu_affinity))
 }
 
 pub fn load() -> RuntimeSettings {
@@ -139,6 +143,8 @@ mod tests {
         assert_eq!(normalize_affinity("off"), "off");
         assert_eq!(normalize_affinity("false"), "off");
         assert_eq!(normalize_affinity("auto"), "auto");
+        assert_eq!(normalize_affinity("vcache16"), "vcache16");
+        assert_eq!(normalize_affinity("16t"), "vcache16");
         assert_eq!(normalize_affinity("compute"), "auto");
         assert_eq!(normalize_affinity(""), "auto");
     }

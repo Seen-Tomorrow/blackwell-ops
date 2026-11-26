@@ -14,16 +14,20 @@ use std::sync::OnceLock;
 
 use crate::types::EngineConfig;
 
-/// Soft cap for auto-injected generation/batch threads on a pinned CCD.
+/// Soft cap for auto-injected generation/batch threads on a pinned CCD (8T high-half).
 pub const DEFAULT_AFFINITY_THREADS: usize = 8;
+/// Cap for full V-Cache CCD pin (all 8 physical V-Cache cores × 2 SMT = 16T on 9950X3D).
+pub const VCACHE16_AFFINITY_THREADS: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AffinityMode {
-    /// V-Cache CCD when asymmetric L3 exists; otherwise leave affinity alone.
+    /// V-Cache CCD high-half (8T, `ff00` on 9950X3D) when asymmetric L3 exists; otherwise untouched.
     Auto,
     Off,
     Compute,
     Vcache,
+    /// Full V-Cache CCD (up to 16T, `ffff` on 9950X3D) — all V-Cache cores with SMT.
+    Vcache16,
 }
 
 impl AffinityMode {
@@ -31,7 +35,8 @@ impl AffinityMode {
         match raw.trim().to_ascii_lowercase().as_str() {
             "off" | "0" | "false" | "none" => Self::Off,
             "compute" | "freq" | "frequency" => Self::Compute,
-            "vcache" | "cache" | "3d" | "x3d" => Self::Vcache,
+            "vcache16" | "16" | "16t" | "pin16" => Self::Vcache16,
+            "vcache" | "cache" | "3d" | "x3d" | "vcache8" | "8" | "8t" | "pin8" => Self::Vcache,
             _ => Self::Auto,
         }
     }
@@ -89,7 +94,8 @@ pub fn topology() -> &'static CpuTopology {
 }
 
 pub fn affinity_mode_from_config(config: &EngineConfig) -> AffinityMode {
-    // Prefer explicit launch override; fall back to auto.
+    // Prefer explicit per-launch override (e.g. __cpu_affinity=off on host offload);
+    // otherwise use the host runtime setting (auto / vcache16 / off).
     if let Some(v) = config
         .extra_params
         .get("__cpu_affinity")
@@ -100,7 +106,7 @@ pub fn affinity_mode_from_config(config: &EngineConfig) -> AffinityMode {
     if let Some(v) = config.get_param_str("__cpu_affinity") {
         return AffinityMode::parse(&v);
     }
-    AffinityMode::Auto
+    crate::runtime_settings::affinity_mode()
 }
 
 /// Build a pin plan, or `None` when affinity should stay untouched.
@@ -110,11 +116,10 @@ pub fn plan_affinity(mode: AffinityMode, thread_hint: Option<usize>) -> Option<A
 
 /// Testable planner over an explicit topology snapshot.
 ///
-/// Mask policy (matches measured best `ff00` on 9950X3D):
-/// - pick V-Cache (auto) or explicit CCD
-/// - take physical cores from the **high end** of that CCD (skip LP0 / low half)
-/// - include **both SMT siblings** per core
-/// - target ≤ [`DEFAULT_AFFINITY_THREADS`] logical processors
+/// Mask policy:
+/// - `Auto` / `Vcache` (8T): high half of V-Cache CCD with SMT (`ff00` = LP 8–15 on 9950X3D)
+/// - `Vcache16` (16T): full V-Cache CCD with SMT (`ffff` = LP 0–15 on 9950X3D)
+/// - `Compute` (8T): high half of compute/frequency CCD with SMT (`ff000000` on 9950X3D)
 pub fn plan_affinity_with(
     topo: &CpuTopology,
     mode: AffinityMode,
@@ -129,16 +134,26 @@ pub fn plan_affinity_with(
             topo.vcache_idx?
         }
         AffinityMode::Compute => topo.compute_idx?,
-        AffinityMode::Vcache => topo.vcache_idx?,
+        AffinityMode::Vcache | AffinityMode::Vcache16 => {
+            if !topo.is_asymmetric_x3d() {
+                return None;
+            }
+            topo.vcache_idx?
+        }
     };
     let ccd = topo.ccd(idx)?;
     if ccd.physical_lps.is_empty() || ccd.lp_mask == 0 {
         return None;
     }
 
+    let max_threads = if mode == AffinityMode::Vcache16 {
+        VCACHE16_AFFINITY_THREADS
+    } else {
+        DEFAULT_AFFINITY_THREADS
+    };
     let target_lps = match thread_hint {
-        Some(n) => n.clamp(1, DEFAULT_AFFINITY_THREADS),
-        None => DEFAULT_AFFINITY_THREADS,
+        Some(n) => n.clamp(1, max_threads),
+        None => max_threads,
     };
     // Each physical core contributes 2 LPs when SMT sibling is in the CCD mask.
     let lps_per_core = if smt_sibling(ccd.physical_lps[0], ccd.lp_mask).is_some() {
@@ -147,11 +162,12 @@ pub fn plan_affinity_with(
         1usize
     };
     let max_cores = ccd.physical_lps.len();
-    let want_cores = target_lps.div_ceil(lps_per_core)
+    let want_cores = target_lps
+        .div_ceil(lps_per_core)
         .clamp(1, max_cores)
-        .min(DEFAULT_AFFINITY_THREADS);
+        .min(max_threads);
 
-    // High half: last `want_cores` physical cores on this CCD.
+    // High end: last `want_cores` physical cores on this CCD (for Vcache16 on 8C CCD, all 8).
     let start = max_cores.saturating_sub(want_cores);
     let mut lps = Vec::with_capacity(want_cores * lps_per_core);
     let mut mask = 0u64;
@@ -169,9 +185,10 @@ pub fn plan_affinity_with(
         return None;
     }
 
-    let threads = lps.len().clamp(1, DEFAULT_AFFINITY_THREADS);
+    let threads = lps.len().clamp(1, max_threads);
     let label = match mode {
         AffinityMode::Vcache => "vcache",
+        AffinityMode::Vcache16 => "vcache16",
         AffinityMode::Compute => "compute",
         AffinityMode::Auto => "vcache(auto)",
         AffinityMode::Off => "off",
@@ -240,12 +257,17 @@ pub fn apply_to_launch_args(
 
     let mode = affinity_mode_from_config(config);
     if mode == AffinityMode::Off {
+        let msg = "[cpu-affinity] skip pin — __cpu_affinity=off (host offload or override)";
+        log::info!("{msg}");
+        crate::session_log::append_session_line(msg);
         return None;
     }
 
-    // Host weight/KV offload needs all cores. V-Cache pin (8/32) starves CPU layers.
+    // Host weight/KV offload needs all cores. V-Cache pin starves CPU layers.
     if launch_looks_like_host_offload(args, config) {
-        log::info!("[cpu-affinity] skip V-Cache pin — host offload / partial ngl");
+        let msg = "[cpu-affinity] skip V-Cache pin — host offload / partial ngl";
+        log::info!("{msg}");
+        crate::session_log::append_session_line(msg);
         return None;
     }
 
@@ -265,9 +287,15 @@ pub fn apply_to_launch_args(
     args.push("--threads-batch".into());
     args.push(batch_n.to_string());
 
+    // Pin BOTH decode (`cpuparams`) AND batch/prefill (`cpuparams_batch`) pools so
+    // llama.cpp never leaves prefill threads unpinned.
     args.push("--cpu-mask".into());
     args.push(plan.cpu_mask_hex.clone());
     args.push("--cpu-strict".into());
+    args.push("1".into());
+    args.push("--cpu-mask-batch".into());
+    args.push(plan.cpu_mask_hex.clone());
+    args.push("--cpu-strict-batch".into());
     args.push("1".into());
 
     let lps = plan
@@ -276,24 +304,26 @@ pub fn apply_to_launch_args(
         .map(|n| n.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    log::info!(
+    let msg = format!(
         "[cpu-affinity] {} L3={}MiB mask=0x{} strict=1 threads={} batch={} lps=[{}]",
-        plan.label,
-        plan.l3_mib,
-        plan.cpu_mask_hex,
-        plan.threads,
-        batch_n,
-        lps
+        plan.label, plan.l3_mib, plan.cpu_mask_hex, plan.threads, batch_n, lps
     );
+    log::info!("{msg}");
+    crate::session_log::append_session_line(&msg);
     Some(plan)
 }
 
-/// Parse `--cpu-mask` hex from launch args (if present).
+/// Parse `--cpu-mask` hex from launch args (supports `--cpu-mask ff00`, `-C ff00`,
+/// `--cpu-mask=ff00`, `-C=ff00`).
 pub fn cpu_mask_from_args(args: &[String]) -> Option<u64> {
     let mut i = 0;
     while i < args.len() {
-        if args[i] == "--cpu-mask" || args[i] == "-C" {
+        let a = args[i].as_str();
+        if a == "--cpu-mask" || a == "-C" {
             let hex = args.get(i + 1)?;
+            return parse_hex_mask(hex);
+        }
+        if let Some(hex) = a.strip_prefix("--cpu-mask=").or_else(|| a.strip_prefix("-C=")) {
             return parse_hex_mask(hex);
         }
         i += 1;
@@ -327,22 +357,15 @@ fn parse_hex_mask(raw: &str) -> Option<u64> {
     u64::from_str_radix(s, 16).ok().filter(|m| *m != 0)
 }
 
-/// Pin the whole process (all threads) — what Process Lasso / Task Manager show.
-/// Non-fatal: logs and returns on failure.
+/// Pin the whole process (all threads) by PID and verify via `GetProcessAffinityMask`.
+/// Non-fatal: logs and emits to session log + BOC on success/failure.
 pub fn apply_process_affinity(pid: u32, mask: u64) {
     if pid == 0 || mask == 0 {
         return;
     }
     #[cfg(windows)]
     {
-        match set_process_affinity_mask(pid, mask) {
-            Ok(()) => log::info!(
-                "[cpu-affinity] SetProcessAffinityMask pid={pid} mask=0x{mask:x}"
-            ),
-            Err(e) => log::warn!(
-                "[cpu-affinity] SetProcessAffinityMask pid={pid} mask=0x{mask:x} failed: {e}"
-            ),
-        }
+        report_affinity_result(pid, mask, set_process_affinity_mask_pid(pid, mask));
     }
     #[cfg(not(windows))]
     {
@@ -350,7 +373,26 @@ pub fn apply_process_affinity(pid: u32, mask: u64) {
     }
 }
 
-/// Convenience: read mask from launch argv and apply process affinity.
+/// Pin a freshly spawned `Child` directly via its owned OS handle (avoids `OpenProcess`
+/// races / access failures) and verify the applied mask via `GetProcessAffinityMask`.
+pub fn apply_process_affinity_for_child(child: &std::process::Child, args: &[String]) {
+    let Some(mask) = cpu_mask_from_args(args) else {
+        return;
+    };
+    let pid = child.id();
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        let handle = child.as_raw_handle() as isize;
+        report_affinity_result(pid, mask, set_process_affinity_mask_handle(handle, mask));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (pid, mask);
+    }
+}
+
+/// Convenience: read mask from launch argv and apply process affinity by PID (e.g. nsys child).
 pub fn apply_process_affinity_from_args(pid: u32, args: &[String]) {
     if let Some(mask) = cpu_mask_from_args(args) {
         apply_process_affinity(pid, mask);
@@ -358,36 +400,95 @@ pub fn apply_process_affinity_from_args(pid: u32, args: &[String]) {
 }
 
 #[cfg(windows)]
-fn set_process_affinity_mask(pid: u32, mask: u64) -> Result<(), String> {
-    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE};
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
+fn report_affinity_result(pid: u32, req_mask: u64, res: Result<(u64, u64), String>) {
+    use crate::output_console::{
+        emit_blackwell_output_console_debug_line, emit_blackwell_output_console_engines_line,
+        BlackwellOutputConsoleLineStyle,
     };
+    match res {
+        Ok((verified, sys_mask)) if verified == req_mask => {
+            let msg = format!(
+                "[cpu-affinity] SetProcessAffinityMask OK pid={pid} mask=0x{verified:x} (sys=0x{sys_mask:x})"
+            );
+            log::info!("{msg}");
+            crate::session_log::append_session_line(&msg);
+            emit_blackwell_output_console_debug_line(&msg);
+        }
+        Ok((verified, sys_mask)) => {
+            let msg = format!(
+                "[cpu-affinity] SetProcessAffinityMask MISMATCH pid={pid} req=0x{req_mask:x} actual=0x{verified:x} (sys=0x{sys_mask:x})"
+            );
+            log::warn!("{msg}");
+            crate::session_log::append_session_line(&msg);
+            emit_blackwell_output_console_engines_line(
+                &msg,
+                BlackwellOutputConsoleLineStyle::Warning,
+            );
+            emit_blackwell_output_console_debug_line(&msg);
+        }
+        Err(e) => {
+            let msg = format!(
+                "[cpu-affinity] SetProcessAffinityMask FAILED pid={pid} mask=0x{req_mask:x}: {e}"
+            );
+            log::warn!("{msg}");
+            crate::session_log::append_session_line(&msg);
+            emit_blackwell_output_console_engines_line(
+                &msg,
+                BlackwellOutputConsoleLineStyle::Warning,
+            );
+            emit_blackwell_output_console_debug_line(&msg);
+        }
+    }
+}
 
-    // PROCESS_SET_INFORMATION = 0x0200 — required by SetProcessAffinityMask.
-    const PROCESS_SET_INFORMATION: u32 = 0x0200;
+#[cfg(windows)]
+fn set_process_affinity_mask_handle(handle: isize, mask: u64) -> Result<(u64, u64), String> {
+    use windows_sys::Win32::Foundation::GetLastError;
 
     #[link(name = "kernel32")]
     extern "system" {
         fn SetProcessAffinityMask(h_process: isize, dw_process_affinity_mask: usize) -> i32;
+        fn GetProcessAffinityMask(
+            h_process: isize,
+            lp_process_affinity_mask: *mut usize,
+            lp_system_affinity_mask: *mut usize,
+        ) -> i32;
     }
 
-    let access = PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA;
+    let ok = unsafe { SetProcessAffinityMask(handle, mask as usize) };
+    if ok == 0 {
+        let err = unsafe { GetLastError() };
+        return Err(format!("SetProcessAffinityMask failed ({err})"));
+    }
+    let mut proc_mask: usize = 0;
+    let mut sys_mask: usize = 0;
+    let gok = unsafe { GetProcessAffinityMask(handle, &mut proc_mask, &mut sys_mask) };
+    if gok == 0 {
+        return Ok((mask, 0));
+    }
+    Ok((proc_mask as u64, sys_mask as u64))
+}
+
+#[cfg(windows)]
+fn set_process_affinity_mask_pid(pid: u32, mask: u64) -> Result<(u64, u64), String> {
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, FALSE};
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION};
+
+    // PROCESS_SET_INFORMATION = 0x0200 — required by SetProcessAffinityMask.
+    const PROCESS_SET_INFORMATION: u32 = 0x0200;
+
+    let access = PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION;
     let handle = unsafe { OpenProcess(access, FALSE, pid) };
     // OpenProcess failure is NULL, not INVALID_HANDLE_VALUE.
     if handle.is_null() {
         let err = unsafe { GetLastError() };
         return Err(format!("OpenProcess failed ({err})"));
     }
-    let ok = unsafe { SetProcessAffinityMask(handle as isize, mask as usize) };
-    let err = unsafe { GetLastError() };
+    let res = set_process_affinity_mask_handle(handle as isize, mask);
     unsafe {
         CloseHandle(handle);
     }
-    if ok == 0 {
-        return Err(format!("SetProcessAffinityMask failed ({err})"));
-    }
-    Ok(())
+    res
 }
 
 fn launch_looks_like_host_offload(args: &[String], config: &EngineConfig) -> bool {
@@ -799,10 +900,23 @@ mod tests {
     }
 
     #[test]
+    fn vcache16_plan_uses_full_vcache_ccd_ffff() {
+        let t = x3d_topo();
+        let plan = plan_affinity_with(&t, AffinityMode::Vcache16, None).expect("plan");
+        assert_eq!(plan.threads, 16);
+        assert_eq!(plan.cpu_mask_hex, "ffff");
+        assert_eq!(plan.lps, (0..16).collect::<Vec<u32>>());
+        assert_eq!(plan.l3_mib, 96);
+        assert_eq!(plan.label, "vcache16");
+    }
+
+    #[test]
     fn user_mask_skips_inject_but_parses() {
         let args = vec!["--cpu-mask".into(), "ff00".into(), "--threads".into(), "8".into()];
         assert!(user_owns_cpu_affinity(&args));
         assert_eq!(cpu_mask_from_args(&args), Some(0xff00));
+        let eq_args = vec!["--cpu-mask=0xffff".into()];
+        assert_eq!(cpu_mask_from_args(&eq_args), Some(0xffff));
     }
 
     #[test]
@@ -811,6 +925,7 @@ mod tests {
         assert_eq!(AffinityMode::parse("off"), AffinityMode::Off);
         assert_eq!(AffinityMode::parse("compute"), AffinityMode::Compute);
         assert_eq!(AffinityMode::parse("vcache"), AffinityMode::Vcache);
+        assert_eq!(AffinityMode::parse("vcache16"), AffinityMode::Vcache16);
     }
 
     #[test]

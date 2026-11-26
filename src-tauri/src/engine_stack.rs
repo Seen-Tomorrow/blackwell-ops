@@ -416,10 +416,10 @@ impl EngineStack {
         let wrapping = nsys_wrap.is_some();
         let mut pid = spawned_pid;
         if !wrapping {
-            // OS process affinity (Task Manager / PPM). llama --cpu-mask only pins ggml workers.
-            crate::cpu_topology::apply_process_affinity_from_args(pid, &cmd_args);
             // OS safety net: job close on app death kills this engine even if we skip explicit teardown.
             crate::engine_job::assign_engine_to_job(pid, &config.alias, slot_idx, config.port);
+            // OS process affinity via owned child handle (verified with GetProcessAffinityMask).
+            crate::cpu_topology::apply_process_affinity_for_child(&child, &cmd_args);
         } else {
             crate::engine_job::assign_engine_to_job(
                 spawned_pid,
