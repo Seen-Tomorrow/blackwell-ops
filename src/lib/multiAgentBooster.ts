@@ -110,6 +110,7 @@ export const CODING_MODE_OPTIONS: CodingModeOption[] = [
   { id: "group", label: "Group", parallel: 4, blurb: "4 agents in parallel" },
   { id: "squad", label: "Squad", parallel: 8, blurb: "8 agents — coding swarm sweet spot" },
   { id: "team", label: "Team", parallel: 16, blurb: "16 agents — heavy harnesses" },
+  { id: "swarm", label: "Swarm", parallel: 24, blurb: "24 agents — wide parallel swarm" },
   { id: "army", label: "Army", parallel: 32, blurb: "32 agents — max concurrency" },
   { id: "legion", label: "Legion", parallel: 64, blurb: "64 agents — beyond army scale" },
 ];

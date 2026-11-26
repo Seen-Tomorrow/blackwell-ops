@@ -154,12 +154,10 @@ import {
   isValidGgufDraftPath,
   isSpecTypeValidForMain,
   isAttachmentModel,
-  loadDraftPairing,
   loadModelSpecOverride,
   pickBestDraftPair,
   resolveExternalDraftPath,
   resolveDraftPathLabel,
-  stageDraftPairing,
   isSpecDecodingGroupActive,
 } from "../lib/specDraft";
 import { modelSizeBytes } from "../lib/modelSize";
@@ -948,12 +946,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     applyFullAutoCockpit,
   });
   const {
-    dflashResolveError,
     specLocalFileRows,
-    clearSpecFileError,
-    handleClearDraft,
     handlePickRepoDraft,
-    handleConfirmDflashPick,
     handleConfirmLibraryDraft,
   } = dflash;
 
@@ -1591,7 +1585,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const best = pickBestDraftPair(model, models, draftRole, HIGH_DRAFT_PAIR_SCORE);
     if (!best) return;
     updateParam(draftKey, best.path);
-    stageDraftPairing(model.path, cliTypeForMethod(specBoostMethod) ?? adapter.cliType, best.path);
   }, [specBoostMethod, model, models, config, updateParam]);
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
@@ -2443,19 +2436,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     const fullConfig = buildCurrentLaunchConfig();
     if (!fullConfig) return;
-
-    // Stage the active manual head for this attempt. A load failure discards it;
-    // only an engine that reaches RUNNING lets it stick (App commits on transition).
-    const launchAdapter = adapterForMethod(specBoostMethod);
-    const launchDraftKey = launchAdapter?.knobs.draftModel;
-    const launchDraftPath = launchDraftKey ? normalizeDraftPath(config[launchDraftKey]) : null;
-    if (launchAdapter && launchDraftPath) {
-      stageDraftPairing(
-        model.path,
-        cliTypeForMethod(specBoostMethod) ?? launchAdapter.cliType,
-        launchDraftPath,
-      );
-    }
 
     // 2-PT: when enabled and fewer than 2 points will exist after this launch, run calibration first
     // (safe low CTX -> target CTX) so it's 2 loads total instead of 3.
@@ -3500,22 +3480,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dflashGettable={dflashGettable}
           dflashDraftLabel={dflashDraftLabel}
           dflashDraftPath={currentDraftPath}
-
-          dflashSampling={config.dflash_sampling === "probabilistic" ? "probabilistic" : "greedy"}
-          onDflashSampling={(sampling) => updateParam("dflash_sampling", sampling)}
           mtpDraftLabel={mtpDraftLabel}
           mtpDraftPath={mtpDraftPath}
           mtpBakedIn={mtpBakedIn}
           specFileRows={specLocalFileRows}
           onPickSpecFile={handleConfirmLibraryDraft}
-          onClearSpecError={clearSpecFileError}
           modelHubId={
             model?.hfModelId
               ? model.hfModelId.split("/").filter(Boolean).slice(0, 2).join("/")
               : undefined
           }
           onPickRepoDraft={handlePickRepoDraft}
-          onClearDraft={handleClearDraft}
           kvQuantValues={cockpitKvValuesBound}
           parallelValues={cockpitParallelValues}
           showAgents={cockpitShowAgents}

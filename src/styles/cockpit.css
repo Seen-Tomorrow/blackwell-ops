@@ -1097,23 +1097,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   transform: translateX(-50%);
 }
 
-.full-auto-cockpit__dflash-sampling {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.25rem;
-  font-family: ui-monospace, monospace;
-  font-size: var(--type-tiny);
-  line-height: 1;
-}
-
-.full-auto-cockpit__dflash-sampling-btn {
-  padding: 0 0.25rem;
-  border-radius: 0.125rem;
-  font-size: var(--type-tiny);
-  letter-spacing: 0.04em;
-}
-
 /* Center vertical divider */
 .full-auto-cockpit__grid-cell:nth-child(odd) {
   border-right: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
@@ -2290,11 +2273,42 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   text-transform: uppercase;
 }
 
-.gp-panel__count {
-  margin-right: auto;
+.gp-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-panel-bg) 45%, transparent);
+}
+
+.gp-tab {
+  padding: 1px 0.45rem;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
   color: var(--theme-text-muted);
   font-size: var(--type-hairline);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.gp-tab:hover {
+  color: var(--theme-text);
+}
+
+.gp-tab--active {
+  background: color-mix(in srgb, var(--theme-accent-bright) 18%, transparent);
+  color: var(--theme-accent-bright);
+}
+
+.gp-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
 }
 
 .gp-panel__x {
@@ -2308,31 +2322,20 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .gp-panel__x:hover { color: var(--theme-accent-bright); }
 
-/* LOCAL | REMOTE side by side — two different decisions, not one long list. */
 .gp-fade {
-  flex: 0 0 40%;
+  flex: 0 0 38%;
   pointer-events: none;
 }
 
-.gp-panel__cols {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-}
-
-
-.gp-col {
+/* Single full-width pane for whichever tab (LOCAL or REMOTE) is active. */
+.gp-body {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.35rem;
   min-width: 0;
   min-height: 0;
-  padding: 0.25rem 0.6rem;
-}
-
-.gp-col + .gp-col {
-  border-left: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  padding: 0.3rem 0.6rem;
 }
 
 .gp-col__label {
@@ -2341,7 +2344,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   letter-spacing: 0.16em;
 }
 
-.gp-col__rows {
+.gp-rows {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -2353,11 +2356,11 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .gp-row {
   display: grid;
-  grid-template-columns: 0.7rem 3.4rem 3.6rem minmax(0, 1fr) auto;
-  gap: 0.4rem;
+  grid-template-columns: 0.7rem 4rem 4rem minmax(0, 1fr) auto;
+  gap: 0.45rem;
   align-items: center;
   width: 100%;
-  padding: 2px 3px;
+  padding: 2px 4px;
   border: 0;
   border-radius: 2px;
   background: transparent;
@@ -2424,21 +2427,46 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .gp-empty {
   color: var(--theme-text-muted);
   font-size: var(--type-hairline);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
-/* The one control that reaches the Hub. Amber on purpose: it spends a rate-limited
-   request, so it must not look like the free local rows. */
+.gp-remote-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+}
+
+.gp-remote-action {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.gp-remote-action__desc {
+  min-width: 0;
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+/* Controls that reach the Hub. Amber on purpose: they spend a rate-limited request,
+   so they must not look like the free local rows. */
 .gp-search {
-  align-self: flex-start;
-  margin-top: 0.15rem;
-  padding: 2px 0.45rem;
+  flex: 0 0 auto;
+  padding: 2px 0.5rem;
   border: 1px solid color-mix(in srgb, var(--theme-warn) 55%, transparent);
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-warn) 12%, transparent);
   color: var(--theme-warn);
   font-size: var(--type-hairline);
   letter-spacing: 0.1em;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -2451,23 +2479,22 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   cursor: default;
 }
 
-/* One row for a direct HF id, under both columns. */
+/* Direct HF repo id lookup inside the REMOTE view. */
 .gp-panel__hf {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.25rem 0.6rem;
+  padding-top: 0.3rem;
   border-top: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
   min-width: 0;
 }
 
-/* Narrow on purpose: RESOLVE and the message matter more than a long id preview. */
 .gp-hf__input {
-  flex: 1 1 8rem;
-  max-width: 13rem;
+  flex: 1 1 10rem;
+  max-width: 18rem;
   min-width: 0;
-  padding: 1px 4px;
+  padding: 1px 5px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
   border-radius: 2px;
   background: transparent;
@@ -2506,7 +2533,6 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   line-height: 1.35;
 }
 
-
 .gp-panel__btn {
   padding: 0 0.35rem;
   border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
@@ -2522,6 +2548,17 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: var(--theme-text);
   border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, var(--theme-border));
 }
+
+.gp-panel__btn--accent {
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 60%, transparent);
+  color: var(--theme-accent-bright);
+}
+
+.gp-panel__btn--accent:hover {
+  background: color-mix(in srgb, var(--theme-accent-bright) 14%, transparent);
+  color: var(--theme-accent-bright);
+}
+
 /* LOADOUT composition: SPEC half (the old BOOST slider) + SWAPS sockets on one rail.
    The grid keeps four cells: Memory, Agents, Think, and BATCH//UBATCH.
    The rail owns the widths; `.loadout-rail__spec` must stay a plain block or the
@@ -2544,6 +2581,3 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 .full-auto-cockpit__grid-cell--batch .cockpit-batch__track {
   margin: 0 1rem;
 }
-
-/* Second source inside the picker: repo companions. Same card grammar, divider keeps
-   the "on disk" and "downloadable" lists from reading as one long list. */

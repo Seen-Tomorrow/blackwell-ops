@@ -30,8 +30,8 @@ export interface LoadoutFileSlot {
   active: boolean;
   /** Number of files behind the slot, shown after the state when > 1. */
   count: number;
-  /** Anchor is 0..1 across the rail — the slot knows its own position. */
-  onOpen: (anchor: number) => void;
+  /** Opens the picker for this slot. */
+  onOpen: () => void;
   /** Wheel cycles the slot's candidates; absent means the slot has none to cycle. */
   onCycle?: () => void;
 }
@@ -55,15 +55,19 @@ interface StopState {
   tone: string;
 }
 
+function pathsEqual(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 function stopState(slot: CompanionSlot): StopState {
   const precisionOf = (path?: string) =>
-    slot.candidates.find((c) => c.path === path)?.precision ?? "—";
-  if (slot.pinned_off) return { value: "—", state: "OFF", tone: "off" };
+    slot.candidates.find((c) => pathsEqual(c.path, path))?.precision ?? "—";
   if (slot.pinned) {
     return { value: precisionOf(slot.pinned), state: "PINNED", tone: "pinned" };
   }
   if (slot.integrated) {
-    const table = slot.candidates.find((c) => c.score >= 100);
+    const table = slot.candidates.find((c) => c.score >= 100) ?? slot.auto;
     return { value: table?.precision ?? "built-in", state: "INTEGRATED", tone: "integrated" };
   }
   if (slot.auto && slot.confidence === "strong") {
@@ -78,21 +82,23 @@ function stopState(slot: CompanionSlot): StopState {
 function nextCandidate(slot: CompanionSlot): CompanionCandidate | null {
   if (slot.candidates.length === 0) return null;
   const current = slot.pinned ?? slot.auto?.path;
-  const idx = slot.candidates.findIndex((c) => c.path === current);
+  const idx = slot.candidates.findIndex((c) => pathsEqual(c.path, current));
   return slot.candidates[(idx + 1) % slot.candidates.length] ?? null;
 }
 
 /** Build the file slots from the companion report plus the caller's extra slots. */
 export function companionSlots(
   report: CompanionReport | null,
-  open: (role: CompanionRole, anchor: number) => void,
-  cycle: (role: CompanionRole, candidate: CompanionCandidate) => void,
+  open: (role: CompanionRole) => void,
+  cycle: (role: CompanionRole, candidate: CompanionCandidate, isDefaultAuto: boolean) => void,
 ): LoadoutFileSlot[] {
   if (!report) return [];
   return ([report.mmproj, report.engram] as CompanionSlot[]).map((slot) => {
     const state = stopState(slot);
     const active =
-      slot.pinned != null || (slot.auto != null && slot.confidence === "strong");
+      slot.pinned != null || slot.integrated || (slot.auto != null && slot.confidence === "strong");
+    const defaultAutoPath =
+      slot.integrated || slot.confidence === "strong" ? slot.auto?.path : undefined;
     return {
       id: slot.role,
       role: ROLE_LABEL[slot.role],
@@ -101,12 +107,12 @@ export function companionSlots(
       tone: slot.role,
       active,
       count: slot.candidates.length,
-      onOpen: (anchor) => open(slot.role, anchor),
+      onOpen: () => open(slot.role),
       onCycle:
-        slot.candidates.length > 0
+        slot.candidates.length > 1
           ? () => {
               const next = nextCandidate(slot);
-              if (next) cycle(slot.role, next);
+              if (next) cycle(slot.role, next, pathsEqual(next.path, defaultAutoPath));
             }
           : undefined,
     };
@@ -118,9 +124,8 @@ export default function LoadoutRail({
   slots = [],
   busy = false,
 }: LoadoutRailProps) {
-  const railRef = useRef<HTMLDivElement | null>(null);
   return (
-    <div className="loadout-rail" data-busy={busy ? "1" : undefined} ref={railRef}>
+    <div className="loadout-rail" data-busy={busy ? "1" : undefined}>
       <div className="loadout-rail__group loadout-rail__group--spec">
         <div className="loadout-rail__zone-row">
           <span className="loadout-rail__zone font-mono">SPEC</span>
@@ -140,7 +145,6 @@ export default function LoadoutRail({
             <FileStop
               key={slot.id}
               slot={slot}
-              railRef={railRef}
               leftPct={((i + 0.5) / Math.max(1, slots.length)) * 100}
               disabled={busy}
             />
@@ -153,12 +157,10 @@ export default function LoadoutRail({
 
 function FileStop({
   slot,
-  railRef,
   leftPct,
   disabled,
 }: {
   slot: LoadoutFileSlot;
-  railRef: React.RefObject<HTMLDivElement | null>;
   leftPct: number;
   disabled: boolean;
 }) {
@@ -184,16 +186,7 @@ function FileStop({
         slot.active ? " loadout-stop--active" : ""
       }`}
       style={{ left: `${leftPct}%` }}
-      onClick={() => {
-        // Anchor across the whole rail, not the half this row lives in.
-        const rail = railRef.current;
-        const el = ref.current;
-        if (!rail || !el) return;
-        const r = rail.getBoundingClientRect();
-        const e = el.getBoundingClientRect();
-        if (r.width <= 0) return;
-        slot.onOpen(Math.min(1, Math.max(0, (e.left + e.width / 2 - r.left) / r.width)));
-      }}
+      onClick={() => slot.onOpen()}
       disabled={disabled}
       title={`${slot.role} — ${slot.state}. Click to pick a file${
         slot.onCycle ? ", wheel to cycle" : ""

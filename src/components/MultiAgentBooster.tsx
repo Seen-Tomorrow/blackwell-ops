@@ -38,8 +38,6 @@ import {
 } from "../lib/fullAutoGoals";
 import { formatCtxChipLabel } from "../lib/sliderParamUtils";
 
-export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
-
 /** Contextual SPECULATIVE-DECODING knobs under Boost (n_max, n_min, …). */
 export interface CockpitSpecDetailParam {
   key: string;
@@ -69,10 +67,6 @@ export interface MultiAgentBoosterProps {
   dflashGettable?: boolean;
   /** Short name of paired draft when library ready. */
   dflashDraftLabel?: string | null;
-  /** Open local-library draft re-picker (when pairing is wrong). */
-  /** DFlash2 draft sampling mode shown under the Boost slider. */
-  dflashSampling?: "greedy" | "probabilistic";
-  onDflashSampling?: (sampling: "greedy" | "probabilistic") => void;
   /** Short name of the selected MTP head. Absent ⇒ no head chosen. */
   mtpDraftLabel?: string | null;
   /** Target carries baked-in nextn — MTP runs without any head file. */
@@ -86,13 +80,9 @@ export interface MultiAgentBoosterProps {
   modelHubId?: string;
   /** A draft head listed from a repo: download and pin it. */
   onPickRepoDraft?: (item: RepoCompanion) => void;
-  /** Unpair the draft lane head from this model. */
-  onClearDraft?: () => void;
   /** Absolute draft head paths, so the picker can mark the landed one. */
   dflashDraftPath?: string | null;
   mtpDraftPath?: string | null;
-  /** Clears a stale Hub error when a picker opens. */
-  onClearSpecError?: () => void;
   kvQuantValues: (string | number)[];
   /** Factory + user-added parallel values for Agents marks. */
   parallelValues?: (string | number)[];
@@ -189,18 +179,14 @@ export default function MultiAgentBooster({
   dflashLibraryReady,
   dflashGettable = false,
   dflashDraftLabel = null,
-  dflashSampling = "greedy",
-  onDflashSampling,
   mtpDraftLabel = null,
   mtpBakedIn = false,
   specFileRows = [],
   onPickSpecFile,
   modelHubId,
   onPickRepoDraft,
-  onClearDraft,
   dflashDraftPath = null,
   mtpDraftPath = null,
-  onClearSpecError,
   kvQuantValues,
   parallelValues,
   layout = "normal",
@@ -250,7 +236,7 @@ export default function MultiAgentBooster({
   // grid, which is this component's territory.
   const [companionReport, setCompanionReport] = useState<CompanionReport | null>(null);
   const [companionBusy, setCompanionBusy] = useState(false);
-  const [pickSlot, setPickSlot] = useState<{ role: CompanionRole | null; anchor: number } | null>(null);
+  const [pickSlot, setPickSlot] = useState<{ role: CompanionRole | null } | null>(null);
 
   const reloadCompanions = useCallback(async () => {
     if (!modelPath) {
@@ -269,7 +255,7 @@ export default function MultiAgentBooster({
   }, [reloadCompanions]);
 
   const setCompanion = useCallback(
-    async (role: CompanionRole, path: string | null) => {
+    async (role: CompanionRole, path: string) => {
       if (!modelPath) return;
       setCompanionBusy(true);
       try {
@@ -404,9 +390,8 @@ export default function MultiAgentBooster({
         tone: "draft",
         active: true,
         count: 1,
-        onOpen: (anchor) => {
-          onClearSpecError?.();
-          setPickSlot({ role: null, anchor });
+        onOpen: () => {
+          setPickSlot({ role: null });
         },
       }
     : null;
@@ -622,32 +607,6 @@ export default function MultiAgentBooster({
                   // Color track mark + under-label only (not above family word)
                   emphasize: Boolean(m.badgeColor) && available && !needCap,
                 }))}
-              subControl={
-                speedBoost === "dflash" && onDflashSampling
-                  ? {
-                      optionId: "dflash",
-                      content: (
-                        <div
-                          className="full-auto-cockpit__dflash-sampling"
-                          title="DFlash2 only — probabilistic samples the draft and lets the target rejection-sample; DFlash1 ignores it."
-                        >
-                          {(["greedy", "probabilistic"] as const).map((mode) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              className={`full-auto-cockpit__dflash-sampling-btn ${
-                                dflashSampling === mode ? "value-chip-active" : "value-chip"
-                              }`}
-                              onClick={() => onDflashSampling(mode)}
-                            >
-                              {mode === "greedy" ? "GREEDY" : "PROBAB"}
-                            </button>
-                          ))}
-                        </div>
-                      ),
-                    }
-                  : undefined
-              }
             />
           </div>
   ) : null;
@@ -915,11 +874,11 @@ export default function MultiAgentBooster({
             ...(draftFileSlot ? [draftFileSlot] : []),
             ...companionSlots(
               companionReport,
-              (role, anchor) => {
-                onClearSpecError?.();
-                setPickSlot({ role, anchor });
+              (role) => setPickSlot({ role }),
+              (role, candidate, isDefaultAuto) => {
+                if (isDefaultAuto) void clearCompanion(role);
+                else void setCompanion(role, candidate.path);
               },
-              (role, candidate) => void setCompanion(role, candidate.path),
             ),
           ]}
           busy={companionBusy}
@@ -928,6 +887,7 @@ export default function MultiAgentBooster({
             the lists get the cockpit's full height instead of the grid's 150px. */}
         {pickSlot && (companionReport || pickSlot.role === null) ? (
           <LoadoutPicker
+            key={`${modelPath ?? ""}:${pickSlot.role ?? "draft"}`}
             title={
               pickSlot.role === null
                 ? "DRAFT"
@@ -980,8 +940,6 @@ export default function MultiAgentBooster({
                 : undefined
             }
             modelHubId={modelHubId}
-            pairedDraftPath={draftHeadPath}
-            onClearDraft={onClearDraft}
             laneKind={
               displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark"
                 ? displayBoost
@@ -993,7 +951,6 @@ export default function MultiAgentBooster({
             }}
             modelPath={modelPath ?? ""}
             onAttach={(role, path) => void setCompanion(role, path)}
-            onDetach={(role) => void setCompanion(role, null)}
             onClear={(role) => void clearCompanion(role)}
             onDownloaded={() => void reloadCompanions()}
             onClose={() => setPickSlot(null)}

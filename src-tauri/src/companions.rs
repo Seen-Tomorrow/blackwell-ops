@@ -71,12 +71,9 @@ pub struct CompanionSlot {
     /// `strong` | `medium` | `none`.
     pub confidence: String,
     pub reason: String,
-    /// Explicit pin (user chose this file).
+    /// Explicit pin (user chose this override file; `None` = AUTO).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pinned: Option<String>,
-    /// Explicit detach: no companion, even if one would auto-resolve.
-    #[serde(default)]
-    pub pinned_off: bool,
     pub candidates: Vec<CompanionCandidate>,
 }
 
@@ -89,7 +86,6 @@ impl CompanionSlot {
             confidence: "none".to_string(),
             reason: "nothing found".to_string(),
             pinned: None,
-            pinned_off: false,
             candidates: Vec::new(),
         }
     }
@@ -256,6 +252,8 @@ fn family_token(arch: &str) -> String {
 
 /// Projector score: `projection_dim` equal to the model's n_embd is the hard check;
 /// the name and projector type are corroboration, never a substitute.
+/// A projector sitting alongside the model in the same folder is the default AUTO pick
+/// unless its `projection_dim` explicitly contradicts the model's `n_embd`.
 fn score_projector(
     n_embd: u32,
     model_names: &[String],
@@ -266,7 +264,10 @@ fn score_projector(
     let mut score = 0;
     let mut reasons: Vec<String> = Vec::new();
 
-    if n_embd > 0 && proj.projection_dim == Some(n_embd as i64) {
+    let dim_matches = n_embd > 0 && proj.projection_dim == Some(n_embd as i64);
+    let dim_contradicts = n_embd > 0 && proj.projection_dim.is_some_and(|d| d != n_embd as i64);
+
+    if dim_matches {
         score += 50;
         reasons.push(format!("dim {n_embd}"));
     }
@@ -294,7 +295,7 @@ fn score_projector(
         }
     }
     if same_folder {
-        score += 10;
+        score += if dim_contradicts { 10 } else { 80 };
         reasons.push("alongside model".to_string());
     }
 
@@ -312,7 +313,15 @@ fn score_lookup(
     let mut score = 0;
     let mut reasons: Vec<String> = Vec::new();
 
-    if ple_width > 0 && eng.dims.first().copied() == Some(ple_width as u64) {
+    let width_matches = ple_width > 0 && eng.dims.first().copied() == Some(ple_width as u64);
+    let width_contradicts = ple_width > 0
+        && eng
+            .dims
+            .first()
+            .copied()
+            .is_some_and(|w| w != ple_width as u64);
+
+    if width_matches {
         score += 50;
         reasons.push(format!("lookup width {ple_width}"));
     }
@@ -341,7 +350,7 @@ fn score_lookup(
         }
     }
     if same_folder {
-        score += 5;
+        score += if width_contradicts { 5 } else { 30 };
         reasons.push("alongside model".to_string());
     }
 
@@ -361,7 +370,45 @@ fn confidence_for(score: i32) -> &'static str {
 // ── Candidate discovery ─────────────────────────────────────────────────
 
 fn is_mmproj_name(name: &str) -> bool {
-    name.to_ascii_lowercase().contains("mmproj")
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".gguf") && lower.contains("mmproj")
+}
+
+/// Single owner for same-directory default mmproj selection: scans `directory` for
+/// `*mmproj*.gguf` files and returns `(file_name, size_bytes)` of the largest one
+/// (filesize is the proxy for precision: F32 > BF16/F16 > Q8).
+/// Used by both catalog scan and AUTO launch so every layer picks the exact same file.
+pub fn default_mmproj_in_dir(directory: &Path) -> Option<(String, u64)> {
+    let entries = std::fs::read_dir(directory).ok()?;
+    let mut best: Option<(String, u64)> = None;
+
+    for entry in entries.flatten() {
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if !is_mmproj_name(&fname) {
+            continue;
+        }
+        if let Ok(meta) = std::fs::metadata(entry.path()) {
+            if !meta.is_file() {
+                continue;
+            }
+            let size = meta.len();
+            match &best {
+                None => best = Some((fname, size)),
+                Some((_, best_size)) if size > *best_size => best = Some((fname, size)),
+                _ => {}
+            }
+        }
+    }
+
+    best
+}
+
+fn is_gguf_file(path: &Path) -> bool {
+    path.is_file()
+        && path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("gguf"))
 }
 
 /// GGML type discriminant → catalog label. The table's precision is the tensor's, not
@@ -476,7 +523,7 @@ fn collect_mmproj_candidates(
         out.push(candidate(
             path,
             source,
-            facts.name.clone(),
+            file_name,
             precision,
             score,
             reason,
@@ -492,7 +539,7 @@ fn collect_mmproj_candidates(
             .flatten()
             .map(|e| e.path())
             .filter(|p| {
-                p.is_file()
+                is_gguf_file(p)
                     && is_mmproj_name(&p.file_name().unwrap_or_default().to_string_lossy())
             })
             .collect();
@@ -513,11 +560,11 @@ fn collect_mmproj_candidates(
     // Projectors discovered in other model folders by the last catalog pass.
     for e in index.iter().filter(|e| e.role == "mmproj") {
         let path = Path::new(&e.path);
-        if path.is_file() {
+        if is_gguf_file(path) {
             push(path, "library");
         }
     }
-    out.sort_by(|a, b| b.score.cmp(&a.score));
+    out.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| b.size_bytes.cmp(&a.size_bytes)));
     out
 }
 
@@ -529,22 +576,25 @@ fn collect_engram_candidates(
 ) -> Vec<CompanionCandidate> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
+    let shard_siblings = crate::model_catalog::shard_sibling_paths(model_path);
+
     let mut push = |path: &Path, source: &str| {
+        let key = path.to_string_lossy().to_ascii_lowercase();
+        if !seen.insert(key) {
+            return;
+        }
         let Some(eng) = read_lookup_facts(path) else {
             return;
         };
         let same_folder = path.parent() == Some(model.folder.as_path());
+        let is_shard_of_set = same_folder
+            && shard_siblings
+                .iter()
+                .any(|s| s.to_string_lossy().eq_ignore_ascii_case(&path.to_string_lossy()));
         let (mut score, reason) = score_lookup(model.ple_width, model, &eng, same_folder);
-        // A table inside the model's own set is the definition of "integrated" — it is
-        // not a candidate to attach, it is already attached.
-        let integrated_here =
-            same_folder && eng.only_lookup_tensor && eng.split_no.is_some_and(|n| model.present_splits.contains(&n));
-        if integrated_here {
-            score = 100;
-        }
-        let key = path.to_string_lossy().to_ascii_lowercase();
-        if !seen.insert(key) {
-            return;
+        // A table inside the model's own shard set is integrated: always the AUTO default.
+        if is_shard_of_set {
+            score = 120;
         }
         let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
         let tensor_precision = ggml_type_label(eng.table_type);
@@ -556,11 +606,15 @@ fn collect_engram_candidates(
         out.push(candidate(
             path,
             source,
-            eng.name.clone(),
+            file_name,
             precision,
             score,
-            if integrated_here {
-                "integrated in the model's set".to_string()
+            if is_shard_of_set {
+                if eng.only_lookup_tensor {
+                    "integrated shard in model set".to_string()
+                } else {
+                    "integrated in model".to_string()
+                }
             } else {
                 reason
             },
@@ -570,9 +624,24 @@ fn collect_engram_candidates(
         ));
     };
 
-    // Candidates in the model's own folder (a sibling table / the integrated one).
-    for sibling in crate::model_catalog::shard_sibling_paths(model_path) {
-        push(&sibling, "folder");
+    // Shards of the model's own set (the integrated table).
+    for sibling in &shard_siblings {
+        push(sibling, "folder");
+    }
+    // Any standalone engram/PLE GGUF placed alongside the model in the same folder.
+    if let Ok(entries) = std::fs::read_dir(&model.folder) {
+        let mut paths: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                is_gguf_file(p)
+                    && !is_mmproj_name(&p.file_name().unwrap_or_default().to_string_lossy())
+            })
+            .collect();
+        paths.sort();
+        for p in paths {
+            push(&p, "folder");
+        }
     }
     for root in extras {
         let mut files = Vec::new();
@@ -585,37 +654,11 @@ fn collect_engram_candidates(
     // shard of another model's set, which is the normal shared-precision case.
     for e in index.iter().filter(|e| e.role == "ple") {
         let path = Path::new(&e.path);
-        if !path.is_file() {
-            continue;
+        if is_gguf_file(path) {
+            push(path, "library");
         }
-        let key = e.path.to_ascii_lowercase();
-        if !seen.insert(key) {
-            continue;
-        }
-        let Some(eng) = read_lookup_facts(path) else {
-            continue;
-        };
-        let same_folder = path.parent() == Some(model.folder.as_path());
-        let (score, reason) = score_lookup(model.ple_width, model, &eng, same_folder);
-        let tensor_precision = ggml_type_label(eng.table_type);
-        let precision = if tensor_precision.is_empty() {
-            precision_label(&e.file_name, &eng.name)
-        } else {
-            tensor_precision.to_string()
-        };
-        out.push(candidate(
-            path,
-            "library",
-            e.file_name.clone(),
-            precision,
-            score,
-            reason,
-            eng.split_no,
-            eng.split_count,
-            Some(eng.dims.clone()).filter(|d| !d.is_empty()),
-        ));
     }
-    out.sort_by(|a, b| b.score.cmp(&a.score));
+    out.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| b.size_bytes.cmp(&a.size_bytes)));
     out
 }
 
@@ -623,7 +666,7 @@ fn collect_engram_candidates(
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct PinFile {
-    /// model path → role → path ("" means explicitly detached).
+    /// model path → role → pinned override path (absent = AUTO).
     #[serde(default)]
     pins: HashMap<String, HashMap<String, String>>,
 }
@@ -651,22 +694,27 @@ fn save_pins(pins: &PinFile) {
     }
 }
 
-/// Pinned path for one role: `Some("")` = explicitly detached.
+/// Pinned override path for one role, if set (`None` = AUTO).
 pub fn pinned_raw(model_path: &str, role: CompanionRole) -> Option<String> {
     let pins = load_pins();
     pins.pins
         .get(&crate::shard_sets::normalize_key(model_path))?
         .get(role.as_str())
+        .filter(|p| !p.trim().is_empty())
         .cloned()
 }
 
-/// Pin one file (`path`) or detach (`path = ""`).
+/// Pin an override file for one role.
 pub fn set_pin(model_path: &str, role: CompanionRole, path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("companion pin path must not be empty".to_string());
+    }
     let mut pins = load_pins();
     pins.pins
         .entry(crate::shard_sets::normalize_key(model_path))
         .or_default()
-        .insert(role.as_str().to_string(), path.to_string());
+        .insert(role.as_str().to_string(), trimmed.to_string());
     save_pins(&pins);
     Ok(())
 }
@@ -692,14 +740,18 @@ fn finish_slot(
     pinned: Option<String>,
     integrated: bool,
 ) -> CompanionSlot {
-    let pinned_off = pinned.as_deref() == Some("");
-    let pinned_path = pinned.filter(|p| !p.is_empty());
+    // Ignore stale pins whose file no longer exists on disk so AUTO applies cleanly.
+    let pinned_path = pinned.filter(|p| Path::new(p).is_file());
     // Only plausible companions belong in the picker. A projector that merely shares
     // the embedding width (a common n_embd) is not "for this model": it needs a name,
     // arch/type or same-folder agreement to clear 60. A live pin is always shown.
     candidates.retain(|c| {
-        c.score >= 60 || pinned_path.as_deref() == Some(c.path.as_str())
+        c.score >= 60
+            || pinned_path
+                .as_deref()
+                .is_some_and(|pin| pin.eq_ignore_ascii_case(&c.path))
     });
+    candidates.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| b.size_bytes.cmp(&a.size_bytes)));
     let top = candidates.first().cloned();
     let confidence = top
         .as_ref()
@@ -709,7 +761,6 @@ fn finish_slot(
         .as_ref()
         .map(|c| c.reason.clone())
         .unwrap_or_else(|| "nothing found".to_string());
-    candidates.sort_by(|a, b| b.score.cmp(&a.score));
     CompanionSlot {
         role,
         integrated,
@@ -717,7 +768,6 @@ fn finish_slot(
         confidence,
         reason,
         pinned: pinned_path,
-        pinned_off,
         candidates,
     }
 }
@@ -773,31 +823,46 @@ fn existing(p: &str) -> bool {
     Path::new(p).is_file()
 }
 
-/// `--mmproj` value: a live pin wins; otherwise nothing (the legacy same-folder
-/// injection still runs, so behaviour without a pin is unchanged).
+/// `--mmproj` value: a live override pin wins; otherwise auto-pick the largest
+/// `.gguf` mmproj file alongside the model in the same directory.
 pub fn launch_mmproj(model_path: &str) -> Option<String> {
-    match pinned_raw(model_path, CompanionRole::Mmproj) {
-        Some(p) if p.is_empty() => None,
-        Some(p) if existing(&p) => Some(p),
-        _ => None,
-    }
-}
-
-/// `--ple` value: a live pin wins; an explicit detach disables pairing; otherwise the
-/// shard-set tail discovered during the catalog pass.
-pub fn launch_engram(model_path: &str) -> Option<String> {
-    match pinned_raw(model_path, CompanionRole::Engram) {
-        Some(p) if p.is_empty() => None,
-        Some(p) if existing(&p) => Some(p),
-        _ => {
-            let externals = crate::shard_sets::launch_externals(model_path);
-            if externals.is_empty() {
-                None
-            } else {
-                Some(externals.join(","))
-            }
+    if let Some(p) = pinned_raw(model_path, CompanionRole::Mmproj) {
+        if existing(&p) {
+            return Some(p);
         }
     }
+    let folder = Path::new(model_path).parent()?;
+    let (name, _) = default_mmproj_in_dir(folder)?;
+    Some(folder.join(name).to_string_lossy().to_string())
+}
+
+/// `--ple` value: a live override pin wins (unless it points at one of the model's own
+/// shards, which llama.cpp already loads); otherwise the shard-set tail discovered during
+/// the catalog pass or a standalone lookup-only GGUF alongside the model in the same dir.
+pub fn launch_engram(model_path: &str) -> Option<String> {
+    if let Some(p) = pinned_raw(model_path, CompanionRole::Engram) {
+        if existing(&p) {
+            let is_own_shard = crate::model_catalog::shard_sibling_paths(model_path)
+                .iter()
+                .any(|s| s.to_string_lossy().eq_ignore_ascii_case(&p));
+            return if is_own_shard { None } else { Some(p) };
+        }
+    }
+    let externals = crate::shard_sets::launch_externals(model_path);
+    if !externals.is_empty() {
+        return Some(externals.join(","));
+    }
+    // If the model has no integrated table in its own shard set, check for a
+    // standalone lookup-only GGUF sitting alongside the model in the same dir.
+    let model = read_model_facts(model_path)?;
+    if model.has_integrated_table {
+        return None;
+    }
+    let candidates = collect_engram_candidates(model_path, &model, &[], &[]);
+    candidates
+        .into_iter()
+        .find(|c| c.source == "folder" && confidence_for(c.score) == "strong")
+        .map(|c| c.path)
 }
 
 // ── IPC ────────────────────────────────────────────────────────────────
@@ -816,15 +881,15 @@ pub fn resolve_companions(model_path: String) -> CompanionReport {
     resolve(&model_path)
 }
 
-/// Pin a file to a role. `path = None` means explicitly detach (no companion at all).
+/// Pin an override file to a companion role (persisted across launches).
 #[tauri::command]
 pub fn set_companion_pin(
     model_path: String,
     role: String,
-    path: Option<String>,
+    path: String,
 ) -> Result<(), String> {
     let role = parse_role(&role)?;
-    set_pin(&model_path, role, path.as_deref().unwrap_or(""))
+    set_pin(&model_path, role, &path)
 }
 
 /// Drop the pin — auto-resolution applies again.
@@ -1113,6 +1178,46 @@ mod tests {    use super::*;
         };
         let (score, _) = score_projector(2560, &[], "qwen4exp", false, &proj);
         assert!(score < 45, "score {score}");
+        // Even in the same folder, a contradicting projection_dim must not auto-attach.
+        let (same_dir_score, _) = score_projector(2560, &[], "qwen4exp", true, &proj);
+        assert!(same_dir_score < 70, "same-dir wrong dim score {same_dir_score}");
+    }
+
+    #[test]
+    fn projector_same_folder_auto_selects_and_outranks_external() {
+        let generic_same_dir = ProjectorFacts {
+            projection_dim: Some(2560),
+            projector_type: None,
+            name: String::new(),
+            general_type: Some("mmproj".to_string()),
+            architecture: "clip".to_string(),
+        };
+        let external_full_match = ProjectorFacts {
+            projection_dim: Some(2560),
+            projector_type: Some("qwen4exp_merger".to_string()),
+            name: "Qwen3.8 Flash Next".to_string(),
+            general_type: Some("mmproj".to_string()),
+            architecture: "clip".to_string(),
+        };
+        let (same_score, _) = score_projector(
+            2560,
+            &["Qwen3.8 Flash Next".to_string()],
+            "qwen4exp",
+            true,
+            &generic_same_dir,
+        );
+        let (ext_score, _) = score_projector(
+            2560,
+            &["Qwen3.8 Flash Next".to_string()],
+            "qwen4exp",
+            false,
+            &external_full_match,
+        );
+        assert_eq!(confidence_for(same_score), "strong", "same_score {same_score}");
+        assert!(
+            same_score > ext_score,
+            "same-folder ({same_score}) should outrank external ({ext_score})"
+        );
     }
 
     #[test]

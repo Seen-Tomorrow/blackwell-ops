@@ -93,10 +93,8 @@ export interface CompanionSlot {
   /** `strong` | `medium` | `none`. */
   confidence: string;
   reason: string;
-  /** Explicit user pin (path). */
+  /** Explicit user override pin (path); absent = AUTO. */
   pinned?: string;
-  /** Explicit detach — no companion even if one would auto-resolve. */
-  pinned_off: boolean;
   candidates: CompanionCandidate[];
 }
 

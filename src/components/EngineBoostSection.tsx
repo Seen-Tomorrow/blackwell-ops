@@ -10,7 +10,6 @@ import type { SpecCapability } from "../lib/specDraft";
 import type { FullAutoFitState, FullAutoGoal, FullAutoWorkload } from "../lib/fullAutoGoals";
 import MultiAgentBooster, {
   type CockpitSpecDetailParam,
-  type DflashGetUiState,
 } from "./MultiAgentBooster";
 import type { CockpitFlagToggle } from "./CockpitFlagToolbar";
 import type { CockpitCtxStripProps } from "./CockpitCtxStrip";
@@ -37,18 +36,14 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     dflashLibraryReady,
     dflashGettable,
     dflashDraftLabel,
-              dflashSampling,
-    onDflashSampling,
     mtpDraftLabel,
     mtpBakedIn,
     specFileRows = [],
-  onPickSpecFile,
-  dflashDraftPath = null,
-  mtpDraftPath = null,
-  onClearSpecError,
-  modelHubId,
-  onPickRepoDraft,
-  onClearDraft,
+    onPickSpecFile,
+    dflashDraftPath = null,
+    mtpDraftPath = null,
+    modelHubId,
+    onPickRepoDraft,
     kvQuantValues,
     parallelValues,
     showAgents,
@@ -113,18 +108,14 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         dflashLibraryReady={dflashLibraryReady}
         dflashGettable={dflashGettable}
         dflashDraftLabel={dflashDraftLabel}
-        dflashSampling={dflashSampling}
-        onDflashSampling={onDflashSampling}
         mtpDraftLabel={mtpDraftLabel}
         mtpBakedIn={mtpBakedIn}
         specFileRows={specFileRows}
         onPickSpecFile={onPickSpecFile}
         dflashDraftPath={dflashDraftPath}
         mtpDraftPath={mtpDraftPath}
-        onClearSpecError={onClearSpecError}
         modelHubId={modelHubId}
         onPickRepoDraft={onPickRepoDraft}
-        onClearDraft={onClearDraft}
         kvQuantValues={kvQuantValues}
         parallelValues={parallelValues}
         showAgents={showAgents}
@@ -194,8 +185,6 @@ export interface EngineBoostSectionProps {
   dflashLibraryReady: boolean;
   dflashGettable: boolean;
   dflashDraftLabel: string | null;
-  dflashSampling: "greedy" | "probabilistic";
-  onDflashSampling: (sampling: "greedy" | "probabilistic") => void;
   mtpDraftLabel: string | null;
   mtpBakedIn: boolean;
   /** Local draft heads for the active SPEC lane, available without opening the modal. */
@@ -206,13 +195,9 @@ export interface EngineBoostSectionProps {
   /** Absolute draft head paths, so the picker can mark the landed one. */
   dflashDraftPath?: string | null;
   mtpDraftPath?: string | null;
-  /** HF draft packs found for the active lane. */
-  /** Clears a stale Hub error when a picker opens. */
-  onClearSpecError?: () => void;
   /** Hub repo id of the selected model (DRAFT lane lists it like the Hub). */
   modelHubId?: string;
   onPickRepoDraft?: (item: import("../lib/types").RepoCompanion) => void;
-  onClearDraft?: () => void;
   kvQuantValues: (string | number)[];
   parallelValues: (string | number)[];
   showAgents: boolean;

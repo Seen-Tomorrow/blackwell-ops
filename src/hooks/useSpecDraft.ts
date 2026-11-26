@@ -1,29 +1,19 @@
 /**
- * Get/Change draft UI — pick modal, HF search, download watch.
- * DFlash/DSpark: library pick + HF download. MTP: library pick only.
- * Depends on useCockpit.applyFullAutoCockpit for re-enable after ready.
+ * Local draft-head list + Hub download watch for the LOADOUT DRAFT picker.
+ * Depends on useCockpit.applyFullAutoCockpit to apply a confirmed pick.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ModelEntry } from "../lib/types";
-import type { DflashGetUiState } from "../components/MultiAgentBooster";
+import type { ModelEntry, RepoCompanion } from "../lib/types";
 import type { DraftPickListItem } from "../lib/specDraft";
-import type { RepoCompanion } from "../lib/types";
-import { hfCooldownMs, noteHfError } from "../lib/hfCache";
-import {
-  startDflashDraftDownload,
-  type DflashDraftOffer,
-} from "../lib/dflashGetDraft";
 import {
   catalogDraftSignals,
-  clearDraftPairing,
   draftRoleForSpecType,
   draftRoleFromModel,
   resolveDraftPathLabel,
   scoreDraftPair,
   signalContainsDspark,
-  stageDraftPairing,
   type DraftRole,
 } from "../lib/specDraft";
 import {
@@ -31,7 +21,7 @@ import {
   MTP_DRAFT_MODEL,
   cliSpecTypeForMethod,
 } from "../lib/specProfiles";
-import { adapterForMethod, cliTypeForMethod } from "../lib/spec/adapters";
+import { adapterForMethod } from "../lib/spec/adapters";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { useDownloadTasks } from "./useDownloadTasks";
 import type {
@@ -75,66 +65,13 @@ export function useSpecDraft({
   powerCockpitMode,
   applyFullAutoCockpit,
 }: UseSpecDraftOptions) {
-  const [dflashGetState, setDflashGetState] = useState<DflashGetUiState>("idle");
-  const [dflashGetError, setDflashGetError] = useState<string | null>(null);
-  const [dflashGetOfferLabel, setDflashGetOfferLabel] = useState<string | null>(null);
-
-  const [dflashResolveError, setDflashResolveError] = useState<string | null>(null);
-  const dflashDownloadIdsRef = useRef<Set<string>>(new Set());
-  const dflashScannedBatchRef = useRef("");
+  const [watchingDownload, setWatchingDownload] = useState(false);
+  const downloadIdsRef = useRef<Set<string>>(new Set());
+  const scannedBatchRef = useRef("");
   const prevDflashReadyRef = useRef(false);
   const hfDownloads = useDownloadTasks("hf");
 
-  /**
-   * Local heads for the active lane. `role` decides which catalog entries qualify
-   * and which score profile applies; `draftKey` decides which config value is
-   * pinned to the top as the current pick.
-   */
-  const buildLocalPickItems = useCallback(
-    (role: DraftRole, draftKey: string): DraftPickListItem[] => {
-      if (!model || !models?.length) return [];
-      const preferDspark = speedBoost === "dspark" && role === "external_dflash";
-      const items: DraftPickListItem[] = models
-        .filter((m) => {
-          if (m.path === model.path) return false;
-          const mRole = draftRoleFromModel(m);
-          if (mRole === role) return true;
-          // DSpark heads may not score as DFlash until path signal is present
-          if (preferDspark && catalogDraftSignals(m).some(signalContainsDspark)) return true;
-          return false;
-        })
-        .map((m) => {
-          const isDspark = catalogDraftSignals(m).some(signalContainsDspark);
-          let score = scoreDraftPair(model, m, role);
-          // Prefer explicit dspark heads when Boost is DSpark
-          if (preferDspark && isDspark) score = Math.max(score, 90);
-          const label = resolveDraftPathLabel(m.path);
-          const quant = m.quant || m.metadata?.file_type_str || "";
-          const author = m.author || m.hfMeta?.author || "";
-          const tag = isDspark ? "dspark" : "";
-          return {
-            id: m.path,
-            title: label,
-            meta: [author, quant, tag, m.size_str].filter(Boolean).join(" · "),
-            score,
-          };
-        })
-        .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
-
-      const current = config[draftKey] != null ? String(config[draftKey]) : "";
-      if (current) {
-        items.sort((a, b) => {
-          if (a.id === current) return -1;
-          if (b.id === current) return 1;
-          return 0;
-        });
-      }
-      return items;
-    },
-    [model, models, config, speedBoost],
-  );
-
-  /** The head kind the CURRENT lane accepts (mtp / dflash / eagle3). */
+  /** The head kind the active SPEC lane accepts (mtp / dflash / eagle3). */
   const laneDraftRole: DraftRole = useMemo(() => {
     const specType =
       speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
@@ -146,98 +83,75 @@ export function useSpecDraft({
     );
   }, [speedBoost]);
 
-  const buildLocalDflashPickItems = useCallback(
-    () =>
-      buildLocalPickItems(
-        laneDraftRole,
-        laneDraftRole === "external_mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL,
-      ),
-    [buildLocalPickItems, laneDraftRole],
-  );
+  /** Local heads for the active lane, sorted by score with the active head pinned to top. */
+  const specLocalFileRows = useMemo((): DraftPickListItem[] => {
+    if (!model || !models?.length) return [];
+    const draftKey =
+      laneDraftRole === "external_mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
+    const preferDspark = speedBoost === "dspark" && laneDraftRole === "external_dflash";
+    const items: DraftPickListItem[] = models
+      .filter((m) => {
+        if (m.path === model.path) return false;
+        const mRole = draftRoleFromModel(m);
+        if (mRole === laneDraftRole) return true;
+        if (preferDspark && catalogDraftSignals(m).some(signalContainsDspark)) return true;
+        return false;
+      })
+      .map((m) => {
+        const isDspark = catalogDraftSignals(m).some(signalContainsDspark);
+        let score = scoreDraftPair(model, m, laneDraftRole);
+        if (preferDspark && isDspark) score = Math.max(score, 90);
+        const label = resolveDraftPathLabel(m.path);
+        const quant = m.quant || m.metadata?.file_type_str || "";
+        const author = m.author || m.hfMeta?.author || "";
+        const tag = isDspark ? "dspark" : "";
+        return {
+          id: m.path,
+          title: label,
+          meta: [author, quant, tag, m.size_str].filter(Boolean).join(" · "),
+          score,
+        };
+      })
+      .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
 
-  /**
-   * Unpair the current lane's head from this model: clears the config value, the saved
-   * pairing and any staged copy. The file itself is untouched.
-   */
-  const handleClearDraft = useCallback(() => {
-    if (!model) return;
-    const method =
-      speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
-        ? speedBoost
-        : "off";
-    const adapter = adapterForMethod(method);
-    const draftKey = adapter?.knobs.draftModel;
-    if (!adapter || !draftKey) return;
-    updateParam(draftKey, "");
-    clearDraftPairing(model.path, draftKey);
-    setDflashResolveError(null);
-    setDflashGetError(null);
-    dispatchAppEvent(EVENTS.paramConfigChanged);
-  }, [model, speedBoost, updateParam, dispatchAppEvent]);
-  /** A stale 429 from an earlier attempt must not greet the next open. */
-  const clearSpecFileError = useCallback(() => {
-    setDflashResolveError(null);
-  }, []);
-
-  const handleConfirmDflashPick = useCallback(async (offer: DflashDraftOffer) => {
-    setDflashResolveError(null);
-    setDflashGetError(null);
-    setDflashGetOfferLabel(offer.label);
-    setDflashGetState("downloading");
-    dflashDownloadIdsRef.current = new Set();
-    dflashScannedBatchRef.current = "";
-    try {
-      const ids = await startDflashDraftDownload(offer);
-      dflashDownloadIdsRef.current = new Set(ids);
-    } catch (err) {
-      console.error("[dflashGetDraft] download failed:", err);
-      setDflashGetState("error");
-      setDflashGetError(
-        typeof err === "string" ? err : "Could not start DFlash draft download",
-      );
+    const current = config[draftKey] != null ? String(config[draftKey]) : "";
+    if (current) {
+      items.sort((a, b) => {
+        if (a.id === current) return -1;
+        if (b.id === current) return 1;
+        return 0;
+      });
     }
-  }, []);
+    return items;
+  }, [model, models, config, speedBoost, laneDraftRole]);
 
-  /**
-   * Confirm a draft head that came from the repo listing (the same one the Model Hub
-   * downloads from) instead of from the HF search heuristic. It is downloaded and pinned
-   * exactly like a picked offer.
-   */
-  const handlePickRepoDraft = useCallback(
-    (item: RepoCompanion) => {
-      const offer: DflashDraftOffer = {
+  /** Enqueue a Hub draft head download and scan its GGUF metadata when complete. */
+  const handlePickRepoDraft = useCallback(async (item: RepoCompanion) => {
+    downloadIdsRef.current = new Set();
+    scannedBatchRef.current = "";
+    setWatchingDownload(true);
+    try {
+      const ids = await invoke<string[]>("start_quant_download", {
         hfModelId: item.repo_id,
         hfAuthor: item.repo_id.split("/")[0] || "unknown",
         quantType: item.precision || "FILE",
-        file: {
+        ggufFile: {
           type: item.precision || item.file_name,
           size_bytes: item.size_bytes,
           url: item.url,
           lfsOid: item.lfs_oid,
         },
-        sizeBytes: item.size_bytes,
-        label: `${item.repo_id} · ${item.precision || item.file_name}`,
-        score: 0,
-        matchNotes: ["repo listing"],
-        downloads: 0,
-      };
-      void handleConfirmDflashPick(offer);
-    },
-    [handleConfirmDflashPick],
-  );
-  /** The active lane's local heads, built unconditionally for the LOADOUT picker. */
-  const specLocalFileRows = useMemo(
-    () => buildLocalDflashPickItems(),
-    [buildLocalDflashPickItems],
-  );
-
+      });
+      downloadIdsRef.current = new Set(ids);
+    } catch (err) {
+      console.error("[useSpecDraft] draft download failed:", err);
+      setWatchingDownload(false);
+    }
+  }, []);
 
   useEffect(() => {
-    setDflashGetState("idle");
-    setDflashGetError(null);
-    setDflashGetOfferLabel(null);
-    setDflashResolveError(null);
-    dflashDownloadIdsRef.current = new Set();
+    setWatchingDownload(false);
+    downloadIdsRef.current = new Set();
     prevDflashReadyRef.current = false;
   }, [model?.path]);
 
@@ -245,8 +159,6 @@ export function useSpecDraft({
     const wasReady = prevDflashReadyRef.current;
     prevDflashReadyRef.current = dflashLibraryReady;
     if (wasReady || !dflashLibraryReady) return;
-    setDflashGetState("idle");
-    setDflashGetError(null);
     if (speedBoost === "dflash" || speedBoost === "dspark") {
       void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {
         powerUser: powerCockpitMode,
@@ -261,22 +173,20 @@ export function useSpecDraft({
     applyFullAutoCockpit,
     powerCockpitMode,
   ]);
+
   useEffect(() => {
-    if (dflashGetState !== "downloading") return;
-    const ids = dflashDownloadIdsRef.current;
+    if (!watchingDownload) return;
+    const ids = downloadIdsRef.current;
     if (ids.size === 0) return;
-    const failed = hfDownloads.find((t) => ids.has(t.id) && t.status === "failed");
-    if (failed) {
-      setDflashGetState("error");
-      setDflashGetError(failed.error || "DFlash draft download failed");
+    if (hfDownloads.some((t) => ids.has(t.id) && t.status === "failed")) {
+      setWatchingDownload(false);
       return;
     }
     const watched = hfDownloads.filter((t) => ids.has(t.id));
-    if (watched.length === 0) return;
-    if (!watched.every((t) => t.status === "completed")) return;
+    if (watched.length === 0 || !watched.every((t) => t.status === "completed")) return;
     const batchKey = watched.map((t) => t.id).sort().join(",");
-    if (dflashScannedBatchRef.current === batchKey) return;
-    dflashScannedBatchRef.current = batchKey;
+    if (scannedBatchRef.current === batchKey) return;
+    scannedBatchRef.current = batchKey;
     const dests = watched.map((t) => t.destPath).filter((p) => p && /\.gguf$/i.test(p));
     void (async () => {
       for (const dest of dests) {
@@ -286,13 +196,13 @@ export function useSpecDraft({
             providerId: null,
           });
         } catch (err) {
-          console.error("[dflashGetDraft] post-download GGUF scan failed:", dest, err);
+          console.error("[useSpecDraft] post-download GGUF scan failed:", dest, err);
         }
       }
       dispatchAppEvent(EVENTS.downloadCompleted);
-      setDflashGetState("idle");
+      setWatchingDownload(false);
     })();
-  }, [hfDownloads, dflashGetState]);
+  }, [hfDownloads, watchingDownload]);
 
   const handleConfirmLibraryDraft = useCallback(
     (path: string) => {
@@ -305,11 +215,6 @@ export function useSpecDraft({
       const draftKey = adapter?.knobs.draftModel;
       if (!adapter || !draftKey) return;
       updateParam(draftKey, path);
-      stageDraftPairing(model.path, cliTypeForMethod(method) ?? adapter.cliType, path);
-      setDflashResolveError(null);
-      setDflashGetState("idle");
-      setDflashGetError(null);
-      // Keep current Boost method (mtp, dflash or dspark) when confirming a path
       void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {
         powerUser: powerCockpitMode,
         preferredDraftPath: path,
@@ -327,26 +232,8 @@ export function useSpecDraft({
     ],
   );
 
-  /** The active lane's local heads, built unconditionally for the LOADOUT picker. */
-
-  // Capability drop away from external-draft boost → clear CTA noise
-  useEffect(() => {
-    if (speedBoost !== "dflash" && speedBoost !== "dspark") {
-      setDflashGetState("idle");
-      setDflashGetError(null);
-      setDflashGetOfferLabel(null);
-    }
-  }, [speedBoost]);
-
   return {
-    dflashGetState,
-    dflashGetError,
-    dflashGetOfferLabel,
-    dflashResolveError,
     specLocalFileRows,
-    clearSpecFileError,
-    handleClearDraft,
-    handleConfirmDflashPick,
     handlePickRepoDraft,
     handleConfirmLibraryDraft,
   };

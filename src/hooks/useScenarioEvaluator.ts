@@ -46,12 +46,13 @@ function ggufEngramMib(model: ModelEntry | null | undefined): number | undefined
 
 function activeCompanionSizeMib(slot: CompanionSlot | undefined): number | null {
   if (!slot) return null;
-  if (slot.pinned_off) return 0;
   if (slot.pinned) {
-    const hit = slot.candidates.find((c) => c.path === slot.pinned);
+    const hit = slot.candidates.find(
+      (c) => c.path.toLowerCase() === slot.pinned!.toLowerCase(),
+    );
     if (hit && hit.size_bytes > 0) return hit.size_bytes / 1_048_576;
   }
-  if (slot.auto && slot.auto.size_bytes > 0) {
+  if ((slot.integrated || slot.confidence === "strong") && slot.auto && slot.auto.size_bytes > 0) {
     return slot.auto.size_bytes / 1_048_576;
   }
   return null;
@@ -81,8 +82,8 @@ function placementConfigKey(config: Record<string, unknown>): string {
 }
 
 function draftBaseName(config: Record<string, unknown>): string {
-  const draft = String(config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model ?? "");
-  return draft.split(/[/\\]/).pop() || draft;
+  const draft = specDraftForLearned(config);
+  return draft ? (draft.split(/[/\\]/).pop() || draft) : "";
 }
 
 /**
@@ -294,6 +295,16 @@ function externalDraftWanted(config: Record<string, unknown>): boolean {
   return st.includes("dflash") || st.includes("dspark") || st.includes("eagle");
 }
 
+/** Active lane's draft path from `config`, keyed by spec type so MTP and DFlash never cross. */
+function activeDraftPathForSpec(config: Record<string, unknown>): string {
+  const spec = effectiveSpecTypeFromConfig(config);
+  if (spec === "none" || spec === "off") return "";
+  const laneRaw = spec.includes("mtp")
+    ? (config.mtp_draft_model ?? config.spec_draft_model)
+    : (config.dflash_draft_model ?? config.spec_draft_model);
+  return normalizeDraftPath(laneRaw) ?? "";
+}
+
 /** Resolve external draft path + size (MiB) for dflash/dspark forecast (sync path). */
 function resolveDraftSizeMib(
   config: Record<string, unknown>,
@@ -301,9 +312,7 @@ function resolveDraftSizeMib(
   draftOverride?: string,
 ): number | undefined {
   if (!draftOverride && !externalDraftWanted(config)) return undefined;
-  const draftRaw = draftOverride ?? normalizeDraftPath(
-    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
-  ) ?? "";
+  const draftRaw = draftOverride ?? activeDraftPathForSpec(config);
   if (!draftRaw) {
     return undefined;
   }
@@ -320,18 +329,14 @@ function resolveDraftSizeMib(
 
 function draftPathForLearned(config: Record<string, unknown>): string {
   if (!externalDraftWanted(config)) return "";
-  return normalizeDraftPath(
-    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
-  ) ?? "";
+  return activeDraftPathForSpec(config);
 }
 
 /** Raw draft path used by the learned spec identity (mirrors Rust draft_key_for_learn). */
 function specDraftForLearned(config: Record<string, unknown>): string {
   const spec = effectiveSpecTypeFromConfig(config);
   if (spec === "none") return "";
-  const raw = normalizeDraftPath(
-    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
-  ) ?? "";
+  const raw = activeDraftPathForSpec(config);
   const usesExternal = spec.includes("mtp")
     && !spec.includes("dflash")
     && !spec.includes("dspark")
@@ -367,9 +372,7 @@ function validDraftForForecast(
 ): string {
   const spec = effectiveSpecTypeFromConfig(config);
   if (spec === "none" || spec === "off") return "";
-  const raw = normalizeDraftPath(
-    config.dflash_draft_model ?? config.mtp_draft_model ?? config.spec_draft_model,
-  ) ?? "";
+  const raw = activeDraftPathForSpec(config);
   const role = draftRoleForSpecType(spec, raw);
   if (!role) return "";
   if (!model || !catalog?.length) return raw;

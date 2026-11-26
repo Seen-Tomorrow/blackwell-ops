@@ -83,9 +83,6 @@ export const KEYS = {
   uiDensity: `${STORAGE_PREFIX}ui-density`,
   fullAutoGoal: `${STORAGE_PREFIX}full-auto-goal`,
   catalogDraftFilter: `${STORAGE_PREFIX}catalog-draft-filter`,
-  draftPairings: `${STORAGE_PREFIX}draft-pairings`,
-  /** HF Get-draft scored candidate list cache (TTL ~4h, stale OK on 429). */
-  dflashHfCandidates: `${STORAGE_PREFIX}dflash-hf-candidates`,
   paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
   /** Forecast: after a fresh launch, add a second CTX point automatically (2 extra loads). */

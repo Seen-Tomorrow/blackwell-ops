@@ -142,33 +142,6 @@ pub fn parse_shard_index(filename: &str) -> Option<u32> {
     one_based.checked_sub(1)
 }
 
-/// Scan a directory for mmproj companion files. Returns the one with largest filesize.
-/// Filesize is the proxy for precision (F32 > F16 in bytes).
-/// Returns `(original_filename, size_bytes)` or `None` if no match found.
-pub fn find_largest_mmproj(directory: &Path) -> Option<(String, u64)> {
-    let entries = std::fs::read_dir(directory).ok()?;
-    let mut best: Option<(String, u64)> = None;
-
-    for entry in entries.flatten() {
-        let fname = entry.file_name();
-        let fname_lower = fname.to_string_lossy().to_lowercase();
-        if fname_lower.contains("mmproj") {
-            if let Ok(meta) = std::fs::metadata(entry.path()) {
-                let size = meta.len();
-                match &best {
-                    None => best = Some((fname.to_string_lossy().to_string(), size)),
-                    Some((_, best_size)) if size > *best_size => {
-                        best = Some((fname.to_string_lossy().to_string(), size));
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    best
-}
-
 /// Directories to skip during recursive scan — build artifacts, caches, IDE folders.
 const SKIP_DIRS: &[&str] = &["node_modules", ".git", "target", "__pycache__", 
                               ".vscode", ".idea", "dist", "build", "src-tauri", 
@@ -280,7 +253,9 @@ pub fn scan_path(
     }
     let dir_mmprojs: HashMap<PathBuf, (Option<String>, u64)> = unique_parents
         .into_iter()
-        .filter_map(|dir| find_largest_mmproj(&dir).map(|(name, sz)| (dir, (Some(name), sz))))
+        .filter_map(|dir| {
+            crate::companions::default_mmproj_in_dir(&dir).map(|(name, sz)| (dir, (Some(name), sz)))
+        })
         .collect();
 
     let mut temp_catalog: HashMap<String, ModelEntryInternal> = HashMap::new();

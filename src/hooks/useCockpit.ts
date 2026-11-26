@@ -57,13 +57,12 @@ import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import { visibleParamValuesOf } from "../lib/engineSurfaces";
 import {
   hasReadyDflashDraft,
+  mainMaySupportDflash,
   resolveExternalDraftPath,
   resolveDraftPathLabel,
   specCapabilitiesForMain,
-  stageDraftPairing,
   type SpecCapability,
 } from "../lib/specDraft";
-import { mainMaySupportDflash } from "../lib/dflashGetDraft";
 import type { CockpitFlagToggle } from "../components/CockpitFlagToolbar";
 import type { CockpitSpecDetailParam } from "../components/MultiAgentBooster";
 
@@ -301,7 +300,7 @@ export function useCockpit({
         title: "Flash Attention (--flash-attn)",
       },
       load_mode: {
-        label: "LOAD",
+        label: "LOAD MODE",
         title: "Model load mode (--load-mode): mmap / mlock / dio",
       },
     };
@@ -345,23 +344,18 @@ export function useCockpit({
 
   /**
    * The draft path for the active Boost method — `mtp_draft_model` for MTP,
-   * `dflash_draft_model` for DFlash/DSpark. Falls back to the other key only when
-   * the active one is unset. `normalizeDraftPath` absorbs the `off`/`none` defaults.
+   * `dflash_draft_model` for DFlash/DSpark. Lanes never bleed into each other.
    */
   const activeDraftPath = useMemo(() => {
     const adapter = adapterForMethod(specBoostMethod);
     const activeKey = adapter?.knobs.draftModel;
-    const fromActive = activeKey ? normalizeDraftPath(config[activeKey]) : null;
-    if (fromActive) return fromActive;
-    if (!activeKey) return null;
-    const otherKey = activeKey === MTP_DRAFT_MODEL ? DFLASH_DRAFT_MODEL : MTP_DRAFT_MODEL;
-    return normalizeDraftPath(config[otherKey]);
+    return activeKey ? normalizeDraftPath(config[activeKey]) : null;
   }, [specBoostMethod, config]);
 
   const dflashLibraryReady = useMemo(() => {
     if (!model || !models?.length) return false;
-    return hasReadyDflashDraft(model, models, activeDraftPath);
-  }, [model, models, activeDraftPath]);
+    return hasReadyDflashDraft(model, models, normalizeDraftPath(config[DFLASH_DRAFT_MODEL]));
+  }, [model, models, config]);
 
   const dflashGettable = useMemo(() => mainMaySupportDflash(model), [model]);
 
@@ -518,11 +512,9 @@ export function useCockpit({
             : null);
         if (resolved) {
           updateParam(applyDraftKey, resolved);
-          stageDraftPairing(model.path, cliType, resolved);
         } else if (opts?.preferredDraftPath) {
-          // Explicit path (Change draft) even if not scored as the method's draft role
+          // Explicit path even if not scored as the method's draft role
           updateParam(applyDraftKey, opts.preferredDraftPath);
-          stageDraftPairing(model.path, cliType, opts.preferredDraftPath);
         }
       }
 

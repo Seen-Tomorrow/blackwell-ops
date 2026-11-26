@@ -18,7 +18,7 @@
   "id": "ggml-master",
   "params": [
     {
-      "default": 3072,
+      "default": 2048,
       "dock": "",
       "essentialsHiddenValues": [
         16384
@@ -45,7 +45,7 @@
       ]
     },
     {
-      "default": 1536,
+      "default": 512,
       "dock": "",
       "essentialsHiddenValues": [
         256,
@@ -462,14 +462,13 @@
       ]
     },
     {
-      "default": 6,
+      "default": 7,
       "dock": "",
       "essentialsHiddenValues": [
         12,
         8,
         14,
-        16,
-        24
+        16
       ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
@@ -493,7 +492,7 @@
         12,
         14,
         16,
-        24
+        20
       ]
     },
     {
@@ -568,7 +567,7 @@
       ]
     },
     {
-      "default": 6,
+      "default": 7,
       "dock": "",
       "essentialsHiddenValues": [
         8,
@@ -576,7 +575,7 @@
       ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_n_max",
       "label": "DRAFT-N-MAX",
       "note": "DFlash: maximum draft tokens per speculative step.",
@@ -595,7 +594,8 @@
         7,
         8,
         12,
-        16
+        16,
+        20
       ]
     },
     {
@@ -607,7 +607,7 @@
       ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_n_min",
       "label": "DRAFT-N-MIN",
       "note": "DFlash: minimum draft tokens per speculative step.",
@@ -629,7 +629,7 @@
       "dock": "",
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_p_min",
       "label": "DRAFT-P-MIN",
       "note": "DFlash: minimum speculative decoding probability (greedy).",
@@ -649,7 +649,7 @@
       "dock": "",
       "flag": "--spec-draft-model",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_draft_model",
       "label": "DRAFT-MODEL",
       "note": "External DFlash draft GGUF path. Set via Boost Get/Change draft.",
@@ -668,7 +668,7 @@
       "dock": "",
       "flag": "--spec-draft-sampling",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "dflash_sampling",
       "label": "DRAFT-SAMPLING",
       "note": "DFlash2: greedy argmax or probabilistic draft sampling with target rejection (DFlash1 ignores probabilistic).",
@@ -760,6 +760,7 @@
         4,
         8,
         16,
+        24,
         32,
         64
       ]
@@ -914,6 +915,6 @@
       "4"
     ]
   },
-  "templateVersion": 65,
+  "templateVersion": 66,
   "template_type": "ggml-llama"
 }

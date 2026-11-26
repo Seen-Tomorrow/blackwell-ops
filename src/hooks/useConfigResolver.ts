@@ -14,7 +14,7 @@ import {
   MTP_DRAFT_MODEL,
   SPEC_PROFILE_PARAM_KEYS,
 } from "../lib/specProfiles";
-import { discardStagedDraftPairing, getStagedDraftValues, stageDraftValue } from "../lib/specDraft";
+import { discardStagedDraftValues, getStagedDraftValues, stageDraftValue } from "../lib/specDraft";
 import {
   modelSpecOverrideKey,
   readJsonStorage,
@@ -258,7 +258,7 @@ export function useConfigResolver({
   const clearOverrides = useCallback(() => {
     clearAllProfiles(backendType);
     if (modelPath) {
-      discardStagedDraftPairing(modelPath);
+      discardStagedDraftValues(modelPath);
       removeStorage(modelSpecOverrideKey(modelPath));
     }
     loadConfig();
@@ -273,11 +273,14 @@ export function useConfigResolver({
     writeCatalogOverrideStore(backendType, store);
   }, [backendType, factoryDefaults]);
 
+  // SPEC = OFF clears the active spec mode/knobs, while preserving the user's assigned
+  // draft head per lane (`mtp_draft_model`, `dflash_draft_model`) in `modelSpecOverrideKey`.
   const clearSpecConfig = useCallback(() => {
     if (modelPath) {
       const prev = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(modelPath)) ?? {};
       let changed = false;
       for (const k of SPEC_PROFILE_PARAM_KEYS) {
+        if (DRAFT_HEAD_KEY_SET.has(k)) continue;
         if (k in prev) {
           delete prev[k];
           changed = true;
@@ -290,7 +293,10 @@ export function useConfigResolver({
     }
     setConfig((prev) => {
       const next = { ...prev };
-      for (const k of SPEC_PROFILE_PARAM_KEYS) delete next[k];
+      for (const k of SPEC_PROFILE_PARAM_KEYS) {
+        if (DRAFT_HEAD_KEY_SET.has(k)) continue;
+        delete next[k];
+      }
       return next;
     });
   }, [modelPath]);

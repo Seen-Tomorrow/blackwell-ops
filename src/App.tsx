@@ -40,7 +40,7 @@ import { dispatchAppEvent, EVENTS, consumePendingConfigSubTab, type NavigateConf
 import type { ConfigSubTab, FoundrySubTab, RemoteSubTab } from "./lib/appNav";
 import { isDevBuild } from "./lib/build";
 import { isSetupNavTabAllowed } from "./lib/setupGuide";
-import { commitStagedDraftPairing, discardStagedDraftPairing } from "./lib/specDraft";
+import { commitStagedDraftValues, discardStagedDraftValues } from "./lib/specDraft";
 import { useLibrarySchedule } from "./hooks/useLibrarySchedule";
 import type { ModelScanPatch } from "./lib/libraryJobs";
 
@@ -437,7 +437,7 @@ function App() {
       ?? (payload?.slot !== undefined
         ? stackRef.current.find((s) => s.idx === payload.slot)?.model_path
         : undefined);
-    if (failedPath && discardStagedDraftPairing(failedPath)) {
+    if (failedPath && discardStagedDraftValues(failedPath)) {
       dispatchAppEvent(EVENTS.paramConfigChanged);
     }
     if (payload?.slot !== undefined) {
@@ -502,7 +502,7 @@ function App() {
         && entry.model_path
         && prevById.get(entry.idx)?.status !== "RUNNING"
       ) {
-        commitStagedDraftPairing(entry.model_path);
+        commitStagedDraftValues(entry.model_path);
       }
     }
     stackRef.current = payload;
@@ -531,7 +531,7 @@ function App() {
         return result;
       } catch (err) {
         // A rejected launch (spawn/validation) never confirmed the staged head.
-        if (config?.model_path && discardStagedDraftPairing(config.model_path)) {
+        if (config?.model_path && discardStagedDraftValues(config.model_path)) {
           dispatchAppEvent(EVENTS.paramConfigChanged);
         }
         console.error("Launch failed:", err);

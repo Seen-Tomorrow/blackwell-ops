@@ -563,15 +563,9 @@ impl ProviderTemplate {
             let vstr = vval.as_str().unwrap_or("").to_lowercase();
             if matches!(vstr.as_str(), "auto" | "on") {
                 if let Some(mmproj_flag) = sp.mmproj_flag.first() {
-                    // A pinned projector (possibly in an extras root) wins; without one
-                    // the legacy same-folder choice still applies, so nothing changes for
-                    // libraries that keep the projector beside the model.
-                    if let Some(pinned) = crate::companions::launch_mmproj(&config.model_path) {
-                        args.extend([mmproj_flag.clone(), pinned]);
-                    } else if let Some((mmproj_name, _)) = crate::model_catalog::find_largest_mmproj(
-                        std::path::Path::new(&config.model_path).parent().unwrap_or(std::path::Path::new(""))
-                    ) {
-                        args.extend([mmproj_flag.clone(), mmproj_name]);
+                    // Respects explicit detach, persisted override pin, or same-folder AUTO.
+                    if let Some(mmproj) = crate::companions::launch_mmproj(&config.model_path) {
+                        args.extend([mmproj_flag.clone(), mmproj]);
                     }
                 }
             }

@@ -1,11 +1,9 @@
 import type { ModelEntry, UserEditedTemplateParam } from "./types";
 import {
-  KEYS,
   modelSpecOverrideKey,
   normalizeModelPathKey,
   paramUiGroup,
   readJsonStorage,
-  removeStorage,
   writeJsonStorage,
   type ModelSpecOverride,
 } from "./storage";
@@ -638,71 +636,15 @@ export function resolveDraftPathLabel(path: string): string {
   return slash >= 0 ? normalized.slice(slash + 1) : normalized;
 }
 
-export type DraftPairing = { specType: string; draftPath: string };
-
-export function loadDraftPairing(mainPath: string): DraftPairing | null {
-  const map = readJsonStorage<Record<string, DraftPairing>>(KEYS.draftPairings) ?? {};
-  return map[normalizeModelPathKey(mainPath)] ?? null;
-}
-
-export function saveDraftPairing(mainPath: string, specType: string, draftPath: string): void {
-  const map = readJsonStorage<Record<string, DraftPairing>>(KEYS.draftPairings) ?? {};
-  map[normalizeModelPathKey(mainPath)] = { specType, draftPath };
-  writeJsonStorage(KEYS.draftPairings, map);
-}
-
-type StagedDraftPairing = {
-  specType: string;
-  draftPath: string;
-  /** Config key that holds this head (MTP vs DFlash lane). */
-  draftKey: string;
-};
-
 /**
- * Decouple a head from a main model: forget the pairing record, drop anything staged for
- * it, and remove its value from the model's spec bag. The file stays on disk — this only
- * unpairs it, which is the action the picker was missing.
+ * Manual draft heads are staged in memory and only persisted into the model's spec
+ * bag (`modelSpecOverrideKey`) after the engine reaches RUNNING. A failed launch drops
+ * the staged values without touching any previously confirmed head.
  */
-export function clearDraftPairing(mainPath: string, draftKey: string): void {
-  if (!mainPath) return;
-  const key = normalizeModelPathKey(mainPath);
-
-  const staged = stagedDraftPairings.get(key);
-  if (staged?.length) {
-    const rest = staged.filter((s) => s.draftKey !== draftKey);
-    if (rest.length) stagedDraftPairings.set(key, rest);
-    else stagedDraftPairings.delete(key);
-  }
-  const values = stagedDraftValues.get(key);
-  if (values && Object.prototype.hasOwnProperty.call(values, draftKey)) {
-    delete values[draftKey];
-    if (!Object.keys(values).length) stagedDraftValues.delete(key);
-  }
-
-  const pairings = readJsonStorage<Record<string, DraftPairing>>(KEYS.draftPairings) ?? {};
-  const pairing = pairings[key];
-  if (pairing) {
-    delete pairings[key];
-    writeJsonStorage(KEYS.draftPairings, pairings);
-  }
-
-  const spec = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(mainPath)) ?? {};
-  if (Object.prototype.hasOwnProperty.call(spec, draftKey)) {
-    delete spec[draftKey];
-    writeJsonStorage(modelSpecOverrideKey(mainPath), spec);
-  }
-}
-/**
- * Manual draft heads are staged, not persisted: a head only earns its place in the
- * model's saved config after the engine reaches RUNNING. A failed launch then cannot
- * leave a bad head glued to the model. Keyed by normalized main path.
- */
-const stagedDraftPairings = new Map<string, StagedDraftPairing[]>();
-/** Staged config values for manual heads — written to the model's spec bag only on RUNNING. */
 const stagedDraftValues = new Map<string, Record<string, unknown>>();
 
-function draftKeyForSpecType(specType: string): string {
-  return specType.trim().toLowerCase().includes("mtp") ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
+function draftKeyForRole(role: DraftRole): string {
+  return role === "external_mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
 }
 
 export function stageDraftValue(mainPath: string, key: string, value: unknown): void {
@@ -718,71 +660,24 @@ export function getStagedDraftValues(mainPath: string): Record<string, unknown> 
   return stagedDraftValues.get(normalizeModelPathKey(mainPath));
 }
 
-export function stageDraftPairing(
-  mainPath: string,
-  specType: string,
-  draftPath: string,
-): void {
-  if (!mainPath || !draftPath) return;
-  const key = normalizeModelPathKey(mainPath);
-  const staged: StagedDraftPairing = {
-    specType,
-    draftPath,
-    draftKey: draftKeyForSpecType(specType),
-  };
-  const list = (stagedDraftPairings.get(key) ?? []).filter(
-    (s) => s.draftKey !== staged.draftKey,
-  );
-  list.push(staged);
-  stagedDraftPairings.set(key, list);
-}
-
-/** Engine reached RUNNING — now the staged head(s) are allowed to stick. */
-export function commitStagedDraftPairing(mainPath: string): void {
+/** Engine reached RUNNING — persist any staged draft head(s) to the model's spec bag. */
+export function commitStagedDraftValues(mainPath: string): void {
   const key = normalizeModelPathKey(mainPath);
   const values = stagedDraftValues.get(key);
-  if (values && Object.keys(values).length > 0) {
-    const spec = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(mainPath)) ?? {};
-    writeJsonStorage(modelSpecOverrideKey(mainPath), { ...spec, ...values });
-    stagedDraftValues.delete(key);
-  }
-  const staged = stagedDraftPairings.get(key);
-  if (!staged?.length) return;
-  for (const s of staged) saveDraftPairing(mainPath, s.specType, s.draftPath);
-  stagedDraftPairings.delete(key);
+  if (!values || Object.keys(values).length === 0) return;
+  const spec = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(mainPath)) ?? {};
+  writeJsonStorage(modelSpecOverrideKey(mainPath), { ...spec, ...values });
+  stagedDraftValues.delete(key);
 }
 
 /**
- * Load failed — drop the staged heads and their config values, and remove the pairing
- * record. Returns true when a staged head existed (caller should reload the panel).
+ * Load failed — drop any unconfirmed staged head(s). Returns true when staged values
+ * existed so the caller can reload the panel back to the last confirmed state.
  */
-export function discardStagedDraftPairing(mainPath: string): boolean {
+export function discardStagedDraftValues(mainPath: string): boolean {
   const key = normalizeModelPathKey(mainPath);
-  const staged = stagedDraftPairings.get(key);
-  const values = stagedDraftValues.get(key);
-  if (!staged?.length && !values) return false;
-  stagedDraftPairings.delete(key);
+  if (!stagedDraftValues.has(key)) return false;
   stagedDraftValues.delete(key);
-
-  const keys = new Set<string>([
-    ...Object.keys(values ?? {}),
-    ...(staged ?? []).map((s) => s.draftKey),
-  ]);
-  const spec = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(mainPath)) ?? {};
-  let specChanged = false;
-  for (const k of keys) {
-    if (Object.prototype.hasOwnProperty.call(spec, k)) {
-      delete spec[k];
-      specChanged = true;
-    }
-  }
-  if (specChanged) writeJsonStorage(modelSpecOverrideKey(mainPath), spec);
-
-  const pairings = readJsonStorage<Record<string, DraftPairing>>(KEYS.draftPairings) ?? {};
-  if (Object.prototype.hasOwnProperty.call(pairings, key)) {
-    delete pairings[key];
-    writeJsonStorage(KEYS.draftPairings, pairings);
-  }
   return true;
 }
 
@@ -791,51 +686,37 @@ export function loadModelSpecOverride(mainPath: string): ModelSpecOverride | nul
   return readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(mainPath));
 }
 
-function saveModelSpecOverride(mainPath: string, patch: ModelSpecOverride): void {
-  if (!mainPath) return;
-  const prev = loadModelSpecOverride(mainPath) ?? {};
-  writeJsonStorage(modelSpecOverrideKey(mainPath), { ...prev, ...patch });
-}
+/** Families known to accept a speculator head (soft signal for DFlash availability). */
+const DFLASH_FAMILY_HINTS = new Set([
+  "qwen3",
+  "qwen38",
+  "qwen35",
+  "qwen36",
+  "qwen3-coder",
+  "gemma3",
+  "gemma4",
+  "llama3",
+  "llama4",
+  "mistral",
+  "deepseek",
+]);
 
-function clearModelSpecOverride(mainPath: string): void {
-  if (!mainPath) return;
-  removeStorage(modelSpecOverrideKey(mainPath));
-}
-
-function isDraftPairingValid(
-  pairing: DraftPairing,
-  main: ModelEntry,
-  models: ModelEntry[],
-): boolean {
-  const role = draftRoleForSpecType(pairing.specType, pairing.draftPath);
-  if (!role) return false;
-  const draft = models.find((m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(pairing.draftPath));
-  if (!draft) return false;
-  // Silent restore / capability reuse — HIGH only. Weak (~50–79) auto-pairs often
-  // GGML_ASSERT at load; user can still pick them live via Change draft.
-  return scoreDraftPair(main, draft, role) >= HIGH_DRAFT_PAIR_SCORE;
-}
-
-/**
- * User-confirmed pairing still on disk (Change draft / Get draft / prior save).
- * MIN score — weaker than silent HIGH auto, but must not be wiped after the user picks it.
- */
-function isUsableDraftPairing(
-  pairing: DraftPairing,
-  main: ModelEntry,
-  models: ModelEntry[],
-): boolean {
-  const role = draftRoleForSpecType(pairing.specType, pairing.draftPath);
-  if (!role) return false;
-  const draft = models.find(
-    (m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(pairing.draftPath),
-  );
-  if (draft) {
-    if (!draftRolesMatch(role, draftRoleFromModel(draft))) return false;
-    return scoreDraftPair(main, draft, role) >= MIN_DRAFT_PAIR_SCORE;
-  }
-  // Catalog lag after download — path still launchable if it looks like a GGUF.
-  return isValidGgufDraftPath(pairing.draftPath);
+export function mainMaySupportDflash(main: ModelEntry | null | undefined): boolean {
+  if (!main || isExternalDraftOnly(main)) return false;
+  const family = extractModelFamily(main);
+  if (family && DFLASH_FAMILY_HINTS.has(family)) return true;
+  const hay = [
+    main.name,
+    main.path,
+    main.hfModelId,
+    main.hfMeta?.hfModelId,
+    main.hfMeta?.repoName,
+    main.metadata?.general_name,
+    main.metadata?.general_basename,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return /qwen|gemma|llama|mistral|deepseek/i.test(hay);
 }
 
 /** Resolve external draft path via DFlash mechanism (also finds external MTP heads). */
@@ -849,8 +730,7 @@ export function resolveExternalDraftPath(
     specType?: string;
     /**
      * Fall back to the best-scoring candidate when nothing was chosen or saved.
-     * DFlash keeps this (its ★ picker makes the result visible). MTP passes false:
-     * a head must be picked or restored, never guessed into config silently.
+     * DFlash keeps this; MTP passes false so a head is never guessed silently.
      */
     allowAutoPair?: boolean;
   },
@@ -893,34 +773,23 @@ export function resolveExternalDraftPath(
   const current = tryPath(opts?.currentPath, "restored");
   if (current) return current;
 
-  const pairing = loadDraftPairing(main.path);
-  if (pairing) {
-    const pairingRole = draftRoleForSpecType(pairing.specType, pairing.draftPath);
-    // Accept saved pair when roles match, or when saved under draft-dflash / draft-eagle3 alias.
-    const st = String(pairing.specType).toLowerCase();
-    const roleOk =
-      pairingRole === draftRole
-      || (draftRole === "external_dflash"
-        && (st.includes("dflash") || st.includes("dspark")))
-      || (draftRole === "external_eagle3" && st.includes("eagle"))
-      || (draftRole === "external_mtp" && st.includes("mtp"));
-    if (roleOk) {
-      const saved = tryPath(pairing.draftPath, "restored");
-      if (saved) return saved;
-    }
+  const savedOverride = loadModelSpecOverride(main.path)?.[draftKeyForRole(draftRole)];
+  if (typeof savedOverride === "string") {
+    const saved = tryPath(savedOverride, "restored");
+    if (saved) return saved;
   }
 
   if (opts?.allowAutoPair === false) return null;
   return pickBestDraftPair(main, models, draftRole, HIGH_DRAFT_PAIR_SCORE)?.path ?? null;
 }
 
-/** True when Boost DFlash/DSpark can enable CLI (draft path ready — not waiting on Get draft). */
+/** True when Boost DFlash/DSpark can enable CLI (draft path ready — not waiting on download). */
 export function hasReadyDflashDraft(
   main: ModelEntry | null | undefined,
   models: ModelEntry[] | null | undefined,
   currentDraftPath?: string | null,
 ): boolean {
-  // User-confirmed absolute path (Change draft) — launchable even before role scoring.
+  // User-confirmed absolute path — launchable even before role scoring.
   if (currentDraftPath && isValidGgufDraftPath(String(currentDraftPath))) {
     const low = String(currentDraftPath).trim().toLowerCase();
     if (low !== "off" && low !== "auto" && low !== "on" && low !== "none") {
@@ -933,17 +802,6 @@ export function hasReadyDflashDraft(
 
   // Also check external MTP candidates.
   if (pickBestDraftPair(main, models, "external_mtp", HIGH_DRAFT_PAIR_SCORE)) return true;
-
-  const pairing = loadDraftPairing(main.path);
-  if (pairing) {
-    const st = String(pairing.specType).toLowerCase();
-    if (
-      (st.includes("dflash") || st.includes("dspark"))
-      && isUsableDraftPairing(pairing, main, models)
-    ) {
-      return true;
-    }
-  }
 
   const resolved = resolveExternalDraftPath(main, models, "external_dflash", {
     currentPath: currentDraftPath,
