@@ -1,0 +1,181 @@
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -45,6 +45,111 @@
+ #include <windows.h>
+ #endif
+ 
++#include <atomic>
++#include <condition_variable>
++#include <mutex>
++#include <thread>
++#include <vector>
++
++// Persistent worker pool for parallel per-slot CPU sampling when multiple slots
++// generate concurrently (e.g. parallel=24 non-SPEC TG). Avoids serializing 24x
++// full-vocab top_k/top_p/softmax passes on the single server main thread.
++struct server_sample_job {
++    int              slot_id;
++    common_sampler * smpl;
++    llama_context  * ctx;
++    int              tok_idx;
++    llama_token      id;
++};
++
++class server_sample_pool {
++public:
++    explicit server_sample_pool(size_t n_threads) {
++        const size_t n_bg = n_threads > 1 ? n_threads - 1 : 0;
++        workers.reserve(n_bg);
++        for (size_t i = 0; i < n_bg; ++i) {
++            workers.emplace_back([this]() { worker_loop(); });
++        }
++    }
++
++    ~server_sample_pool() {
++        {
++            std::lock_guard<std::mutex> lk(mtx);
++            stop = true;
++        }
++        cv_work.notify_all();
++        for (auto & t : workers) {
++            if (t.joinable()) {
++                t.join();
++            }
++        }
++    }
++
++    void run(std::vector<server_sample_job> & batch_jobs) {
++        if (batch_jobs.size() < 2 || workers.empty()) {
++            for (auto & j : batch_jobs) {
++                j.id = common_sampler_sample(j.smpl, j.ctx, j.tok_idx);
++            }
++            return;
++        }
++        {
++            std::lock_guard<std::mutex> lk(mtx);
++            jobs = &batch_jobs;
++            next_idx.store(0, std::memory_order_relaxed);
++            done_count.store(0, std::memory_order_relaxed);
++            ++epoch;
++        }
++        cv_work.notify_all();
++        drain_jobs(&batch_jobs);
++        std::unique_lock<std::mutex> lk(mtx);
++        cv_done.wait(lk, [&]() {
++            return done_count.load(std::memory_order_acquire) >= batch_jobs.size();
++        });
++        jobs = nullptr;
++    }
++
++private:
++    void drain_jobs(std::vector<server_sample_job> * cur) {
++        if (!cur) return;
++        const size_t n = cur->size();
++        for (;;) {
++            const size_t i = next_idx.fetch_add(1, std::memory_order_relaxed);
++            if (i >= n) break;
++            auto & j = (*cur)[i];
++            j.id = common_sampler_sample(j.smpl, j.ctx, j.tok_idx);
++            if (done_count.fetch_add(1, std::memory_order_release) + 1 == n) {
++                std::lock_guard<std::mutex> lk(mtx);
++                cv_done.notify_one();
++            }
++        }
++    }
++
++    void worker_loop() {
++        uint64_t seen = 0;
++        for (;;) {
++            std::vector<server_sample_job> * cur = nullptr;
++            {
++                std::unique_lock<std::mutex> lk(mtx);
++                cv_work.wait(lk, [&]() { return stop || epoch != seen; });
++                if (stop) return;
++                seen = epoch;
++                cur  = jobs;
++            }
++            drain_jobs(cur);
++        }
++    }
++
++    std::vector<std::thread>         workers;
++    std::mutex                       mtx;
++    std::condition_variable          cv_work;
++    std::condition_variable          cv_done;
++    std::vector<server_sample_job> * jobs = nullptr;
++    std::atomic<size_t>              next_idx { 0 };
++    std::atomic<size_t>              done_count { 0 };
++    uint64_t                         epoch = 0;
++    bool                             stop  = false;
++};
++
+ constexpr int HTTP_POLLING_SECONDS = 1;
+ 
+ static common_speculative_output_limits server_output_limits(const common_params & params) {
+@@ -4782,6 +4887,42 @@
+             return params_base.special ||
+                 slot.task->params.sampling.preserved_tokens.find(token) != slot.task->params.sampling.preserved_tokens.end();
+         };
++
++        // Pre-sample all active non-speculative slots in parallel when >= 2 slots
++        // need sampling in this sub-batch. Each slot owns an independent sampler and
++        // reads a disjoint logits row after a single upfront llama_synchronize().
++        std::vector<server_sample_job> par_jobs;
++        iterate(slots, [&](server_slot & slot) {
++            if (!is_inside_view(slot.i_batch)) {
++                return;
++            }
++            const bool ready_to_sample =
++                slot.state == SLOT_STATE_GENERATING ||
++                (slot.state == SLOT_STATE_DONE_PROMPT && slot.task && slot.task->need_sampling());
++            if (!ready_to_sample) {
++                return;
++            }
++            if (slot.can_speculate() && !slot.spec_draft.empty()) {
++                return;
++            }
++            if (!slot.smpl || !slot.ctx_tgt) {
++                return;
++            }
++            par_jobs.push_back({ slot.id, slot.smpl.get(), slot.ctx_tgt, slot.i_batch - off, LLAMA_TOKEN_NULL });
++        });
++        if (par_jobs.size() >= 2) {
++            const size_t n_threads = std::min<size_t>(
++                std::max<size_t>(1, params_base.cpuparams.n_threads > 0 ? (size_t) params_base.cpuparams.n_threads : std::thread::hardware_concurrency()),
++                16);
++            static server_sample_pool sample_pool(n_threads);
++            llama_synchronize(ctx_tgt);
++            const int64_t t_start = ggml_time_us();
++            sample_pool.run(par_jobs);
++            t_sampl += ggml_time_us() - t_start;
++            n_sampl += par_jobs.size();
++        } else {
++            par_jobs.clear();
++        }
+ 
+         iterate(slots, [&](server_slot & slot) {
+             // optionally send prompt processing progress
+@@ -4840,10 +4981,18 @@
+             // shifted according to the current sub-batch
+             const int tok_idx = slot.i_batch - off;
+ 
+-            llama_token id;
+-            {
+-                scoped_timer timer(t_sampl, n_sampl);
+-                id = common_sampler_sample(slot.smpl.get(), slot.ctx_tgt, tok_idx);
++            llama_token id = LLAMA_TOKEN_NULL;
++            if (!par_jobs.empty()) {
++                for (const auto & j : par_jobs) {
++                    if (j.slot_id == slot.id) {
++                        id = j.id;
++                        break;
++                    }
++                }
++            }
++            if (id == LLAMA_TOKEN_NULL) {
++                scoped_timer timer(t_sampl, n_sampl);
++                id = common_sampler_sample(slot.smpl.get(), slot.ctx_tgt, tok_idx);
+             }
+ 
+             slot.i_batch = -1;
