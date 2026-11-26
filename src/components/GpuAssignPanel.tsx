@@ -3,10 +3,10 @@ import { parseDeviceSelection } from "../lib/gpuSelection";
 import SegmentSwitch from "./SegmentSwitch";
 
 const DEVICE_LABEL_CLASS =
-  "gpu-assign-panel__label font-mono w-14 flex-shrink-0 uppercase tracking-wider truncate type-label eng-assign-label";
+  "gpu-assign-panel__label font-mono flex-shrink-0 uppercase tracking-wider truncate type-label eng-assign-label";
 
 const SPLIT_LABEL_CLASS =
-  "gpu-assign-panel__label font-mono w-10 flex-shrink-0 uppercase tracking-wider truncate type-label eng-assign-label text-right";
+  "gpu-assign-panel__label font-mono flex-shrink-0 uppercase tracking-wider truncate type-label eng-assign-label text-right";
 
 function paramChipClass(active: boolean, disabled?: boolean): string {
   const base = `px-2 py-0.5 type-label font-mono rounded-sm focus:outline-none ${
@@ -146,7 +146,7 @@ export default function GpuAssignPanel({
             <>
               <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
                 <div className="gpu-assign-panel__split-head">
-                  <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Split</span>
+                  <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Select split</span>
                 </div>
                 <GpuSegmentSwitch
                   ariaLabel="Split"
@@ -160,7 +160,7 @@ export default function GpuAssignPanel({
             </>
           )}
           <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
-            <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Device</span>
+            <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Select devices</span>
             <div
               className={[
                 "segment-switch",
@@ -217,7 +217,7 @@ export default function GpuAssignPanel({
         {showSplitRow && (
           <>
             <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
-              <span className={SPLIT_LABEL_CLASS}>Split</span>
+              <span className={SPLIT_LABEL_CLASS}>Select split</span>
               <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
                 {visibleSplitValues.map((val) => (
                   <button
@@ -239,7 +239,7 @@ export default function GpuAssignPanel({
           </>
         )}
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
-          <span className={DEVICE_LABEL_CLASS}>Device</span>
+          <span className={DEVICE_LABEL_CLASS}>Select devices</span>
           <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
             {deviceOptions.map((opt) => {
               const isSelected = activeSet.has(opt.index);

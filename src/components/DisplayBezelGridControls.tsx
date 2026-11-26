@@ -95,7 +95,7 @@ export default function DisplayBezelGridControls({
                 disabled={rescanningGpus}
                 onClick={onRescanGpus}
                 title="Re-initialize NVML to detect hot-plugged GPUs (e.g. TB3 eGPU) or WDDM/TCC switches"
-                className="display-bezel-fusion-chip font-mono uppercase tracking-wider"
+                className="display-bezel-fusion-chip display-bezel-fusion-chip--compact font-mono uppercase tracking-wider"
               >
                 {rescanningGpus ? "SCAN…" : "RESCAN"}
               </button>
@@ -223,7 +223,7 @@ export default function DisplayBezelGridControls({
                 type="button"
                 onClick={onCycleEngine}
                 title="Cycle to the next live engine (RUNNING/LOADING)"
-                className="display-bezel-fusion-chip font-mono uppercase tracking-wider"
+                className="display-bezel-fusion-chip display-bezel-fusion-chip--compact font-mono uppercase tracking-wider"
               >
                 CYCLE
               </button>

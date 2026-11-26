@@ -623,11 +623,6 @@ export default function VramBadge({
   // Placement is a state, not a mode: the app owns every multi-card layer split, so the glass
   // only has to say which side is placing. "AUTO" means the launch carries these exact `-ts`
   // boundaries; "ENGINE" means there is no split to place (one card, or no layer table yet).
-  const placementDetail = layerPlan
-    ? placementActive
-      ? `${layerPlan.deviceLayers.join("/")} L · -ts ${formatTensorSplit(layerPlan.applyTs)}`
-      : `${layerPlan.deviceLayers.join("/")} L planned`
-    : null;
   const placementTitle = layerPlan
     ? `${placementActive ? "Automatic" : "Proposed"}: -ts ${formatTensorSplit(layerPlan.applyTs)}` +
       ` · ${layerPlan.deviceLayers.join("/")} layers`
@@ -656,20 +651,6 @@ export default function VramBadge({
             onValidate={onValidate}
           />
         ) : null}
-        {Boolean(splitMode && splitMode.trim().toLowerCase() !== "none") && (
-          <div
-            className="vram-fc-placement"
-            data-placement={placementActive ? "auto" : "engine"}
-          >
-            <span className="vram-fc-placement__label">VRAM PLACEMENT</span>
-            <span className="vram-fc-placement__mode" title={placementTitle}>
-              {placementActive ? "AUTO" : "ENGINE"}
-              {placementDetail ? (
-                <span className="vram-fc-placement__detail">{placementDetail}</span>
-              ) : null}
-            </span>
-          </div>
-        )}
         {!fullAutoMode && (
           <button
             type="button"
@@ -1107,6 +1088,32 @@ export default function VramBadge({
               ) : null}
             </div>
           </div>
+          {manifest.gpuAllocations.length > 1 && (
+            <span className="vram-fc__topo-hint" aria-hidden>
+              {(selectedGpuIndices?.length ?? 0) > 1 ||
+              (splitMode != null && splitMode.trim().toLowerCase() !== "none" && splitMode.trim() !== "")
+                ? "Split active — auto-placing across selected GPUs"
+                : "Click a GPU card to place model"}
+            </span>
+          )}
+          {Boolean(splitMode && splitMode.trim().toLowerCase() !== "none") && (
+            <div
+              className="vram-fc-placement vram-fc-placement--topo-bar"
+              data-placement={placementActive ? "auto" : "engine"}
+              title={placementTitle}
+            >
+              <span className="vram-fc-placement__label">WEIGHTS SPLIT</span>
+              <span className="vram-fc-placement__mode">
+                {placementActive && layerPlan
+                  ? `${layerPlan.deviceLayers.join("/")} // ${layerPlan.ts
+                      .map((f) => `${Math.round(f * 100)}%`)
+                      .join(", ")}`
+                  : placementActive
+                    ? "AUTO"
+                    : "ENGINE"}
+              </span>
+            </div>
+          )}
         </div>
 
         {manifest.gpuAllocations.length > 0 && (
