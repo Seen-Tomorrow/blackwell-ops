@@ -23,10 +23,10 @@ interface CockpitSliderOption {
   /** Strikethrough label (e.g. multi-agent locked while MTP is on). */
   strike?: boolean;
   /**
-   * Accent when available — MTP=green, DFlash=violet.
+   * Accent when available — NGRAM=cyan, MTP=green, DFlash=violet.
    * Unavailable options stay monochrome like Agents / Memory.
    */
-  badgeColor?: "green" | "violet";
+  badgeColor?: "cyan" | "green" | "violet";
   emphasize?: boolean;
   /** Tiny status above the mark (e.g. "draft ready"). */
   aboveLabel?: string;

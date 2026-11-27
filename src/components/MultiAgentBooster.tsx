@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
-import type { SpecCapability } from "../lib/specDraft";
+import { dflashVariantBadge, type DraftPickListItem, type SpecCapability } from "../lib/specDraft";
+import type { DflashVariant } from "../lib/spec/adapters";
 import type { CompanionCandidate, CompanionReport, CompanionRole, RepoCompanion } from "../lib/types";
 import { ConfigChipSegment } from "./EngineParamGroups";
 import {
@@ -67,13 +68,15 @@ export interface MultiAgentBoosterProps {
   dflashGettable?: boolean;
   /** Short name of paired draft when library ready. */
   dflashDraftLabel?: string | null;
+  /** Detected variant of the picked DFlash draft (dflash | dflash2 | dspark | lilicorr). */
+  activeDflashVariant?: DflashVariant;
   /** Short name of the selected MTP head. Absent ⇒ no head chosen. */
   mtpDraftLabel?: string | null;
   /** Target carries baked-in nextn — MTP runs without any head file. */
   mtpBakedIn?: boolean;
   /** Open local-library MTP head picker. */
   /** Local draft heads for the active SPEC lane (built without opening the legacy modal). */
-  specFileRows?: { id: string; title: string; meta?: string; score?: number }[];
+  specFileRows?: DraftPickListItem[];
   /** Applies a picked draft head path. */
   onPickSpecFile?: (path: string) => void;
   /** The model's own Hub repo id — the DRAFT lane lists it like the Hub screen. */
@@ -179,6 +182,7 @@ export default function MultiAgentBooster({
   dflashLibraryReady,
   dflashGettable = false,
   dflashDraftLabel = null,
+  activeDflashVariant,
   mtpDraftLabel = null,
   mtpBakedIn = false,
   specFileRows = [],
@@ -355,16 +359,25 @@ export default function MultiAgentBooster({
   // Every lane that reads a draft file can be pointed at one: the DRAFT slot on the rail
   // opens the same picker as the companions, so no legacy modal handler is involved.
   const canPickSpecFile =
-    displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark";
+    displayBoost === "mtp" || displayBoost === "dflash";
   // The DRAFT slot: the file affordance for the current mode. It shows what that mode
   // will load and opens the same picker the companion slots use — the mode itself is
   // only ever changed by the SPEC slider.
   const draftHeadName = displayBoost === "mtp" ? mtpDraftLabel : dflashDraftLabel;
   const draftHeadPath = displayBoost === "mtp" ? mtpDraftPath : dflashDraftPath;
+  const activeDflashBadge =
+    dflashDraftPath && activeDflashVariant ? dflashVariantBadge(activeDflashVariant) : null;
+  const compatibleDraftCount = useMemo(
+    () => specFileRows.filter((r) => r.compatible !== false).length,
+    [specFileRows],
+  );
   const draftFileSlot: LoadoutFileSlot | null = canPickSpecFile
     ? {
         id: "draft",
-        role: "DRAFT",
+        role:
+          displayBoost === "dflash" && activeDflashBadge
+            ? activeDflashBadge
+            : "DRAFT",
         // A short token, never the whole file name: the plate is 16px tall.
         value: (() => {
           if (!draftHeadName) return displayBoost === "mtp" && mtpBakedIn ? "built-in" : "—";
@@ -396,16 +409,11 @@ export default function MultiAgentBooster({
       }
     : null;
 
-  const externalDraftBoost =
-    displayBoost === "dflash" || displayBoost === "dspark";
+  const externalDraftBoost = displayBoost === "dflash";
 
   const showSpecExtra = useMemo(() => {
     if (specDetailParams.length === 0) return false;
-    if (
-      displayBoost === "mtp"
-      || displayBoost === "dflash"
-      || displayBoost === "dspark"
-    ) {
+    if (displayBoost === "ngram" || displayBoost === "mtp" || displayBoost === "dflash") {
       return true;
     }
     if (!activeRawSpecType) return false;
@@ -448,12 +456,18 @@ export default function MultiAgentBooster({
     for (const t of types) {
       const low = t.toLowerCase();
       if (
-        low === "draft-mtp"
+        low === "ngram-mod"
+        || low === "ngram"
+        || low === "draft-mtp"
         || low === "mtp"
         || low === "draft-dflash"
         || low === "dflash"
+        || low === "draft-dflash2"
+        || low === "dflash2"
         || low === "draft-dspark"
         || low === "dspark"
+        || low === "draft-lilicorr"
+        || low === "lilicorr"
       ) {
         continue;
       }
@@ -462,7 +476,13 @@ export default function MultiAgentBooster({
     }
 
     {
+      const m = parseSpecTypeBoostMark("ngram-mod");
+      m.aboveLabel = "no draft";
+      marks.push(m);
+    }
+    {
       const m = parseSpecTypeBoostMark("draft-mtp");
+      m.aboveLabel = mtpBakedIn ? "baked" : undefined;
       m.blurb = mtpAvailable
         ? m.blurb
         : "MTP — baked-in target or pick an external mtp-*.gguf head";
@@ -470,24 +490,24 @@ export default function MultiAgentBooster({
     }
     {
       const m = parseSpecTypeBoostMark("draft-dflash");
-      m.blurb = dflashAvailable
-        ? dflashLibraryReady
-          ? dflashDraftLabel
-            ? `Draft ready: ${dflashDraftLabel}`
-            : "Draft ready in library"
-          : dflashGettable
-            ? "Draft downloadable — Get draft to confirm"
-            : m.blurb
-        : "DFlash not available for this model";
-      marks.push(m);
-    }
-    {
-      const m = parseSpecTypeBoostMark("draft-dspark");
-      m.blurb = dflashLibraryReady
-        ? dflashDraftLabel
-          ? `Draft ready: ${dflashDraftLabel}`
-          : "Draft path set — DeepSeek DSpark"
-        : "Set draft GGUF via Change draft (dspark head)";
+      if (activeDflashBadge) {
+        m.label = activeDflashBadge;
+      }
+      m.aboveLabel =
+        displayBoost === "dflash" && compatibleDraftCount > 0
+          ? `${compatibleDraftCount} fit`
+          : undefined;
+      m.blurb = activeDflashBadge && dflashDraftLabel
+        ? `${activeDflashBadge} active: ${dflashDraftLabel}`
+        : dflashAvailable
+          ? dflashLibraryReady
+            ? dflashDraftLabel
+              ? `Draft ready: ${dflashDraftLabel}`
+              : "Draft ready in library"
+            : dflashGettable
+              ? "Draft downloadable — Get draft to confirm"
+              : m.blurb
+          : "DFlash / DFlash2 / DSpark / LiliCorr — pick a local draft GGUF";
       marks.push(m);
     }
 
@@ -500,24 +520,28 @@ export default function MultiAgentBooster({
     powerMode,
     rawSpecTypes,
     mtpAvailable,
+    mtpBakedIn,
     dflashAvailable,
     dflashLibraryReady,
     dflashGettable,
     dflashDraftLabel,
+    activeDflashBadge,
+    displayBoost,
+    compatibleDraftCount,
   ]);
 
   const boostSliderValue = useMemo(() => {
     if (activeRawSpecType) {
       return parseSpecTypeBoostMark(activeRawSpecType).id;
     }
-    if (displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark") {
+    if (displayBoost === "ngram" || displayBoost === "mtp" || displayBoost === "dflash") {
       return displayBoost;
     }
     if (powerMode) return displayBoost === "smart" ? "off" : displayBoost;
     return displayBoost === "off" ? "smart" : displayBoost;
   }, [powerMode, displayBoost, activeRawSpecType]);
 
-  const heroSpecOptions = (["off", "mtp", "dflash", "dspark"] as const).map((id) => {
+  const heroSpecOptions = (["off", "ngram", "mtp", "dflash"] as const).map((id) => {
     const mark = boostMarks.find((m) => m.id === id || (id === "off" && m.id === "smart"));
     const disabled = id === "dflash" && !dflashAvailable;
     return {
@@ -555,14 +579,14 @@ export default function MultiAgentBooster({
   // Availability is computed once and used by both the slider marks and the picker
   // table, so the two can never disagree about what is selectable.
   const boostRows = boostMarks.map((m) => {
-    // DFlash keeps its library gate; MTP is a manual lane (see mtpSelectable).
-    const needCap = m.id === "dflash" && !dflashAvailable;
+    // NGRAM is universal (zero VRAM); MTP is manual; DFlash allows manual draft picking too.
+    const needCap = false;
     const available =
       m.id === "smart" ||
       m.id === "off" ||
-      m.id === "dspark" ||
+      m.id === "ngram" ||
       m.id === "mtp" ||
-      (m.id === "dflash" && dflashAvailable) ||
+      m.id === "dflash" ||
       m.id.startsWith("raw:");
     return { m, needCap, available };
   });
@@ -579,7 +603,7 @@ export default function MultiAgentBooster({
       onSpeedBoost("smart");
       return;
     }
-    if (id === "mtp" || id === "dflash" || id === "dspark") {
+    if (id === "ngram" || id === "mtp" || id === "dflash") {
       onSpeedBoost(id);
       return;
     }
@@ -601,6 +625,7 @@ export default function MultiAgentBooster({
               options={boostRows.map(({ m, needCap, available }) => ({
                   id: m.id,
                   label: m.label,
+                  aboveLabel: m.aboveLabel,
                   blurb: m.blurb,
                   disabled: needCap,
                   badgeColor: m.badgeColor,
@@ -611,12 +636,14 @@ export default function MultiAgentBooster({
           </div>
   ) : null;
 
-  const stripTone: "mtp" | "dflash" | "neutral" =
-    displayBoost === "mtp"
-      ? "mtp"
-      : externalDraftBoost
-        ? "dflash"
-        : "neutral";
+  const stripTone: "ngram" | "mtp" | "dflash" | "neutral" =
+    displayBoost === "ngram"
+      ? "ngram"
+      : displayBoost === "mtp"
+        ? "mtp"
+        : externalDraftBoost
+          ? "dflash"
+          : "neutral";
 
   // The strip is SPEC-EXTRA only now: the draft-head status and Change draft moved out
   // (the draft lane is being reworked in the LOADOUT picker work), which is what keeps
@@ -915,20 +942,27 @@ export default function MultiAgentBooster({
                     return {
                       key: row.id,
                       quant:
-                        parts.find((p) => /^(Q\d|IQ\d|BF16|F16|F8|FP8|MXFP|Q8)/i.test(p)) ??
-                        "—",
+                        row.quant
+                        ?? parts.find((p) => /^(Q\d|IQ\d|BF16|F16|F8|FP8|MXFP|NVFP|Q8)/i.test(p))
+                        ?? "—",
                       size: parts.find((p) => /(GB|MB|KB)$/i.test(p)) ?? "—",
                       name: row.title,
-                      // Which kind of head this is, from its own name. The lane accepts a
-                      // family (DFlash + DSpark), so a DSPARK row inside the DFLASH lane is
-                      // correct but confusing without the label.
-                      tag: /dspark/i.test(row.title)
-                        ? "DSPARK"
-                        : /dflash/i.test(row.title)
-                          ? "DFLASH"
-                          : /mtp/i.test(row.title)
-                            ? "MTP"
-                            : undefined,
+                      compatible: row.compatible,
+                      // Exact variant badge from catalog/header (DFLASH / DFLASH2 / DSPARK / LILICORR / MTP).
+                      tag:
+                        row.variantTag
+                        ?? parts.find((p) => /^(DFLASH2?|DSPARK|LILICORR|MTP)$/i.test(p))?.toUpperCase()
+                        ?? (/dspark/i.test(row.title)
+                          ? "DSPARK"
+                          : /lilicorr/i.test(row.title)
+                            ? "LILICORR"
+                            : /dflash[-_.\s]?2/i.test(row.title)
+                              ? "DFLASH2"
+                              : /dflash/i.test(row.title)
+                                ? "DFLASH"
+                                : /mtp/i.test(row.title)
+                                  ? "MTP"
+                                  : undefined),
                       // The landed head is the one that will launch: mark it.
                       active: Boolean(draftHeadPath) && row.id === draftHeadPath,
                       onPick: () => {
@@ -941,7 +975,7 @@ export default function MultiAgentBooster({
             }
             modelHubId={modelHubId}
             laneKind={
-              displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark"
+              displayBoost === "mtp" || displayBoost === "dflash"
                 ? displayBoost
                 : null
             }

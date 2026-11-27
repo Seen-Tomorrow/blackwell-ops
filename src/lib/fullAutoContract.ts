@@ -26,7 +26,7 @@ export const FULL_AUTO_SPEC_EXTRAS_DEFAULT = {
   pMin: 0,
 } as const;
 
-type FullAutoSpecMethod = "off" | "mtp" | "dflash" | "dspark";
+type FullAutoSpecMethod = "off" | "ngram" | "mtp" | "dflash";
 type FullAutoDraftSource = "none" | "built-in" | "saved" | "external";
 
 interface FullAutoSpecExtras {
@@ -113,7 +113,7 @@ export function resolveFullAutoDecision(
   });
 
   const method: FullAutoSpecMethod =
-    plan.speed === "mtp" || plan.speed === "dflash" || plan.speed === "dspark"
+    plan.speed === "ngram" || plan.speed === "mtp" || plan.speed === "dflash"
       ? plan.speed
       : "off";
 
@@ -126,19 +126,23 @@ export function resolveFullAutoDecision(
   );
 
   let draftSource: FullAutoDraftSource = "none";
-  if (method === "mtp") {
+  if (method === "ngram") {
+    draftSource = "built-in";
+  } else if (method === "mtp") {
     draftSource = bakedIn ? "built-in" : savedMtp ? "saved" : "none";
-  } else if (method === "dflash" || method === "dspark") {
+  } else if (method === "dflash") {
     draftSource = plan.needsDflashDraft ? "none" : "external";
   }
 
-  const needsDraft = method !== "off" && draftSource === "none";
+  const needsDraft = method !== "off" && method !== "ngram" && draftSource === "none";
   const reasons: string[] = [];
-  if (method === "mtp") {
+  if (method === "ngram") {
+    reasons.push("Zero-VRAM context n-gram speculation (ngram-mod).");
+  } else if (method === "mtp") {
     if (bakedIn) reasons.push("MTP head is built in.");
     else if (savedMtp) reasons.push("Using the saved external MTP head.");
     else reasons.push("MTP selected, but no head is paired yet.");
-  } else if ((method === "dflash" || method === "dspark") && needsDraft) {
+  } else if (method === "dflash" && needsDraft) {
     reasons.push("External draft needed for the selected SPEC lane.");
   } else if (method === "off") {
     reasons.push(

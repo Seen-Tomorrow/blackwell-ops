@@ -48,15 +48,20 @@ function resolveSpecLaunchActive(opts: {
 
 export function essentialsSpecChipLabel(specType: string): string {
   const s = specType.trim().toLowerCase();
+  if (s === "ngram-mod" || s === "ngram") return "NGRAM";
   if (s === "draft-mtp") return "MTP";
   if (s === "draft-dflash") return "DFLASH";
+  if (s === "draft-dflash2") return "DFLASH2";
+  if (s === "draft-dspark") return "DSPARK";
+  if (s === "draft-lilicorr") return "LILICORR";
   return specType;
 }
 
 const DRAFT_ARCH_FOR_SPEC: Record<string, DraftRole> = {
   "draft-dflash": "external_dflash",
-  // DSpark reuses external-draft pairing slot; path must contain dspark for engine validate.
+  "draft-dflash2": "external_dflash",
   "draft-dspark": "external_dflash",
+  "draft-lilicorr": "external_dflash",
   "draft-eagle3": "external_eagle3",
   // Baked-in MTP has no draft file to pair. The role is resolved from the configured
   // draft path, not from this string — see draftRoleForSpecType.
@@ -129,6 +134,57 @@ export function signalContainsDspark(signal: string): boolean {
   if (lower.includes("dspark")) return true;
   if (DSPARK_SIGNAL_RE.test(signal)) return true;
   return compactAlnumLower(signal).includes("dspark");
+}
+
+/** LiliCorr draft head (path/name: lilicorr, lili-corr, …). */
+export function signalContainsLilicorr(signal: string): boolean {
+  const lower = signal.toLowerCase();
+  if (lower.includes("lilicorr")) return true;
+  return compactAlnumLower(signal).includes("lilicorr");
+}
+
+/**
+ * Exact DFlash-family variant for a draft model/path (llama.cpp PR #32016).
+ * Header evidence (`ggufShape.dflashVariant`) wins; filename fallback covers unscanned paths.
+ */
+export function dflashVariantForDraft(
+  draftModel?: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel" | "ggufShape"> | null,
+  draftPath?: string | null,
+): "dflash" | "dflash2" | "dspark" | "lilicorr" {
+  const fromHeader = draftModel?.ggufShape?.dflashVariant;
+  if (
+    fromHeader === "dflash"
+    || fromHeader === "dflash2"
+    || fromHeader === "dspark"
+    || fromHeader === "lilicorr"
+  ) {
+    return fromHeader;
+  }
+  const signals = [
+    ...(draftModel ? catalogDraftSignals(draftModel) : []),
+    ...(draftPath ? [draftPath] : []),
+  ];
+  if (signals.some(signalContainsDspark)) return "dspark";
+  if (signals.some(signalContainsLilicorr)) return "lilicorr";
+  if (signals.some((s) => /d[-_.\s]?flash[-_.\s]?2/i.test(s) || compactAlnumLower(s).includes("dflash2"))) {
+    return "dflash2";
+  }
+  return "dflash";
+}
+
+export function dflashVariantBadge(
+  variant: "dflash" | "dflash2" | "dspark" | "lilicorr",
+): "DFLASH" | "DFLASH2" | "DSPARK" | "LILICORR" {
+  switch (variant) {
+    case "dflash2":
+      return "DFLASH2";
+    case "dspark":
+      return "DSPARK";
+    case "lilicorr":
+      return "LILICORR";
+    default:
+      return "DFLASH";
+  }
 }
 
 function signalContainsEagle3(signal: string): boolean {
@@ -241,8 +297,9 @@ export function draftRoleFromPathHints(
   model: Pick<ModelEntry, "path" | "name" | "hfModelId" | "sourcePathLabel">,
 ): DraftRole | null {
   for (const signal of catalogDraftSignals(model)) {
-    // DSpark heads before generic DFlash (path may contain both "dspark" and "Flash")
+    // DSpark & LiliCorr heads before generic DFlash (path may contain both "dspark" and "Flash")
     if (signalContainsDspark(signal)) return "external_dflash";
+    if (signalContainsLilicorr(signal)) return "external_dflash";
     if (signalContainsDflash(signal)) return "external_dflash";
     if (signalContainsEagle3(signal)) return "external_eagle3";
     if (signalContainsMtpHead(signal)) return "external_mtp";
@@ -305,6 +362,9 @@ export function draftRoleFromModel(
   // cannot separate from a baked-in main — Rust's classifier demotes it via naming and
   // this mirror must agree, or the two sides split on the same file.
   const shape = model.ggufShape;
+  if (shape?.dflashVariant) {
+    return "external_dflash";
+  }
   if (shape && (shape.nextnLayers ?? 0) > 0 && isFullCopyHeadNaming(model)) {
     return "external_mtp";
   }
@@ -362,6 +422,12 @@ export interface DraftPickListItem {
   meta?: string;
   /** Optional 0-100 confidence used for sorting. */
   score?: number;
+  /** True when the draft passes GGUF geometry + family checks for the active target. */
+  compatible?: boolean;
+  /** Explicit quant badge text (e.g. BF16, Q8_0, Q4_K_M). */
+  quant?: string;
+  /** Explicit variant/role tag (DFLASH, DFLASH2, DSPARK, LILICORR, MTP). */
+  variantTag?: string;
 }
 export function isAttachmentModel(
   model: Pick<ModelEntry, "fileRole">,
@@ -405,8 +471,7 @@ export function draftRoleBadge(
   if (model?.ggufShape?.archMismatch) return "PRIVATE-MTP";
   switch (role) {
     case "external_dflash":
-      if (model && catalogDraftSignals(model).some(signalContainsDspark)) return "DSPARK";
-      return "DFLASH";
+      return model ? dflashVariantBadge(dflashVariantForDraft(model)) : "DFLASH";
     case "external_eagle3":
       return "EAGLE3";
     case "external_mtp":
@@ -465,6 +530,66 @@ function familiesCompatible(main: ModelEntry, draft: ModelEntry): boolean {
   const draftFamily = extractModelFamily(draft);
   if (!mainFamily || !draftFamily) return false;
   return mainFamily === draftFamily;
+}
+
+/**
+ * Hard GGUF geometry + family compatibility check for filtering the draft picker.
+ *
+ * Uses exact GGUF header physics whenever both files are scanned:
+ *   1. `embedding_length` (`n_embd`) must match (a 4096 draft cannot run on a 5120 target).
+ *   2. `dflashMaxTargetLayer` must be `< target.n_layer`.
+ *   3. `hyperConnectionCount` parity separates DeepSeek-V4/V4.1 DSpark drafts from non-V4 targets.
+ *   4. Recognized model families must not conflict (e.g. qwen38 vs qwen36, deepseek vs gemma4).
+ *
+ * Keeps ALL quants of every compatible draft (BF16, Q8_0, Q4_K_M, …). Never locks the
+ * user out: the picker pairs this filter with a 1-click "ALL (N)" override.
+ */
+export function isDraftCompatibleWithTarget(
+  main: ModelEntry,
+  draft: ModelEntry,
+  laneRole: DraftRole,
+): boolean {
+  const mainEmbd = main.ggufShape?.embeddingLength || main.metadata?.n_embd || 0;
+  const draftEmbd = draft.ggufShape?.embeddingLength || draft.metadata?.n_embd || 0;
+  if (mainEmbd > 0 && draftEmbd > 0 && mainEmbd !== draftEmbd) {
+    return false;
+  }
+
+  if (laneRole === "external_dflash") {
+    const maxTargetLayer = draft.ggufShape?.dflashMaxTargetLayer;
+    const mainLayers = main.metadata?.n_layer || main.ggufShape?.block_count || 0;
+    if (maxTargetLayer != null && mainLayers > 0 && maxTargetLayer >= mainLayers) {
+      return false;
+    }
+
+    // Both shapes present: hyper-connection backbone (DeepSeek-V4/V4.1) is exclusive.
+    if (main.ggufShape && draft.ggufShape) {
+      const mainHc = (main.ggufShape.hyperConnectionCount ?? 0) > 0;
+      const draftHc = (draft.ggufShape.hyperConnectionCount ?? 0) > 0;
+      if (mainHc !== draftHc) return false;
+    }
+  } else if (laneRole === "external_mtp") {
+    const mainArch = (main.ggufShape?.architecture || main.metadata?.architecture || "").trim().toLowerCase();
+    const draftArch = (draft.ggufShape?.architecture || draft.metadata?.architecture || "").trim().toLowerCase();
+    if (mainArch && draftArch && mainArch !== draftArch) {
+      return false;
+    }
+  }
+
+  // Family guard: separates same-n_embd siblings (e.g. Qwen3.8-27B vs Qwen3.6-27B)
+  // while leaving unknown/new families (like Inkling-2 or Hy4) unfiltered if geometry matched.
+  const mainFamily = extractModelFamily(main);
+  const draftFamily = extractModelFamily(draft);
+  if (mainFamily && draftFamily && mainFamily !== draftFamily) {
+    return false;
+  }
+  // If one side has a known family and the other doesn't, check if geometry alone proved a
+  // match; if geometry wasn't scanned on either side, fall back to requiring stem overlap.
+  if (mainFamily !== draftFamily && (mainEmbd === 0 || draftEmbd === 0)) {
+    return scoreDraftPair(main, draft, laneRole) >= MIN_DRAFT_PAIR_SCORE;
+  }
+
+  return true;
 }
 
 function stemTokens(stem: string): string[] {

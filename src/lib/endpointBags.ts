@@ -64,7 +64,7 @@ function normalizeBag(raw: unknown): EndpointBag | null {
       : DEFAULT_PROVIDER_ID;
   const policyId = isLaunchPolicyId(b.policyId) ? b.policyId : "full_auto";
   const boostMethod =
-    b.boostMethod === "mtp" || b.boostMethod === "dflash" || b.boostMethod === "dspark"
+    b.boostMethod === "ngram" || b.boostMethod === "mtp" || b.boostMethod === "dflash"
       ? b.boostMethod
       : b.boostMethod === "off"
         ? "off"

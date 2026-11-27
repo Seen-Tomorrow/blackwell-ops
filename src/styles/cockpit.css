@@ -206,6 +206,20 @@
 /* SPEC-EXTRA / draft strip — product tones (MTP green, DFlash violet). Chips = theme value-chip. */
 /* Explicit MTP tone — theme tokens (--theme-dflash-mtp-*) resolve on all themes,
    no [data-theme] fork. Product green, adapted per theme (dark wash / arctic paper wash). */
+/* Explicit NGRAM tone (cyan, zero-VRAM context speculation) — token-driven across all themes. */
+.full-auto-cockpit__dflash-get--tone-ngram {
+  border-color: color-mix(in srgb, var(--theme-info) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 8%, transparent);
+  color: var(--theme-info);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-info) 16%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-title,
+.full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-key,
+.full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, var(--theme-info) 82%, transparent);
+}
+
 .full-auto-cockpit__dflash-get--tone-mtp {
   border-color: var(--theme-dflash-mtp-border);
   background: var(--theme-dflash-mtp-bg);
@@ -353,7 +367,21 @@
 }
 
 /* Higher specificity than base so MTP green / DFlash violet always paint */
-.full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp {
+.full-auto-cockpit__dflash-get/* Explicit NGRAM tone (cyan, zero-VRAM context speculation) — token-driven across all themes. */
+.full-auto-cockpit__dflash-get--tone-ngram {
+  border-color: color-mix(in srgb, var(--theme-info) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 8%, transparent);
+  color: var(--theme-info);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-info) 16%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-title,
+.full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-key,
+.full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, var(--theme-info) 82%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp {
   border-color: var(--theme-dflash-mtp-border);
   background: var(--theme-dflash-mtp-bg);
   color: var(--theme-dflash-mtp-text);
@@ -1237,6 +1265,16 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: var(--theme-chip-solid-text);
   text-shadow: none;
 }
+.cockpit-slider-mark-label--cyan {
+  color: var(--theme-info);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-info) 40%, transparent);
+}
+.cockpit-slider-mark-label--cyan.cockpit-slider-mark-label--selected {
+  background: var(--theme-info);
+  border-color: var(--theme-info);
+  color: var(--theme-chip-solid-text);
+  text-shadow: none;
+}
 .cockpit-slider-mark-label--violet {
   color: var(--cockpit-dflash);
   text-shadow: 0 0 8px var(--cockpit-dflash-dim, var(--fixed-violet-400-a4));
@@ -1274,7 +1312,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   color: var(--theme-chip-solid-text);
 }
 
-/* Green/violet/amber fills are mid-light in every theme, so they always take dark ink. */
+/* Cyan/green/violet/amber fills are mid-light in every theme, so they always take dark ink. */
+.cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--cyan.cockpit-slider-mark-label--selected,
 .cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--green.cockpit-slider-mark-label--selected,
 .cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--violet.cockpit-slider-mark-label--selected,
 .cockpit-slider-row .cockpit-slider-track-host .cockpit-slider-mark-label--custom.cockpit-slider-mark-label--selected {
@@ -1302,6 +1341,10 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.35;
 }
 
+.cockpit-slider-mark--tint.cockpit-slider-mark--cyan {
+  opacity: 0.75;
+}
+
 .cockpit-slider-mark--tint.cockpit-slider-mark--green {
   opacity: 0.75;
 }
@@ -1310,6 +1353,10 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   opacity: 0.75;
 }
 
+.cockpit-slider-mark--cyan {
+  background: var(--theme-info);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--theme-info) 45%, transparent);
+}
 .cockpit-slider-mark--green {
   background: var(--cockpit-mtp);
   box-shadow: 0 0 5px var(--cockpit-mtp-dim, var(--fixed-green-400-a45));
@@ -2043,9 +2090,13 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   grid-template-columns: minmax(0, 1fr) 3.5rem minmax(0, 1fr);
   align-items: center;
   gap: 0.6rem;
-  /* 50% taller than the CTX hero bar: the rail is the primary control surface. */
-  min-height: 6.75rem;
-  padding: 0.2rem 0.1rem 0.15rem;
+  min-height: 5.1rem;
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.65rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  border-radius: 3px;
+  background: var(--fixed-black-a18);
+  box-shadow: inset 0 1px 0 var(--fixed-white-a04);
   min-width: 0;
 }
 .loadout-rail__group {
@@ -2054,10 +2105,9 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   flex-direction: column;
   gap: 0.15rem;
   /* Both halves share one height so their bands land on the same line. */
-  min-height: 6.4rem;
+  min-height: 4.6rem;
   min-width: 0;
-  /* Gutter for the EXTERNAL badge that floats above each stop. */
-  padding-top: 0.9rem;
+  padding-top: 0.2rem;
 }
 
 .loadout-rail__group--spec,
@@ -2090,7 +2140,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* Dotted connector on the track line — reads as one rail, not two widgets. */
 .loadout-rail__bridge {
   align-self: start;
-  margin-top: 3.95rem;
+  margin-top: 3.25rem;
   height: 8px;
   background-image: repeating-linear-gradient(
     90deg,
@@ -2385,12 +2435,57 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   box-shadow: 0 0 5px var(--theme-accent-glow);
 }
 
+.gp-row--incompat {
+  opacity: 0.55;
+}
+.gp-row--incompat:hover {
+  opacity: 0.9;
+}
+
 .gp-row__quant {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-accent-bright) 10%, transparent);
   color: var(--theme-accent-bright);
   font-size: var(--type-hairline);
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.gp-row__quant--fp {
+  border-color: color-mix(in srgb, var(--cockpit-dflash) 45%, transparent);
+  background: color-mix(in srgb, var(--cockpit-dflash) 14%, transparent);
+  color: var(--cockpit-dflash);
+}
+
+.gp-row__quant--q8 {
+  border-color: color-mix(in srgb, var(--theme-info) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-info) 14%, transparent);
+  color: var(--theme-info);
+}
+
+.gp-row__quant--q56 {
+  border-color: color-mix(in srgb, var(--cockpit-mtp) 45%, transparent);
+  background: color-mix(in srgb, var(--cockpit-mtp) 14%, transparent);
+  color: var(--cockpit-mtp);
+}
+
+.gp-row__quant--q4 {
+  border-color: color-mix(in srgb, var(--theme-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-warn) 14%, transparent);
+  color: var(--theme-warn);
+}
+
+.gp-row__quant--qlow {
+  border-color: color-mix(in srgb, var(--theme-text-muted) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-text-muted) 10%, transparent);
+  color: var(--theme-text-muted);
 }
 
 .gp-row__size,

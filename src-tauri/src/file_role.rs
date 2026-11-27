@@ -158,7 +158,7 @@ pub fn classify(shape: Option<&GgufShape>, draft_hint: &str, path: &str) -> Role
     // blocks of its own (real head: 34 tensors, 0 trunk blocks), a baked-in main has the
     // full stack (real: 866 tensors, 65 blocks).
     if let Some(shape) = shape {
-        let draft_tensors = shape.nextn_layers > 0 || shape.has_markov_w1;
+        let draft_tensors = shape.nextn_layers > 0 || shape.dflash_variant.is_some();
         if draft_tensors && shape.block_count <= 1 {
             return v(FileRole::Draft, RoleEvidence::TensorSignature);
         }

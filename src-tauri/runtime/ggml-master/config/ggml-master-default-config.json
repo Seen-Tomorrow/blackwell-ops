@@ -11,6 +11,7 @@
     "DEV-WORKFLOW",
     "FEATURE-FLAGS",
     "EXPERTS",
+    "SPECULATIVE-NGRAM",
     "SPECULATIVE-MTP",
     "SPECULATIVE-DFLASH",
     "SYSTEM"
@@ -462,6 +463,71 @@
       ]
     },
     {
+      "default": 24,
+      "dock": "",
+      "flag": "--spec-ngram-mod-n-match",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "ngram_n_match",
+      "label": "N-MATCH",
+      "note": "ngram-mod: lookup n-gram prefix length (default: 24).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-NGRAM",
+      "values": [
+        12,
+        16,
+        24,
+        32
+      ]
+    },
+    {
+      "default": 48,
+      "dock": "",
+      "flag": "--spec-ngram-mod-n-min",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "ngram_n_min",
+      "label": "N-MIN",
+      "note": "ngram-mod: minimum draft tokens (reduce to 8-16 for dense models; 48 for MoE).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-NGRAM",
+      "values": [
+        8,
+        16,
+        24,
+        32,
+        48
+      ]
+    },
+    {
+      "default": 64,
+      "dock": "",
+      "flag": "--spec-ngram-mod-n-max",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "ngram_n_max",
+      "label": "N-MAX",
+      "note": "ngram-mod: maximum draft tokens (reduce to 16-32 for dense models; 64 for MoE).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-NGRAM",
+      "values": [
+        16,
+        24,
+        32,
+        48,
+        64
+      ]
+    },
+    {
       "default": 7,
       "dock": "",
       "essentialsHiddenValues": [
@@ -575,7 +641,7 @@
       ],
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_n_max",
       "label": "DRAFT-N-MAX",
       "note": "DFlash: maximum draft tokens per speculative step.",
@@ -607,7 +673,7 @@
       ],
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_n_min",
       "label": "DRAFT-N-MIN",
       "note": "DFlash: minimum draft tokens per speculative step.",
@@ -629,10 +695,10 @@
       "dock": "",
       "flag": "--spec-draft-p-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_p_min",
       "label": "DRAFT-P-MIN",
-      "note": "DFlash: minimum speculative decoding probability (greedy).",
+      "note": "DFlash/DFlash2/LiliCorr: minimum speculative probability (greedy only; omitted when probabilistic sampling is active).",
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
@@ -649,7 +715,7 @@
       "dock": "",
       "flag": "--spec-draft-model",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_draft_model",
       "label": "DRAFT-MODEL",
       "note": "External DFlash draft GGUF path. Set via Boost Get/Change draft.",
@@ -668,10 +734,10 @@
       "dock": "",
       "flag": "--spec-draft-sampling",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "dflash_sampling",
       "label": "DRAFT-SAMPLING",
-      "note": "DFlash2: greedy argmax or probabilistic draft sampling with target rejection (DFlash1 ignores probabilistic).",
+      "note": "DFlash2 only: greedy argmax or probabilistic draft sampling with target rejection.",
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
@@ -874,6 +940,7 @@
   ],
   "protectedGroups": [
     "SYSTEM",
+    "SPECULATIVE-NGRAM",
     "SPECULATIVE-MTP",
     "SPECULATIVE-DFLASH"
   ],
@@ -915,6 +982,6 @@
       "4"
     ]
   },
-  "templateVersion": 66,
+  "templateVersion": 69,
   "template_type": "ggml-llama"
 }

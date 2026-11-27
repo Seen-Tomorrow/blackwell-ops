@@ -51,8 +51,9 @@ import {
   adapterForMethod,
   cliTypeForMethod,
   normalizeDraftPath,
+  type DflashVariant,
 } from "../lib/spec/adapters";
-import type { DraftRole } from "../lib/specDraft";
+import { dflashVariantForDraft, type DraftRole } from "../lib/specDraft";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import { visibleParamValuesOf } from "../lib/engineSurfaces";
 import {
@@ -325,12 +326,23 @@ export function useCockpit({
   }, [allParamsResolved, config, updateParam]);
 
   const specBoostMethod: SpecBoostMethod = useMemo(() => {
-    if (speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark") {
+    if (speedBoost === "ngram" || speedBoost === "mtp" || speedBoost === "dflash") {
       return speedBoost;
     }
     if (speedBoost === "off" || speedBoost === "smart") return "off";
     return activeBoostMethodFromParams(allParamsResolved);
   }, [speedBoost, allParamsResolved]);
+
+  /** Exact DFlash-family variant auto-detected from the selected draft GGUF header. */
+  const activeDflashVariant: DflashVariant = useMemo(() => {
+    const rawPath = normalizeDraftPath(config[DFLASH_DRAFT_MODEL]);
+    if (!rawPath) return "dflash";
+    const norm = rawPath.replace(/\\/g, "/").toLowerCase();
+    const draftModel = (models ?? []).find(
+      (m) => m.path.replace(/\\/g, "/").toLowerCase() === norm,
+    );
+    return dflashVariantForDraft(draftModel, rawPath);
+  }, [config, models]);
 
   const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
     return cockpitProfileKnobRows(
@@ -339,8 +351,9 @@ export function useCockpit({
       config,
       cockpitValueView,
       updateParam,
+      activeDflashVariant,
     );
-  }, [specBoostMethod, allParamsResolved, config, cockpitValueView, updateParam]);
+  }, [specBoostMethod, allParamsResolved, config, cockpitValueView, updateParam, activeDflashVariant]);
 
   /**
    * The draft path for the active Boost method — `mtp_draft_model` for MTP,
@@ -348,7 +361,7 @@ export function useCockpit({
    */
   const activeDraftPath = useMemo(() => {
     const adapter = adapterForMethod(specBoostMethod);
-    const activeKey = adapter?.knobs.draftModel;
+    const activeKey = adapter?.knobs?.draftModel;
     return activeKey ? normalizeDraftPath(config[activeKey]) : null;
   }, [specBoostMethod, config]);
 
@@ -370,10 +383,10 @@ export function useCockpit({
     if (!adapter || !draftRole) return null;
     const path = resolveExternalDraftPath(model, models, draftRole, {
       currentPath: cur,
-      specType: cliTypeForMethod(specBoostMethod) ?? adapter.cliType,
+      specType: cliTypeForMethod(specBoostMethod, activeDflashVariant) ?? adapter.cliType,
     });
     return path ? resolveDraftPathLabel(path) : null;
-  }, [model, models, dflashLibraryReady, activeDraftPath, specBoostMethod]);
+  }, [model, models, dflashLibraryReady, activeDraftPath, specBoostMethod, activeDflashVariant]);
 
   const applyFullAutoCockpit = useCallback(
     async (
@@ -387,7 +400,7 @@ export function useCockpit({
       setSpeedBoost(speed);
 
       const draftReadyMethod: SpecBoostMethod =
-        speed === "mtp" || speed === "dflash" || speed === "dspark" ? speed : "off";
+        speed === "ngram" || speed === "mtp" || speed === "dflash" ? speed : "off";
       const draftReadyAdapter = adapterForMethod(draftReadyMethod);
       const draftReadyRole = draftReadyAdapter?.draftRoles.find(
         (r): r is DraftRole => r !== "none",
@@ -476,7 +489,7 @@ export function useCockpit({
       }
 
       const method: SpecBoostMethod =
-        plan.speed === "mtp" || plan.speed === "dflash" || plan.speed === "dspark"
+        plan.speed === "ngram" || plan.speed === "mtp" || plan.speed === "dflash"
           ? plan.speed
           : "off";
 
@@ -490,32 +503,11 @@ export function useCockpit({
         console.error("[cockpit] applySpecBoostProfiles failed:", err);
       }
 
-      // External draft path — the active method's own key (mtp_draft_model vs
-      // dflash_draft_model) → --spec-draft-model.
+      // External draft path — explicit user pick only (defer blind auto-pairing).
       const applyAdapter = adapterForMethod(method);
-      const applyDraftKey = applyAdapter?.knobs.draftModel;
-      if (applyAdapter && applyDraftKey && model && models?.length) {
-        const cliType = cliTypeForMethod(method) ?? applyAdapter.cliType;
-        const draftRole = applyAdapter.draftRoles.find((r): r is DraftRole => r !== "none");
-        const resolved =
-          opts?.preferredDraftPath
-          || (draftRole
-            ? resolveExternalDraftPath(model, models, draftRole, {
-                preferredPath: opts?.preferredDraftPath,
-                currentPath: normalizeDraftPath(config[applyDraftKey]),
-                specType: cliType,
-                // MTP never auto-pairs: the head comes from the picker or the saved
-                // pairing. Baked-in MTP needs no path at all — the engine builds the
-                // draft context from the target model.
-                allowAutoPair: method !== "mtp",
-              })
-            : null);
-        if (resolved) {
-          updateParam(applyDraftKey, resolved);
-        } else if (opts?.preferredDraftPath) {
-          // Explicit path even if not scored as the method's draft role
-          updateParam(applyDraftKey, opts.preferredDraftPath);
-        }
+      const applyDraftKey = applyAdapter?.knobs?.draftModel;
+      if (applyAdapter && applyDraftKey && opts?.preferredDraftPath) {
+        updateParam(applyDraftKey, opts.preferredDraftPath);
       }
 
       if (method === "off") {
@@ -550,9 +542,11 @@ export function useCockpit({
     const st = config.spec_type != null ? String(config.spec_type).trim() : "";
     if (!st) return null;
     const low = st.toLowerCase();
+    if (low === "ngram-mod" || low === "ngram") return null;
     if (low.includes("mtp") || low === "draft-mtp") return null;
-    if (low.includes("dflash") || low === "draft-dflash") return null;
+    if (low.includes("dflash") || low === "draft-dflash" || low === "draft-dflash2") return null;
     if (low.includes("dspark") || low === "draft-dspark") return null;
+    if (low.includes("lilicorr") || low === "draft-lilicorr") return null;
     return st;
   }, [specDecodingGroupVisible, config.spec_type]);
 
@@ -571,7 +565,7 @@ export function useCockpit({
       return;
     }
     const method = activeBoostMethodFromParams(allParamsResolved);
-    if (method === "mtp" || method === "dflash" || method === "dspark") {
+    if (method === "ngram" || method === "mtp" || method === "dflash") {
       setSpeedBoost(method);
     }
     else setSpeedBoost(fullAutoMode ? "smart" : "off");
@@ -632,6 +626,7 @@ export function useCockpit({
     cockpitOpts,
     specCapabilities,
     specBoostMethod,
+    activeDflashVariant,
     cockpitValueView,
     cockpitKvValues,
     cockpitKvValuesBound,

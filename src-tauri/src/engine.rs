@@ -67,7 +67,8 @@ fn is_spec_decoding_group_active(user_params: &[crate::types::UserEditedTemplate
     user_params.iter().any(|p| {
         let g = p.ui_group.as_str();
         !p.hidden
-            && (g.eq_ignore_ascii_case("SPECULATIVE-MTP")
+            && (g.eq_ignore_ascii_case("SPECULATIVE-NGRAM")
+                || g.eq_ignore_ascii_case("SPECULATIVE-MTP")
                 || g.eq_ignore_ascii_case("SPECULATIVE-DFLASH")
                 || g.eq_ignore_ascii_case("SPECULATIVE-DECODING"))
     })
@@ -191,7 +192,8 @@ fn guard_speculative_decoding(
     if !launchable || !group_active || stale_mtp {
         for p in &mut filtered {
             let g = p.ui_group.as_str();
-            let is_spec = g.eq_ignore_ascii_case("SPECULATIVE-MTP")
+            let is_spec = g.eq_ignore_ascii_case("SPECULATIVE-NGRAM")
+                || g.eq_ignore_ascii_case("SPECULATIVE-MTP")
                 || g.eq_ignore_ascii_case("SPECULATIVE-DFLASH")
                 || g.eq_ignore_ascii_case("SPECULATIVE-DECODING");
             if is_spec && !p.hidden {
@@ -256,6 +258,8 @@ fn validate_spec_launch_with_catalog(
             "*eagle3*"
         } else if lower.contains("dspark") {
             "*dspark*"
+        } else if lower.contains("lilicorr") {
+            "*lilicorr*"
         } else if lower == "draft-mtp" {
             "*mtp*"
         } else {

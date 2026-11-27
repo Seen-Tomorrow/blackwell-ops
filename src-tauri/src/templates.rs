@@ -644,9 +644,11 @@ impl ProviderTemplate {
         sorted_params.sort_by(|a, b| {
             let is_spec = |p: &crate::types::UserEditedTemplateParam| {
                 let g = p.ui_group.as_str();
-                g.eq_ignore_ascii_case("SPECULATIVE-MTP")
+                g.eq_ignore_ascii_case("SPECULATIVE-NGRAM")
+                    || g.eq_ignore_ascii_case("SPECULATIVE-MTP")
                     || g.eq_ignore_ascii_case("SPECULATIVE-DFLASH")
                     || g.eq_ignore_ascii_case("SPECULATIVE-DECODING")
+                    || p.key.starts_with("ngram_")
                     || p.key.starts_with("mtp_")
                     || p.key.starts_with("dflash_")
                     || p.key.eq_ignore_ascii_case("spec_type")
@@ -820,6 +822,8 @@ impl ProviderTemplate {
                     "*eagle3*"
                 } else if spec_lower.contains("dspark") {
                     "*dspark*"
+                } else if spec_lower.contains("lilicorr") {
+                    "*lilicorr*"
                 } else if spec_lower == "draft-mtp" {
                     // The MTP lane: unsloth heads are `mtp-<target>.gguf` — a *dflash*
                     // pattern matches none of them, so an auto value resolved to nothing.
@@ -866,6 +870,9 @@ impl ProviderTemplate {
             ("dflash_n_max", "--spec-draft-n-max"),
             ("dflash_n_min", "--spec-draft-n-min"),
             ("dflash_p_min", "--spec-draft-p-min"),
+            ("ngram_n_match", "--spec-ngram-mod-n-match"),
+            ("ngram_n_min", "--spec-ngram-mod-n-min"),
+            ("ngram_n_max", "--spec-ngram-mod-n-max"),
         ] {
             if args.iter().any(|a| a == flag) {
                 continue;
@@ -898,6 +905,40 @@ impl ProviderTemplate {
                 });
                 if !s.is_empty() && s != "null" {
                     args.extend([flag.to_string(), s]);
+                }
+            }
+        }
+
+        // Resolve exact DFlash variant (`draft-dflash` / `draft-dflash2` / `draft-dspark` /
+        // `draft-lilicorr`) from the draft GGUF header when the caller passed generic `draft-dflash`.
+        if let (Some(st_pos), Some(md_pos)) = (
+            args.iter().position(|a| a == "--spec-type"),
+            args.iter().position(|a| a == "--spec-draft-model"),
+        ) {
+            if let (Some(st_val), Some(md_val)) = (args.get(st_pos + 1), args.get(md_pos + 1)) {
+                if st_val.eq_ignore_ascii_case("draft-dflash") {
+                    let shape = crate::gguf_shape::read_shape_for_path(md_val).ok();
+                    let resolved = crate::spec_draft::dflash_cli_type_for_draft(shape.as_ref(), md_val);
+                    args[st_pos + 1] = resolved.to_string();
+                }
+            }
+        }
+
+        // Upstream llama.cpp #31294 warns when `--spec-draft-p-min` is paired with
+        // `--spec-draft-sampling probabilistic`. Strip p-min when probabilistic is active.
+        let probabilistic_draft = args
+            .windows(2)
+            .any(|w| w[0] == "--spec-draft-sampling" && w[1].eq_ignore_ascii_case("probabilistic"));
+        if probabilistic_draft {
+            let mut idx = 0;
+            while idx < args.len() {
+                if args[idx] == "--spec-draft-p-min" {
+                    args.remove(idx);
+                    if idx < args.len() {
+                        args.remove(idx);
+                    }
+                } else {
+                    idx += 1;
                 }
             }
         }

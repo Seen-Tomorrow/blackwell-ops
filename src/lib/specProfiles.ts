@@ -13,22 +13,36 @@ import type { UserEditedTemplateParam } from "./types";
 import { filterParamValuesForConfigView } from "./launchProfile";
 import type { ConfigViewMode } from "./types";
 import { normalizeUiGroup, paramUiGroup } from "./storage";
-import { SPEC_PROFILE_DFLASH_GROUP, SPEC_PROFILE_MTP_GROUP } from "./systemParams";
-import { adapterForMethod, cliTypeForMethod } from "./spec/adapters";
+import {
+  SPEC_PROFILE_DFLASH_GROUP,
+  SPEC_PROFILE_MTP_GROUP,
+  SPEC_PROFILE_NGRAM_GROUP,
+} from "./systemParams";
+import {
+  adapterForMethod,
+  cliTypeForMethod,
+  type DflashVariant,
+} from "./spec/adapters";
 
+export const SPEC_PROFILE_NGRAM = SPEC_PROFILE_NGRAM_GROUP;
 export const SPEC_PROFILE_MTP = SPEC_PROFILE_MTP_GROUP;
 export const SPEC_PROFILE_DFLASH = SPEC_PROFILE_DFLASH_GROUP;
 
 /** Protected profile groups — cannot delete; params may be hidden. */
-const SPEC_PROFILE_GROUPS = [SPEC_PROFILE_MTP, SPEC_PROFILE_DFLASH] as const;
+const SPEC_PROFILE_GROUPS = [
+  SPEC_PROFILE_NGRAM,
+  SPEC_PROFILE_MTP,
+  SPEC_PROFILE_DFLASH,
+] as const;
 
 export type SpecProfileGroup = (typeof SPEC_PROFILE_GROUPS)[number];
 
 /**
- * Product Boost methods that map 1:1 to a profile group (plus off).
- * DSpark reuses the DFlash profile knobs + draft path UI; CLI type is draft-dspark.
+ * Product Boost methods (`off`, universal zero-VRAM `ngram`, or profile-backed `mtp` / `dflash`).
+ * All four DFlash variants (dflash, dflash2, dspark, lilicorr) share the
+ * single `dflash` Boost stop; the exact CLI type comes from the draft GGUF header.
  */
-export type SpecBoostMethod = "off" | "mtp" | "dflash" | "dspark";
+export type SpecBoostMethod = "off" | "ngram" | "mtp" | "dflash";
 
 /** CLI keys emitted at launch (llama.cpp). */
 export const SPEC_CLI_TYPE = "spec_type";
@@ -37,7 +51,10 @@ export const SPEC_CLI_N_MIN = "spec_draft_n_min";
 export const SPEC_CLI_P_MIN = "spec_draft_p_min";
 export const SPEC_CLI_DRAFT = "spec_draft_model";
 
-/** Template param keys (unique per profile so both sets coexist). */
+/** Template param keys (unique per profile so all sets coexist). */
+const NGRAM_N_MATCH = "ngram_n_match";
+const NGRAM_N_MIN = "ngram_n_min";
+const NGRAM_N_MAX = "ngram_n_max";
 const MTP_N_MAX = "mtp_n_max";
 const MTP_N_MIN = "mtp_n_min";
 const MTP_P_MIN = "mtp_p_min";
@@ -49,6 +66,9 @@ export const DFLASH_DRAFT_MODEL = "dflash_draft_model";
 export const MTP_DRAFT_MODEL = "mtp_draft_model";
 
 export const SPEC_PROFILE_PARAM_KEYS = [
+  NGRAM_N_MATCH,
+  NGRAM_N_MIN,
+  NGRAM_N_MAX,
   MTP_N_MAX,
   MTP_N_MIN,
   MTP_P_MIN,
@@ -71,7 +91,7 @@ const PROFILE_KEY_SET = new Set<string>(SPEC_PROFILE_PARAM_KEYS);
 function isSpecProfileGroup(group: string | undefined | null): boolean {
   if (!group) return false;
   const g = normalizeUiGroup(group);
-  return g === SPEC_PROFILE_MTP || g === SPEC_PROFILE_DFLASH;
+  return g === SPEC_PROFILE_NGRAM || g === SPEC_PROFILE_MTP || g === SPEC_PROFILE_DFLASH;
 }
 
 export function isSpecProfileParamKey(key: string): boolean {
@@ -90,8 +110,11 @@ function boostMethodForGroup(group: string): SpecBoostMethod | null {
   return null;
 }
 
-export function cliSpecTypeForMethod(method: SpecBoostMethod): string | null {
-  return cliTypeForMethod(method) ?? null;
+export function cliSpecTypeForMethod(
+  method: SpecBoostMethod,
+  dflashVariant?: DflashVariant,
+): string | null {
+  return cliTypeForMethod(method, method === "dflash" ? dflashVariant : undefined) ?? null;
 }
 
 /** True if any param in either profile group is visible (spec product mode on). */
@@ -103,12 +126,16 @@ export function isAnySpecProfileActive(params: UserEditedTemplateParam[]): boole
 export function activeBoostMethodFromParams(
   params: UserEditedTemplateParam[],
 ): SpecBoostMethod {
+  const ngramOn = params.some(
+    (p) => paramUiGroup(p.ui_group) === SPEC_PROFILE_NGRAM && !p.hidden,
+  );
   const mtpOn = params.some(
     (p) => paramUiGroup(p.ui_group) === SPEC_PROFILE_MTP && !p.hidden,
   );
   const dfOn = params.some(
     (p) => paramUiGroup(p.ui_group) === SPEC_PROFILE_DFLASH && !p.hidden,
   );
+  if (ngramOn && !mtpOn && !dfOn) return "ngram";
   if (mtpOn && !dfOn) return "mtp";
   if (dfOn && !mtpOn) return "dflash";
   if (mtpOn && dfOn) return "mtp";
@@ -147,10 +174,11 @@ export function buildSpecCliExtraParams(
   method: SpecBoostMethod,
   config: Record<string, unknown>,
   params: UserEditedTemplateParam[],
+  dflashVariant?: DflashVariant,
 ): Record<string, unknown> {
   if (method === "off") return {};
 
-  const st = cliSpecTypeForMethod(method);
+  const st = cliSpecTypeForMethod(method, dflashVariant);
   if (!st) return {};
 
   const out: Record<string, unknown> = { [SPEC_CLI_TYPE]: st };
@@ -183,13 +211,23 @@ export function buildSpecCliExtraParams(
 
   const adapter = adapterForMethod(method);
   if (!adapter) return {};
+  if (!adapter.knobs) return out;
 
+  if (adapter.knobs.nMatch) {
+    pickProfileKey(adapter.knobs.nMatch);
+  }
   pickProfileKey(adapter.knobs.nMax);
   pickProfileKey(adapter.knobs.nMin);
-  pickProfileKey(adapter.knobs.pMin);
-  // DFlash2-only: probabilistic sampling. DSpark shares the profile but not this knob.
-  if (method === "dflash" && adapter.knobs.sampling) {
+  // DFlash2-only: probabilistic sampling. Omit p_min when probabilistic is active
+  // (upstream llama.cpp #31294 warns when --spec-draft-p-min is paired with probabilistic).
+  const isDflash2 = method === "dflash" && dflashVariant === "dflash2";
+  if (isDflash2 && adapter.knobs.sampling) {
     pickProfileKey(adapter.knobs.sampling);
+  }
+  const probabilisticActive =
+    isDflash2 && String(out[DFLASH_SAMPLING] ?? "").trim().toLowerCase() === "probabilistic";
+  if (!probabilisticActive && adapter.knobs.pMin) {
+    pickProfileKey(adapter.knobs.pMin);
   }
 
   const draftKey = adapter.knobs.draftModel;
@@ -221,8 +259,9 @@ export function specShareFields(
   method: SpecBoostMethod,
   config: Record<string, unknown>,
   params: UserEditedTemplateParam[],
+  dflashVariant?: DflashVariant,
 ): { specType?: string; nMax?: string | number; nMin?: string | number } {
-  const cli = buildSpecCliExtraParams(method, config, params);
+  const cli = buildSpecCliExtraParams(method, config, params, dflashVariant);
   const specType = cli[SPEC_CLI_TYPE];
   if (typeof specType !== "string" || !specType.trim()) return {};
 
@@ -233,6 +272,13 @@ export function specShareFields(
     return undefined;
   };
 
+  if (method === "ngram") {
+    return {
+      specType: specType.trim(),
+      nMax: pick(NGRAM_N_MAX),
+      nMin: pick(NGRAM_N_MIN),
+    };
+  }
   const mtp = method === "mtp";
   return {
     specType: specType.trim(),
@@ -257,6 +303,7 @@ export function cockpitProfileKnobRows(
   config: Record<string, unknown>,
   configView: ConfigViewMode,
   onChange: (key: string, value: string | number) => void,
+  dflashVariant?: DflashVariant,
 ): ProfileKnobRow[] {
   const group = groupForBoostMethod(method);
   if (!group) return [];
@@ -264,6 +311,13 @@ export function cockpitProfileKnobRows(
   // Draft paths are chosen by the ★ picker strip, not by a chip — both lanes skip
   // their own row so the head is never picked two different ways.
   const skip = new Set<string>([DFLASH_DRAFT_MODEL, MTP_DRAFT_MODEL]);
+  if (method === "dflash") {
+    if (dflashVariant !== "dflash2") {
+      skip.add(DFLASH_SAMPLING);
+    } else if (String(config[DFLASH_SAMPLING] ?? "").trim().toLowerCase() === "probabilistic") {
+      skip.add(DFLASH_P_MIN);
+    }
+  }
   return paramsInProfile(params, group)
     .filter((d) => !skip.has(d.key) && !d.userHidden && !d.hidden)
     .sort((a, b) => a.order - b.order)

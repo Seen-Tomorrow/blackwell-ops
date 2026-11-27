@@ -4,6 +4,7 @@ import {
   draftRoleFromModel,
   draftRoleFromPathHints,
   hasBakedMtp,
+  isDraftCompatibleWithTarget,
   isExternalDraftOnly,
   isLaunchableMain,
   resolveExternalDraftPath,
@@ -124,5 +125,60 @@ describe("MTP draft resolution is manual-only", () => {
     expect(
       resolveExternalDraftPath(main, [head], "external_mtp"),
     ).toBe(head.path);
+  });
+});
+
+describe("GGUF draft geometry compatibility filter", () => {
+  const dsV4Target = {
+    path: String.raw`C:\models\deepseek\DeepSeek-V4.1-Flash-Q4_K_M.gguf`,
+    name: "DeepSeek-V4.1-Flash",
+    ggufShape: { architecture: "deepseek2", block_count: 61, embeddingLength: 4096, hyperConnectionCount: 4 },
+  } as ModelEntry;
+
+  const dsV4DsparkBf16 = {
+    path: String.raw`C:\models\dspark\dspark-DeepSeek-V4.1-Flash-BF16.gguf`,
+    name: "dspark-DeepSeek-V4.1-Flash-BF16",
+    ggufShape: { architecture: "dflash", dflashVariant: "dspark", embeddingLength: 4096, dflashMaxTargetLayer: 55, hyperConnectionCount: 4 },
+  } as ModelEntry;
+
+  const dsV4DsparkQ8 = {
+    ...dsV4DsparkBf16,
+    path: String.raw`C:\models\dspark\dspark-DeepSeek-V4.1-Flash-Q8_0.gguf`,
+    name: "dspark-DeepSeek-V4.1-Flash-Q8_0",
+  } as ModelEntry;
+
+  const qwen38Dflash2 = {
+    path: String.raw`C:\models\dflash\Qwen3.8-27B-DFlash2-Q8_0.gguf`,
+    name: "Qwen3.8-27B-DFlash2-Q8_0",
+    ggufShape: { architecture: "dflash", dflashVariant: "dflash2", embeddingLength: 5120, dflashMaxTargetLayer: 60 },
+  } as ModelEntry;
+
+  const qwen36Dflash = {
+    path: String.raw`C:\models\dflash\Qwen3.6-27B-DFlash-Q8_0.gguf`,
+    name: "Qwen3.6-27B-DFlash-Q8_0",
+    ggufShape: { architecture: "dflash", dflashVariant: "dflash", embeddingLength: 5120, dflashMaxTargetLayer: 60 },
+  } as ModelEntry;
+
+  const qwen38Target = {
+    path: String.raw`C:\models\qwen\Qwen3.8-27B-Q4_K_M.gguf`,
+    name: "Qwen3.8-27B",
+    ggufShape: { architecture: "qwen3", block_count: 64, embeddingLength: 5120 },
+  } as ModelEntry;
+
+  it("keeps all quants of compatible drafts and rejects mismatched n_embd / hyperConnectionCount", () => {
+    expect(isDraftCompatibleWithTarget(dsV4Target, dsV4DsparkBf16, "external_dflash")).toBe(true);
+    expect(isDraftCompatibleWithTarget(dsV4Target, dsV4DsparkQ8, "external_dflash")).toBe(true);
+    expect(isDraftCompatibleWithTarget(dsV4Target, qwen38Dflash2, "external_dflash")).toBe(false);
+  });
+
+  it("separates same-n_embd sibling generations (Qwen3.8 vs Qwen3.6) and rejects target_layers overflow", () => {
+    expect(isDraftCompatibleWithTarget(qwen38Target, qwen38Dflash2, "external_dflash")).toBe(true);
+    expect(isDraftCompatibleWithTarget(qwen38Target, qwen36Dflash, "external_dflash")).toBe(false);
+
+    const tooDeepDraft = {
+      ...qwen38Dflash2,
+      ggufShape: { ...qwen38Dflash2.ggufShape, dflashMaxTargetLayer: 64 },
+    } as ModelEntry;
+    expect(isDraftCompatibleWithTarget(qwen38Target, tooDeepDraft, "external_dflash")).toBe(false);
   });
 });

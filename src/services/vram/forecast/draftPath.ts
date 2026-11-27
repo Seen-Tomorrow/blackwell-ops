@@ -22,8 +22,8 @@ export function specDraftPathConfigured(input: ForecastInput): boolean {
     ?? normalizeDraftPath(cfg.extra_params?.mtp_draft_model)
     ?? normalizeDraftPath(cfg.extra_params?.spec_draft_model);
   if (!draft) return false;
-  if (spec.includes("mtp") && !spec.includes("dflash") && !spec.includes("dspark") && !spec.includes("eagle")) {
+  if (spec.includes("mtp") && !spec.includes("dflash") && !spec.includes("dspark") && !spec.includes("lilicorr") && !spec.includes("eagle")) {
     return spec === "draft-mtp";
   }
-  return spec.includes("dflash") || spec.includes("dspark") || spec.includes("eagle");
+  return spec.includes("dflash") || spec.includes("dspark") || spec.includes("lilicorr") || spec.includes("eagle");
 }

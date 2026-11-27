@@ -9,6 +9,7 @@ import {
   type SpecBoostMethod,
   SPEC_PROFILE_DFLASH,
   SPEC_PROFILE_MTP,
+  SPEC_PROFILE_NGRAM,
   groupForBoostMethod,
 } from "./specProfiles";
 import { dispatchAppEvent, EVENTS } from "./events";
@@ -22,6 +23,11 @@ export async function applySpecBoostProfiles(opts: {
   const active = groupForBoostMethod(method);
 
   // Absolute hide/show — no toggle race.
+  await invoke("set_group_hidden", {
+    providerId,
+    groupId: SPEC_PROFILE_NGRAM,
+    hidden: active !== SPEC_PROFILE_NGRAM,
+  });
   await invoke("set_group_hidden", {
     providerId,
     groupId: SPEC_PROFILE_MTP,

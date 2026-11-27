@@ -9,7 +9,7 @@ import type { SpecCapability } from "./specDraft";
 /** Known agent presets + `p:N` for custom parallel values. */
 export type CodingModeId = string;
 /** Speed boost row — speculative draft / batch aggressiveness. */
-export type SpeedBoostId = "off" | "mtp" | "dflash" | "dspark" | "smart";
+export type SpeedBoostId = "off" | "ngram" | "mtp" | "dflash" | "smart";
 /** Brains row — KV quant quality (VRAM trade) + `kv:VALUE` for custom. */
 export type BrainsId = string;
 /**
@@ -124,6 +124,11 @@ const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
     blurb: "Factory-safe defaults — no speculative draft (placeholder until Smart algo)",
   },
   {
+    id: "ngram",
+    label: "NGRAM",
+    blurb: "Zero-VRAM context n-gram speculation (ngram-mod) — works on any model, great for coding & edits",
+  },
+  {
     id: "mtp",
     label: "MTP",
     blurb: "Built-in speculative tokens",
@@ -131,15 +136,9 @@ const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
   },
   {
     id: "dflash",
-    label: "DFlash2",
-    blurb: "External DFlash1/2 draft — needs a draft model in your library",
+    label: "DFlash",
+    blurb: "External DFlash / DFlash2 / DSpark / LiliCorr draft — variant auto-detected from GGUF",
     needs: "dflash",
-  },
-  {
-    id: "dspark",
-    label: "DSpark",
-    blurb: "DeepSeek DSpark draft head — set draft GGUF path (Change draft)",
-    // Always offered (path-based); not gated on catalog dflash capability
   },
 ];
 
@@ -308,7 +307,7 @@ export function buildMemoryOptions(
 
 // ── Boost (spec type) display: 2-word naming, family above track ───────────
 
-type BoostMarkColor = "green" | "violet";
+type BoostMarkColor = "cyan" | "green" | "violet";
 
 export interface BoostMarkParts {
   /** Id for the slider (smart | off | mtp | dflash | raw:TYPE). */
@@ -343,7 +342,17 @@ export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
   const raw = String(specType).trim();
   const s = raw.toLowerCase();
 
-  // Canonical product accents (still 2-word: draft / MTP|DFlash)
+  // Canonical product accents (NGRAM / MTP / DFlash)
+  if (s === "ngram-mod" || s === "ngram") {
+    return {
+      id: "ngram",
+      label: "NGRAM",
+      aboveLabel: "context",
+      blurb: "Zero-VRAM context n-gram speculation (ngram-mod) — works on any model, great for coding & edits",
+      badgeColor: "cyan",
+      rank: 80,
+    };
+  }
   if (s === "draft-mtp" || s === "mtp") {
     return {
       id: "mtp",
@@ -354,24 +363,23 @@ export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
       rank: 90,
     };
   }
-  if (s === "draft-dflash" || s === "dflash") {
+  if (
+    s === "draft-dflash"
+    || s === "dflash"
+    || s === "draft-dflash2"
+    || s === "dflash2"
+    || s === "draft-dspark"
+    || s === "dspark"
+    || s === "draft-lilicorr"
+    || s === "lilicorr"
+  ) {
     return {
       id: "dflash",
-      label: "DFlash2",
+      label: "DFlash",
       aboveLabel: "draft",
-      blurb: "External DFlash1/2 draft model — needs a draft GGUF in library",
+      blurb: "External DFlash / DFlash2 / DSpark / LiliCorr draft — variant auto-detected from GGUF",
       badgeColor: "violet",
       rank: 100,
-    };
-  }
-  if (s === "draft-dspark" || s === "dspark") {
-    return {
-      id: "dspark",
-      label: "DSpark",
-      aboveLabel: "draft",
-      blurb: "DeepSeek DSpark external draft head",
-      badgeColor: "violet",
-      rank: 105,
     };
   }
 
@@ -458,8 +466,8 @@ export interface FullAutoPlan {
   softNote: string | null;
   /** DFlash selected but no matching draft in library yet. */
   needsDflashDraft: boolean;
-  /** Resolved boost for header tint: mtp | dflash | smart. */
-  boostTone: "mtp" | "dflash" | "dspark" | "smart";
+  /** Resolved boost for header tint: ngram | mtp | dflash | smart. */
+  boostTone: "ngram" | "mtp" | "dflash" | "smart";
   /** Short boost label for header (MTP / DFlash / Smart / DFlash…). */
   boostLabel: string;
   brainsLabel: string;
@@ -522,7 +530,10 @@ export function resolveFullAutoPlan(opts: {
   let softNote: string | null = null;
   let needsDflashDraft = false;
 
-  if (speed === "mtp") {
+  if (speed === "ngram") {
+    enableSpec = true;
+    specType = "ngram-mod";
+  } else if (speed === "mtp") {
     enableSpec = true;
     specType = "draft-mtp";
   } else if (speed === "dflash") {
@@ -530,11 +541,6 @@ export function resolveFullAutoPlan(opts: {
     // Missing draft only gates the Get-draft CTA / launch validity — never tears down knobs.
     enableSpec = true;
     specType = "draft-dflash";
-    needsDflashDraft = !dflashLibraryReady;
-  } else if (speed === "dspark") {
-    // Same external-draft UX as DFlash; CLI type is draft-dspark (DeepSeek V4 head).
-    enableSpec = true;
-    specType = "draft-dspark";
     needsDflashDraft = !dflashLibraryReady;
   } else if (speed === "smart" && !powerUser) {
     // Joe Smart = safe "Off" wording until a real algo exists.
@@ -567,20 +573,17 @@ export function resolveFullAutoPlan(opts: {
   // Header summary uses the same word the slider shows, not the stored value name.
   const thinkLabel = thinkLabelFor(think);
 
-  let boostTone: "mtp" | "dflash" | "dspark" | "smart" = "smart";
+  let boostTone: "ngram" | "mtp" | "dflash" | "smart" = "smart";
   let boostLabel = powerUser ? "Off" : "Smart";
-  if (speed === "mtp" && enableSpec) {
+  if (speed === "ngram" && enableSpec) {
+    boostTone = "ngram";
+    boostLabel = "NGRAM";
+  } else if (speed === "mtp" && enableSpec) {
     boostTone = "mtp";
     boostLabel = "MTP";
   } else if (speed === "dflash" && enableSpec) {
     boostTone = "dflash";
-    boostLabel = "DFlash";
-  } else if (speed === "dflash" && needsDflashDraft) {
-    boostTone = "dflash";
-    boostLabel = "DFlash…";
-  } else if (speed === "dspark" && enableSpec) {
-    boostTone = "dspark";
-    boostLabel = needsDflashDraft ? "DSpark…" : "DSpark";
+    boostLabel = needsDflashDraft ? "DFlash…" : "DFlash";
   } else if (speed === "off") {
     boostTone = "smart";
     boostLabel = "Off";

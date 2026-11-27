@@ -28,7 +28,7 @@ fn is_sidecar_filename(filename: &str) -> bool {
 
 /// Folder/file vocabulary of speculative-decoding artifacts. Not a repo list — a role
 /// vocabulary, so a `dspark/` head is never presented as a full-weight quant.
-const DRAFT_HINTS: &[&str] = &["dspark", "draft", "dflash", "mtp", "eagle"];
+const DRAFT_HINTS: &[&str] = &["dspark", "draft", "dflash", "lilicorr", "mtp", "eagle"];
 
 fn has_draft_hint(s: &str) -> bool {
     let normalized: String = s

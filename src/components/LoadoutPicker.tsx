@@ -22,7 +22,21 @@ export interface LocalFileRow {
   tag?: string;
   /** Tooltip detail (full path, match reason, etc.). */
   title?: string;
+  /** True when the row passes GGUF geometry + family checks for the active model. */
+  compatible?: boolean;
   onPick: () => void;
+}
+
+/** Semantic quant precision tier for colored badges (all theme-token driven). */
+function quantBadgeTier(quant: string): "fp" | "q8" | "q56" | "q4" | "qlow" | "" {
+  const q = quant.trim().toUpperCase();
+  if (!q || q === "—" || q === "FILE") return "";
+  if (/^(BF16|F16|F32|FP16|FP32)/.test(q)) return "fp";
+  if (/^(Q8|FP8|F8|MXFP8)/.test(q)) return "q8";
+  if (/^(Q6|Q5)/.test(q)) return "q56";
+  if (/^(Q4|IQ4|MXFP4|NVFP4)/.test(q)) return "q4";
+  if (/^(Q3|Q2|Q1|IQ3|IQ2|IQ1|TQ)/.test(q)) return "qlow";
+  return "";
 }
 
 interface LoadoutPickerProps {
@@ -34,8 +48,8 @@ interface LoadoutPickerProps {
   modelPath: string;
   /** The model's own Hub repo id, so the DRAFT lane can list its repo like the Hub does. */
   modelHubId?: string;
-  /** Which head kind the current SPEC lane accepts (mtp / dflash / dspark). */
-  laneKind?: "mtp" | "dflash" | "dspark" | "eagle3" | null;
+  /** Which head kind the current SPEC lane accepts (mtp / dflash). */
+  laneKind?: "mtp" | "dflash" | "eagle3" | null;
   /** A listed draft head the user picked: download + pin it. */
   onPickDraftFile?: (item: RepoCompanion) => void;
   onAttach: (role: CompanionRole, path: string) => void;
@@ -80,6 +94,7 @@ export default function LoadoutPicker({
 }: LoadoutPickerProps) {
   const initialLocalCount = localRows ? localRows.length : (slot?.candidates.length ?? 0);
   const [tab, setTab] = useState<PickerTab>(initialLocalCount > 0 ? "local" : "remote");
+  const [showAllLocal, setShowAllLocal] = useState(false);
 
   const [repoItems, setRepoItems] = useState<RepoCompanion[] | null>(null);
   const [remoteLoading, setRemoteLoading] = useState(false);
@@ -110,21 +125,21 @@ export default function LoadoutPicker({
   }, [onClose]);
 
   /** Head kind read from the file's own name. */
-  const headKindOf = (name: string): "mtp" | "dflash" | "dspark" | "eagle3" | "other" => {
+  const headKindOf = (name: string): "mtp" | "dflash" | "dspark" | "lilicorr" | "eagle3" | "other" => {
     if (/dspark/i.test(name)) return "dspark";
+    if (/lilicorr/i.test(name)) return "lilicorr";
     if (/dflash/i.test(name)) return "dflash";
     if (/eagle/i.test(name)) return "eagle3";
     if (/mtp/i.test(name)) return "mtp";
     return "other";
   };
 
-  /** Heads this lane can actually use. DSpark pairs through the DFlash slot. */
+  /** Heads this lane can actually use. All 4 DFlash variants pair through the DFlash slot. */
   const acceptsKind = useCallback(
     (kind: ReturnType<typeof headKindOf>): boolean => {
       if (!laneKind || kind === "other") return true;
       if (laneKind === "mtp") return kind === "mtp";
-      if (laneKind === "dspark") return kind === "dspark" || kind === "dflash";
-      return kind === "dflash" || kind === "dspark";
+      return kind === "dflash" || kind === "dspark" || kind === "lilicorr";
     },
     [laneKind],
   );
@@ -360,6 +375,14 @@ export default function LoadoutPicker({
   const anyRemoteBusy = remoteLoading || hunting || hfRepoBusy;
   const laneLabel = laneKind ? laneKind.toUpperCase() : "draft";
 
+  // Geometry/family filtering: only active when caller provides `compatible` flags (draft picker).
+  const hasCompatFlags = localList.some((r) => typeof r.compatible === "boolean");
+  const compatibleLocal = hasCompatFlags
+    ? localList.filter((r) => r.compatible !== false)
+    : localList;
+  const incompatCount = localList.length - compatibleLocal.length;
+  const visibleLocal = showAllLocal ? localList : compatibleLocal;
+
   return (
     <div className="gp-scrim" onClick={onClose}>
       <div
@@ -379,7 +402,7 @@ export default function LoadoutPicker({
               className={`gp-tab font-mono${tab === "local" ? " gp-tab--active" : ""}`}
               onClick={() => setTab("local")}
             >
-              LOCAL {localList.length}
+              LOCAL {showAllLocal ? localList.length : compatibleLocal.length}
             </button>
             <button
               type="button"
@@ -390,6 +413,20 @@ export default function LoadoutPicker({
             >
               REMOTE{remoteList.length > 0 ? ` ${remoteList.length}` : ""}
             </button>
+            {tab === "local" && incompatCount > 0 ? (
+              <button
+                type="button"
+                className={`gp-tab font-mono${showAllLocal ? " gp-tab--active" : ""}`}
+                onClick={() => setShowAllLocal((prev) => !prev)}
+                title={
+                  showAllLocal
+                    ? "Show only drafts compatible with this model's GGUF geometry"
+                    : `Show all ${localList.length} local drafts (including ${incompatCount} from other models)`
+                }
+              >
+                ALL {localList.length}
+              </button>
+            ) : null}
           </div>
 
           <div className="gp-panel__actions">
@@ -417,22 +454,40 @@ export default function LoadoutPicker({
         {tab === "local" ? (
           <div className="gp-body">
             <div className="gp-rows">
-              {localList.map((row) => (
-                <button
-                  key={row.key}
-                  type="button"
-                  className={`gp-row${row.active ? " gp-row--on" : ""}`}
-                  onClick={row.onPick}
-                  disabled={row.disabled}
-                  title={row.title ?? row.name}
-                >
-                  <span className="gp-row__dot" aria-hidden />
-                  <span className="gp-row__quant font-mono">{row.quant}</span>
-                  <span className="gp-row__size font-mono">{row.size}</span>
-                  <span className="gp-row__name font-mono">{row.name}</span>
-                  {row.tag ? <span className="gp-row__tag font-mono">{row.tag}</span> : null}
-                </button>
-              ))}
+              {visibleLocal.map((row) => {
+                const tier = quantBadgeTier(row.quant);
+                const isIncompat = row.compatible === false;
+                return (
+                  <button
+                    key={row.key}
+                    type="button"
+                    className={`gp-row${row.active ? " gp-row--on" : ""}${isIncompat ? " gp-row--incompat" : ""}`}
+                    onClick={row.onPick}
+                    disabled={row.disabled}
+                    title={row.title ?? row.name}
+                  >
+                    <span className="gp-row__dot" aria-hidden />
+                    <span className={`gp-row__quant${tier ? ` gp-row__quant--${tier}` : ""} font-mono`}>
+                      {row.quant}
+                    </span>
+                    <span className="gp-row__size font-mono">{row.size}</span>
+                    <span className="gp-row__name font-mono">{row.name}</span>
+                    {row.tag ? <span className="gp-row__tag font-mono">{row.tag}</span> : null}
+                  </button>
+                );
+              })}
+              {visibleLocal.length === 0 && localList.length > 0 ? (
+                <div className="gp-empty font-mono">
+                  No compatible local drafts for this model —{" "}
+                  <button
+                    type="button"
+                    className="gp-panel__btn gp-panel__btn--accent font-mono"
+                    onClick={() => setShowAllLocal(true)}
+                  >
+                    SHOW ALL {localList.length}
+                  </button>
+                </div>
+              ) : null}
               {localList.length === 0 ? (
                 <span className="gp-empty font-mono">
                   Nothing on disk — switch to REMOTE to browse Hugging Face.
@@ -452,6 +507,7 @@ export default function LoadoutPicker({
               ) : remoteList.length > 0 ? (
                 remoteList.map((row) => {
                   const downloading = busyKey === row.key;
+                  const tier = quantBadgeTier(row.quant);
                   return (
                     <button
                       key={row.key}
@@ -462,7 +518,9 @@ export default function LoadoutPicker({
                       title={row.title ?? row.name}
                     >
                       <span className="gp-row__dot" aria-hidden />
-                      <span className="gp-row__quant font-mono">{row.quant}</span>
+                      <span className={`gp-row__quant${tier ? ` gp-row__quant--${tier}` : ""} font-mono`}>
+                        {row.quant}
+                      </span>
                       <span className="gp-row__size font-mono">{row.size}</span>
                       <span className="gp-row__name font-mono">{row.name}</span>
                       <span className="gp-row__tag font-mono">

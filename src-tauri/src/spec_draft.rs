@@ -75,8 +75,8 @@ pub fn classify_draft_role(
     if let Some(shape) = shape {
         let arch = shape.architecture.trim().to_lowercase();
 
-        if shape.has_markov_w1 {
-            // DSpark is a CLI type (draft-dspark), not a role — it is a DFlash draft.
+        if shape.dflash_variant.is_some() {
+            // DFlash / DFlash2 / DSpark / LiliCorr are CLI types, not separate roles.
             return (DraftRole::ExternalDflash, facts);
         }
         // `dflash-draft` is a real-world arch string upstream's registry rejects.
@@ -169,12 +169,13 @@ fn signal_contains_dflash(signal: &str) -> bool {
     if compact_alnum_lower(signal).contains("dflash") {
         return true;
     }
-    // DSpark is a DFlash draft with a different CLI type (`draft-dspark`) and a
-    // name that shares no substring with "dflash". Without this the file falls
-    // through both tiers and is treated as a main: it then lands in the library
-    // fit scan and crashes `llama-fit-params` on every plan point
-    // ("dflash requires ctx_other to be set").
-    if lower.contains("dspark") || compact_alnum_lower(signal).contains("dspark") {
+    // DSpark and LiliCorr are DFlash-family drafts with distinct CLI types
+    // (`draft-dspark`, `draft-lilicorr`) whose names share no substring with "dflash".
+    if lower.contains("dspark")
+        || compact_alnum_lower(signal).contains("dspark")
+        || lower.contains("lilicorr")
+        || compact_alnum_lower(signal).contains("lilicorr")
+    {
         return true;
     }
     // D-Flash, D_Flash, D.Flash, "D Flash"
@@ -299,6 +300,30 @@ pub fn is_external_draft_role_hint(hint: &str) -> bool {
         hint.trim().to_lowercase().as_str(),
         "external_dflash" | "external_eagle3" | "external_mtp"
     )
+}
+
+/// Exact llama.cpp `--spec-type` string for a DFlash-family draft GGUF (PR #32016).
+/// Header evidence (`shape.dflash_variant`) wins; filename fallback covers unscanned paths.
+pub fn dflash_cli_type_for_draft(shape: Option<&GgufShape>, draft_path: &str) -> &'static str {
+    if let Some(v) = shape.and_then(|s| s.dflash_variant.as_deref()) {
+        return match v {
+            "dspark" => "draft-dspark",
+            "dflash2" => "draft-dflash2",
+            "lilicorr" => "draft-lilicorr",
+            _ => "draft-dflash",
+        };
+    }
+    let lower = draft_path.to_lowercase();
+    let compact = compact_alnum_lower(draft_path);
+    if lower.contains("dspark") || compact.contains("dspark") {
+        "draft-dspark"
+    } else if lower.contains("lilicorr") || compact.contains("lilicorr") {
+        "draft-lilicorr"
+    } else if lower.contains("dflash2") || compact.contains("dflash2") {
+        "draft-dflash2"
+    } else {
+        "draft-dflash"
+    }
 }
 
 /// Does this spec type launch with an external draft GGUF?
@@ -517,7 +542,7 @@ mod tests {
     fn fixture_table_classifies_every_case() {
         let cases: Vec<Fixture> =
             serde_json::from_str(FIXTURES_JSON).expect("fixtures.json parses");
-        assert_eq!(cases.len(), 21, "fixture table case count drifted");
+        assert_eq!(cases.len(), 23, "fixture table case count drifted");
 
         for case in &cases {
             let (role, facts) = classify_draft_role(case.shape.as_ref(), &case.path, "", None, None);
@@ -574,7 +599,7 @@ mod tests {
             architecture: "qwen36".into(),
             block_count: 64,
             nextn_layers: 0,
-            has_markov_w1: false,
+            dflash_variant: None,
             has_trunk: true,
             has_vocab: true,
             shard_count: 1,
@@ -636,7 +661,7 @@ mod tests {
             architecture: "qwen4exp-mtp".into(),
             block_count: 1,
             nextn_layers: 0,
-            has_markov_w1: false,
+            dflash_variant: None,
             has_trunk: false,
             has_vocab: false,
             shard_count: 1,
@@ -680,7 +705,7 @@ mod tests {
             architecture: "qwen35".into(),
             block_count: 65,
             nextn_layers: 65,
-            has_markov_w1: false,
+            dflash_variant: None,
             has_trunk: true,
             has_vocab: true,
             shard_count: 1,

@@ -561,7 +561,7 @@ mod tests {
             architecture: "llama".into(),
             block_count: 1,
             nextn_layers: 0,
-            has_markov_w1: false,
+            dflash_variant: None,
             has_trunk: true,
             has_vocab: true,
             shard_count: 1,

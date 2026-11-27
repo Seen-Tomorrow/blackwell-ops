@@ -5,6 +5,7 @@ import { normalizeUiGroup, paramUiGroup } from "./storage";
 export const SYSTEM_UI_GROUP = "SYSTEM";
 
 /** Spec profiles — template-owned groups (seeded as protected; Boost selects profile). */
+export const SPEC_PROFILE_NGRAM_GROUP = "SPECULATIVE-NGRAM";
 export const SPEC_PROFILE_MTP_GROUP = "SPECULATIVE-MTP";
 export const SPEC_PROFILE_DFLASH_GROUP = "SPECULATIVE-DFLASH";
 
@@ -14,6 +15,7 @@ export const SPEC_PROFILE_DFLASH_GROUP = "SPECULATIVE-DFLASH";
  */
 const DEFAULT_PROTECTED_GROUPS = [
   SYSTEM_UI_GROUP,
+  SPEC_PROFILE_NGRAM_GROUP,
   SPEC_PROFILE_MTP_GROUP,
   SPEC_PROFILE_DFLASH_GROUP,
 ] as const;
@@ -165,6 +167,7 @@ export function isPlacementChromeParam(def: {
 
 /** Canonical group for profile keys (repairs bad SYSTEM migration). */
 function profileGroupForParamKey(key: string): string | null {
+  if (key.startsWith("ngram_")) return SPEC_PROFILE_NGRAM_GROUP;
   if (key.startsWith("mtp_")) return SPEC_PROFILE_MTP_GROUP;
   if (key.startsWith("dflash_")) return SPEC_PROFILE_DFLASH_GROUP;
   return null;

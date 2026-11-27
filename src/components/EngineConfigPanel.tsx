@@ -144,7 +144,6 @@ import {
   type DraftRole,
   type ScoredDraft,
   type SpecCapability,
-  HIGH_DRAFT_PAIR_SCORE,
   defaultSpecTypeForMain,
   draftRoleForSpecType,
   findScoredDraftCandidates,
@@ -155,7 +154,6 @@ import {
   isSpecTypeValidForMain,
   isAttachmentModel,
   loadModelSpecOverride,
-  pickBestDraftPair,
   resolveExternalDraftPath,
   resolveDraftPathLabel,
   isSpecDecodingGroupActive,
@@ -171,7 +169,7 @@ import {
   cliSpecTypeForMethod,
   specShareFields,
 } from "../lib/specProfiles";
-import { adapterForMethod, cliTypeForMethod, normalizeDraftPath } from "../lib/spec/adapters";
+import { cliTypeForMethod, normalizeDraftPath } from "../lib/spec/adapters";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -915,6 +913,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     cockpitOpts,
     specCapabilities,
     specBoostMethod,
+    activeDflashVariant,
     cockpitValueView,
     cockpitKvValuesBound,
     cockpitParallelValues,
@@ -1013,12 +1012,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const scenarioConfig = useMemo(() => {
     const autoSpec = fullAutoFixed ? (autoDecision?.plan.specType ?? "none") : null;
     const boostSpec = autoSpec ?? (
-      speedBoost === "mtp"
-        ? "draft-mtp"
-        : speedBoost === "dflash"
-          ? "draft-dflash"
-          : speedBoost === "dspark"
-            ? "draft-dspark"
+      speedBoost === "ngram"
+        ? "ngram-mod"
+        : speedBoost === "mtp"
+          ? "draft-mtp"
+          : speedBoost === "dflash"
+            ? (cliTypeForMethod("dflash", activeDflashVariant) ?? "draft-dflash")
             : ""
     );
     return {
@@ -1046,7 +1045,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             ? { cpu_moe: "off" }
             : {}),
     };
-  }, [autoDecision?.plan.specType, autoOverdriveActive, config, effectiveBackendType, fullAutoFixed, fullAutoMode, gpus.length, modelIsMoe, speedBoost]);
+  }, [activeDflashVariant, autoDecision?.plan.specType, autoOverdriveActive, config, effectiveBackendType, fullAutoFixed, fullAutoMode, gpus.length, modelIsMoe, speedBoost]);
 
   // One plan for the glass, the bars and the launch: computing it here (instead of inside
   // VramBadge) lets the manifest take its per-card split from the same numbers the plan
@@ -1525,9 +1524,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const modelIsNonLaunchable =
     modelIsDraftOnly || modelIsAttachment || modelIncomplete != null;
 
-  const activeSpecType = cliSpecTypeForMethod(specBoostMethod) ?? undefined;
-  const specNeedsExternalDraft =
-    specBoostMethod === "dflash" || specBoostMethod === "dspark";
+  const activeSpecType = cliSpecTypeForMethod(specBoostMethod, activeDflashVariant) ?? undefined;
+  const specNeedsExternalDraft = specBoostMethod === "dflash";
   const currentDraftPath =
     config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : "";
 
@@ -1566,26 +1564,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Refresh catalog overrides on provider switch
   }, [effectiveBackendType]);
 
-  // HIGH auto-pair into the DFlash lane's draft key when Boost is DFlash or DSpark
-  // and the path is auto/empty. MTP is excluded: its head is chosen by the picker
-  // and restored from the saved pairing, never guessed into config behind the user.
-  useEffect(() => {
-    if (specBoostMethod !== "dflash" && specBoostMethod !== "dspark") {
-      return;
-    }
-    const adapter = adapterForMethod(specBoostMethod);
-    const draftKey = adapter?.knobs.draftModel;
-    if (!adapter || !draftKey || !model || !models?.length) {
-      return;
-    }
-    const draftRole = adapter.draftRoles.find((r) => r !== "none");
-    if (!draftRole) return;
-    const cur = normalizeDraftPath(config[draftKey]);
-    if (cur && cur.trim().toLowerCase() !== "auto" && cur.trim().toLowerCase() !== "on") return;
-    const best = pickBestDraftPair(model, models, draftRole, HIGH_DRAFT_PAIR_SCORE);
-    if (!best) return;
-    updateParam(draftKey, best.path);
-  }, [specBoostMethod, model, models, config, updateParam]);
+  // Draft heads (MTP and DFlash/DFlash2/DSpark/LiliCorr) are picked explicitly
+  // by the user from the geometry-filtered picker — never auto-paired silently.
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
   const customFlagsLaunchActive = testFlagsEnabled;
@@ -1812,8 +1792,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // spec_draft_n_max/min) only exist after launch flattening. Derive the share row
   // from the live profile — the legacy bag keys are stripped on load.
   const shareSpecFields = useMemo(
-    () => specShareFields(specBoostMethod, config, allParamsResolved),
-    [specBoostMethod, config, allParamsResolved],
+    () => specShareFields(specBoostMethod, config, allParamsResolved, activeDflashVariant),
+    [specBoostMethod, config, allParamsResolved, activeDflashVariant],
   );
 
   const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
@@ -2298,6 +2278,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       configView,
       essentialFactoryKeys,
       specMethod: specBoostMethod,
+      dflashVariant: activeDflashVariant,
       allParamsResolved,
       gpus,
       runningSlotsForPlan,
@@ -3479,6 +3460,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dflashLibraryReady={dflashLibraryReady}
           dflashGettable={dflashGettable}
           dflashDraftLabel={dflashDraftLabel}
+          activeDflashVariant={activeDflashVariant}
           dflashDraftPath={currentDraftPath}
           mtpDraftLabel={mtpDraftLabel}
           mtpDraftPath={mtpDraftPath}

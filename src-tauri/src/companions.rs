@@ -1377,7 +1377,7 @@ pub async fn find_head_for_model(
             let lower = file_name.to_lowercase();
             let matched = match kind {
                 "dspark" => lower.contains("dspark"),
-                "dflash" => lower.contains("dflash") || lower.contains("dspark"),
+                "dflash" => lower.contains("dflash") || lower.contains("dspark") || lower.contains("lilicorr"),
                 _ => lower.contains("mtp"),
             };
             if !matched || file.shard_count > 1 {

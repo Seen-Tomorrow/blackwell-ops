@@ -230,8 +230,14 @@ export interface GgufShape {
   /** Private format: `general.architecture` disagrees with the `<arch>.block_count`
    *  prefix (the private `qwen4exp-mtp` material). No engine load, no draft role. */
   archMismatch?: boolean;
-  /** DSpark sentinel — `markov_w1.weight` present. */
-  hasMarkovW1?: boolean;
+  /** DFlash family head variant (`dflash | dflash2 | dspark | lilicorr`), mirroring llama.cpp PR #32016. */
+  dflashVariant?: "dflash" | "dflash2" | "dspark" | "lilicorr";
+  /** `<arch>.embedding_length` — hard geometry check for target/draft compatibility. */
+  embeddingLength?: number;
+  /** Max target layer index declared in `<arch>.target_layers` on a DFlash-family draft. */
+  dflashMaxTargetLayer?: number;
+  /** `<arch>.hyper_connection.count` when > 0 (DeepSeek-V4/V4.1 targets and their DSpark drafts). */
+  hyperConnectionCount?: number;
   /** Full layer stack present. An external MTP draft is a truncated copy, so blockCount/trunk is the discriminator, not architecture. */
   hasTrunk?: boolean;
   /** Embedding/output tensor present. */

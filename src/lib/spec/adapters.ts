@@ -12,27 +12,38 @@
  *     never been able to reach it (§1.3). Registering it is the fix; promoting it to
  *     a Boost method is a product decision, not this refactor.
  *
- * DSpark is deliberately NOT an adapter: it shares SPECULATIVE-DFLASH's group and
- * knobs and differs only in the `--spec-type` string, so it is a `variant` on the
- * DFlash adapter. A fifth near-copy file would make "adding a method = one file" false.
+ * DFlash2, DSpark and LiliCorr are NOT separate adapters or Boost stops: they share
+ * SPECULATIVE-DFLASH's group and knobs and differ only in the `--spec-type` string
+ * (`draft-dflash`, `draft-dflash2`, `draft-dspark`, `draft-lilicorr`), which is
+ * auto-detected from the selected draft GGUF header (`ggufShape.dflashVariant`).
  */
 
-import { SPEC_PROFILE_DFLASH_GROUP, SPEC_PROFILE_MTP_GROUP } from "../systemParams";
+import {
+  SPEC_PROFILE_DFLASH_GROUP,
+  SPEC_PROFILE_MTP_GROUP,
+  SPEC_PROFILE_NGRAM_GROUP,
+} from "../systemParams";
 import type { SpecProfileGroup } from "../specProfiles";
 import type { SpecBoostMethod } from "../specProfiles";
 import type { DraftRole, SpecCapability } from "../specDraft";
 
-export type { SpecBoostMethod,  };
+export type { SpecBoostMethod };
 
-export type SpecAdapterId = "mtp" | "dflash" | "eagle3";
+export type SpecAdapterId = "ngram" | "mtp" | "dflash" | "eagle3";
+
+/** Exact DFlash-family draft head variant (llama.cpp PR #32016). */
+export type DflashVariant = "dflash" | "dflash2" | "dspark" | "lilicorr";
 
 interface SpecKnobs {
+  /** ngram-mod lookup prefix length; absent for draft-head methods. */
+  nMatch?: string;
   nMax: string;
   nMin: string;
-  pMin: string;
+  /** Minimum probability threshold; absent for ngram-mod. */
+  pMin?: string;
   /** DFlash2 draft sampling mode; absent for methods that do not use it. */
   sampling?: string;
-  /** Absent ⇒ the method is baked-in only and never takes an external draft path. */
+  /** Absent ⇒ the method is baked-in/zero-draft and never takes an external draft path. */
   draftModel?: string;
 }
 
@@ -42,11 +53,11 @@ export interface SpecAdapter {
   cliType: string;
   /** Badge text. */
   label: string;
-  /** Template group that owns this method's knobs. */
-  group: SpecProfileGroup;
-  /** Capability this method satisfies. */
-  capability: SpecCapability;
-  knobs: SpecKnobs;
+  /** Template group that owns this method's knobs, or null for zero-knob methods like ngram-mod. */
+  group: SpecProfileGroup | null;
+  /** Capability this method satisfies, or null when universal (works on every model). */
+  capability: SpecCapability | null;
+  knobs: SpecKnobs | null;
   /** Catalog draft roles this method can consume. */
   draftRoles: readonly DraftRole[];
   /**
@@ -70,6 +81,17 @@ export interface SpecAdapter {
   };
 }
 
+const NGRAM: SpecAdapter = {
+  id: "ngram",
+  cliType: "ngram-mod",
+  label: "NGRAM",
+  group: SPEC_PROFILE_NGRAM_GROUP,
+  capability: null,
+  knobs: { nMatch: "ngram_n_match", nMin: "ngram_n_min", nMax: "ngram_n_max" },
+  draftRoles: [],
+  memory: { learnedIncludesDraft: () => true },
+};
+
 const MTP: SpecAdapter = {
   id: "mtp",
   cliType: "draft-mtp",
@@ -84,7 +106,7 @@ const MTP: SpecAdapter = {
 const DFLASH: SpecAdapter = {
   id: "dflash",
   cliType: "draft-dflash",
-  label: "DFLASH2",
+  label: "DFLASH",
   group: SPEC_PROFILE_DFLASH_GROUP,
   capability: "dflash",
   knobs: {
@@ -97,7 +119,11 @@ const DFLASH: SpecAdapter = {
   // external_mtp stays listed: an MTP head is a valid external draft for the DFlash
   // lane too (draftRolesMatch), even though the MTP adapter now has its own lane.
   draftRoles: ["external_dflash", "external_mtp"],
-  variants: { dspark: "draft-dspark" },
+  variants: {
+    dflash2: "draft-dflash2",
+    dspark: "draft-dspark",
+    lilicorr: "draft-lilicorr",
+  },
   memory: { learnedIncludesDraft: (p) => p },
 };
 
@@ -119,28 +145,38 @@ const EAGLE3: SpecAdapter = {
 
 /** Registry keyed by adapter id. */
 export const SPEC_ADAPTERS: Readonly<Record<SpecAdapterId, SpecAdapter>> = {
+  ngram: NGRAM,
   mtp: MTP,
   dflash: DFLASH,
   eagle3: EAGLE3,
 };
 
-const ALL: readonly SpecAdapter[] = [MTP, DFLASH, EAGLE3];
+const ALL: readonly SpecAdapter[] = [NGRAM, MTP, DFLASH, EAGLE3];
 
 /**
- * Resolve a Boost selection to an adapter. `dspark` resolves to DFlash — its CLI
- * string comes from `variants`. `off` resolves to nothing.
+ * Resolve a Boost selection to an adapter. `off` resolves to nothing.
  */
 export function adapterForMethod(
   method: SpecBoostMethod | SpecAdapterId | "off",
 ): SpecAdapter | null {
   if (method === "off") return null;
-  if (method === "dspark") return DFLASH;
   return SPEC_ADAPTERS[method as SpecAdapterId] ?? null;
 }
 
-/** The variant key a selection implies, if it is one. `dspark` → `"dspark"`. */
-function variantKeyFor(method: SpecBoostMethod | SpecAdapterId): string | undefined {
-  return method === "dspark" ? "dspark" : undefined;
+/**
+ * The `--spec-type` a selection emits.
+ *
+ * For `dflash`, pass the draft's detected `DflashVariant` (`dflash` / `dflash2` /
+ * `dspark` / `lilicorr`) so launch and VRAM forecast emit the exact upstream CLI type.
+ */
+export function cliTypeForMethod(
+  method: SpecBoostMethod | SpecAdapterId | "off",
+  variant?: DflashVariant | string,
+): string | null {
+  const adapter = adapterForMethod(method);
+  if (!adapter) return null;
+  if (variant && adapter.variants?.[variant]) return adapter.variants[variant];
+  return adapter.cliType;
 }
 
 /** Reverse lookup from a `--spec-type` string, variants included. */
@@ -175,31 +211,11 @@ export function resolveSpecAdapter(
   return adapterForCliType(lower);
 }
 
-/**
- * The `--spec-type` a selection emits.
- *
- * A variant's own id selects its own CLI string: `cliTypeForMethod("dspark")` is
- * `draft-dspark`, not the DFlash default. Callers pass only a method everywhere
- * (`EngineConfigPanel`, `specShareFields`), and a wrong
- * string here would launch the engine with the wrong `--spec-type` and key the
- * learned-VRAM cache under the wrong method.
- */
-export function cliTypeForMethod(
-  method: SpecBoostMethod | SpecAdapterId | "off",
-  variant?: string,
-): string | null {
-  const adapter = adapterForMethod(method);
-  if (!adapter) return null;
-  const key = variant ?? variantKeyFor(method as SpecBoostMethod | SpecAdapterId);
-  if (key && adapter.variants?.[key]) return adapter.variants[key];
-  return adapter.cliType;
-}
-
 /** Adapters whose capability a main model has, in Boost-chip order. */
 function adaptersForCapabilities(
   capabilities: readonly SpecCapability[],
 ): SpecAdapter[] {
-  return ALL.filter((a) => capabilities.includes(a.capability));
+  return ALL.filter((a) => a.capability === null || capabilities.includes(a.capability));
 }
 
 /**

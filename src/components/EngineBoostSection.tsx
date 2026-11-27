@@ -6,7 +6,8 @@ import type {
   ThinkId,
   ThinkOption,
 } from "../lib/multiAgentBooster";
-import type { SpecCapability } from "../lib/specDraft";
+import type { DraftPickListItem, SpecCapability } from "../lib/specDraft";
+import type { DflashVariant } from "../lib/spec/adapters";
 import type { FullAutoFitState, FullAutoGoal, FullAutoWorkload } from "../lib/fullAutoGoals";
 import MultiAgentBooster, {
   type CockpitSpecDetailParam,
@@ -36,6 +37,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     dflashLibraryReady,
     dflashGettable,
     dflashDraftLabel,
+    activeDflashVariant,
     mtpDraftLabel,
     mtpBakedIn,
     specFileRows = [],
@@ -108,6 +110,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         dflashLibraryReady={dflashLibraryReady}
         dflashGettable={dflashGettable}
         dflashDraftLabel={dflashDraftLabel}
+        activeDflashVariant={activeDflashVariant}
         mtpDraftLabel={mtpDraftLabel}
         mtpBakedIn={mtpBakedIn}
         specFileRows={specFileRows}
@@ -185,10 +188,11 @@ export interface EngineBoostSectionProps {
   dflashLibraryReady: boolean;
   dflashGettable: boolean;
   dflashDraftLabel: string | null;
+  activeDflashVariant?: DflashVariant;
   mtpDraftLabel: string | null;
   mtpBakedIn: boolean;
   /** Local draft heads for the active SPEC lane, available without opening the modal. */
-  specFileRows?: { id: string; title: string; meta?: string; score?: number }[];
+  specFileRows?: DraftPickListItem[];
   /** Applies a picked draft head path. */
   onPickSpecFile?: (path: string) => void;
   /** Resolver state for the HF-id field. */

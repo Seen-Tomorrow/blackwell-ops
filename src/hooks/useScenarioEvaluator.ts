@@ -289,10 +289,10 @@ function externalDraftWanted(config: Record<string, unknown>): boolean {
   // A draft PATH left over from another model/boost is not an active spec. Only the spec
   // identity decides: spec off means no draft is emitted, even if a path is still stored.
   if (st === "none" || st === "off") return false;
-  if (st.includes("mtp") && !st.includes("dflash") && !st.includes("dspark") && !st.includes("eagle")) {
+  if (st.includes("mtp") && !st.includes("dflash") && !st.includes("dspark") && !st.includes("lilicorr") && !st.includes("eagle")) {
     return false;
   }
-  return st.includes("dflash") || st.includes("dspark") || st.includes("eagle");
+  return st.includes("dflash") || st.includes("dspark") || st.includes("lilicorr") || st.includes("eagle");
 }
 
 /** Active lane's draft path from `config`, keyed by spec type so MTP and DFlash never cross. */
@@ -340,9 +340,10 @@ function specDraftForLearned(config: Record<string, unknown>): string {
   const usesExternal = spec.includes("mtp")
     && !spec.includes("dflash")
     && !spec.includes("dspark")
+    && !spec.includes("lilicorr")
     && !spec.includes("eagle")
     ? spec === "draft-mtp" && raw !== ""
-    : spec.includes("dflash") || spec.includes("dspark") || spec.includes("eagle");
+    : spec.includes("dflash") || spec.includes("dspark") || spec.includes("lilicorr") || spec.includes("eagle");
   return usesExternal ? raw : "";
 }
 

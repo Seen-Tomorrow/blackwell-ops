@@ -27,9 +27,20 @@ pub struct GgufShape {
     /// max N over `blk.N.nextn.*` tensor names; 0 = no nextn tensors seen.
     #[serde(default, rename = "nextnLayers")]
     pub nextn_layers: u32,
-    /// DSpark sentinel — a tensor name contains "markov_w1".
-    #[serde(default, rename = "hasMarkovW1")]
-    pub has_markov_w1: bool,
+    /// DFlash family head variant (`"dflash" | "dflash2" | "dspark" | "lilicorr"`),
+    /// mirroring `llama_model_dflash::load_arch_hparams` (llama.cpp PR #32016).
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "dflashVariant")]
+    pub dflash_variant: Option<String>,
+    /// `<arch>.embedding_length` KV — hard physics check for pairing a draft with a target.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "embeddingLength")]
+    pub embedding_length: Option<u32>,
+    /// Max target layer index declared in `<arch>.target_layers` on a DFlash-family draft.
+    /// Must be strictly less than the target model's layer count.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "dflashMaxTargetLayer")]
+    pub dflash_max_target_layer: Option<u32>,
+    /// `<arch>.hyper_connection.count` when > 0 (DeepSeek-V4/V4.1 targets and their DSpark drafts).
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "hyperConnectionCount")]
+    pub hyper_connection_count: Option<u32>,
     /// Full layer stack present (an external MTP draft is a truncated copy).
     #[serde(default, rename = "hasTrunk")]
     pub has_trunk: bool,
@@ -157,6 +168,7 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
     let mut nextn_layers = 0u32;
     let mut nextn_seen = false;
     let mut has_markov_w1 = false;
+    let mut has_selector_hidden = false;
     let mut has_trunk = false;
     let mut has_vocab = false;
 
@@ -173,8 +185,12 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
             nextn_seen = true;
         }
 
-        if name.to_ascii_lowercase().contains("markov_w1") {
+        let name_lower = name.to_ascii_lowercase();
+        if name_lower.contains("markov_w1") {
             has_markov_w1 = true;
+        }
+        if name_lower == "selector_hidden.weight" {
+            has_selector_hidden = true;
         }
 
         // A tensor at layer N >= 1 means the stack is not truncated to layer 0,
@@ -229,11 +245,58 @@ fn shape_from_facts(facts: &gguf_patch::HeaderFacts, shard_count: u32) -> GgufSh
         .find(|t| t.name.contains(LOOKUP_TABLE_TENSOR))
         .map(|t| t.dims.clone());
 
+    let has_lilicorr = facts
+        .kv_all
+        .keys()
+        .any(|k| k == "lilicorr.hidden_size" || k.ends_with(".lilicorr.hidden_size"));
+    let arch_lower = architecture.trim().to_ascii_lowercase();
+    let dflash_variant = if has_markov_w1 {
+        Some("dspark".to_string())
+    } else if has_selector_hidden {
+        Some("dflash2".to_string())
+    } else if has_lilicorr {
+        Some("lilicorr".to_string())
+    } else if arch_lower == "dflash" || arch_lower == "dflash-draft" {
+        Some("dflash".to_string())
+    } else {
+        None
+    };
+
+    let embedding_length = facts
+        .kv_ints
+        .iter()
+        .find(|(k, _)| k.ends_with(".embedding_length"))
+        .and_then(|(_, &v)| u32::try_from(v).ok())
+        .filter(|&v| v > 0);
+    let dflash_max_target_layer = facts
+        .kv_all
+        .iter()
+        .find(|(k, _)| k.ends_with(".target_layers"))
+        .and_then(|(_, v)| match v {
+            gguf_patch::KvValue::IntArray(arr) => arr
+                .iter()
+                .filter_map(|&n| u32::try_from(n).ok())
+                .max(),
+            _ => None,
+        });
+    let hyper_connection_count = facts
+        .kv_all
+        .iter()
+        .find(|(k, _)| k.ends_with(".hyper_connection.count"))
+        .and_then(|(_, v)| match v {
+            gguf_patch::KvValue::Int(n) => u32::try_from(*n).ok(),
+            _ => None,
+        })
+        .filter(|&v| v > 0);
+
     GgufShape {
         architecture,
         block_count,
         nextn_layers,
-        has_markov_w1,
+        dflash_variant,
+        embedding_length,
+        dflash_max_target_layer,
+        hyper_connection_count,
         has_trunk,
         has_vocab,
         shard_count,
@@ -317,7 +380,17 @@ fn merge_into(base: &mut GgufShape, split: GgufShape) {
         base.block_count = split.block_count;
     }
     base.nextn_layers = base.nextn_layers.max(split.nextn_layers);
-    base.has_markov_w1 |= split.has_markov_w1;
+    base.dflash_variant = match (base.dflash_variant.take(), split.dflash_variant) {
+        (Some(a), Some(b)) if a == "dflash" && b != "dflash" => Some(b),
+        (Some(a), _) => Some(a),
+        (None, b) => b,
+    };
+    base.embedding_length = base.embedding_length.or(split.embedding_length);
+    base.dflash_max_target_layer = match (base.dflash_max_target_layer, split.dflash_max_target_layer) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    };
+    base.hyper_connection_count = base.hyper_connection_count.or(split.hyper_connection_count);
     base.has_trunk |= split.has_trunk;
     base.has_vocab |= split.has_vocab;
     base.arch_mismatch |= split.arch_mismatch;
@@ -502,7 +575,7 @@ pub(crate) mod tests {
         assert!(shape.nextn_layers > 0, "baked MTP must report nextn");
         assert!(shape.has_trunk);
         assert!(shape.has_vocab);
-        assert!(!shape.has_markov_w1);
+        assert_eq!(shape.dflash_variant, None);
         assert_eq!(shape.shard_count, 1);
         assert_eq!(shape.tensor_count, 7);
 
@@ -548,9 +621,74 @@ pub(crate) mod tests {
         let path = write_gguf(&dir, "draft-dspark.gguf", &bytes);
 
         let shape = read_shape(&path).expect("shape");
-        assert!(shape.has_markov_w1, "markov_w1.weight is the DSpark sentinel");
+        assert_eq!(
+            shape.dflash_variant.as_deref(),
+            Some("dspark"),
+            "markov_w1.weight is the DSpark sentinel"
+        );
         assert_eq!(shape.architecture, "dflash");
         assert_eq!(shape.block_count, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dflash2_draft_detects_selector_hidden_weight() {
+        let dir = scratch_dir("dflash2");
+        let bytes = build_gguf(
+            "dflash",
+            1,
+            &[
+                "token_embd.weight",
+                "selector_hidden.weight",
+                "dflash.0.attn_q.weight",
+            ],
+        );
+        let path = write_gguf(&dir, "draft-dflash2.gguf", &bytes);
+
+        let shape = read_shape(&path).expect("shape");
+        assert_eq!(shape.dflash_variant.as_deref(), Some("dflash2"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plain_dflash_draft_defaults_to_dflash_variant() {
+        let dir = scratch_dir("dflash1");
+        let bytes = build_gguf("dflash", 1, &["token_embd.weight", "dflash.0.attn_q.weight"]);
+        let path = write_gguf(&dir, "draft-dflash.gguf", &bytes);
+
+        let shape = read_shape(&path).expect("shape");
+        assert_eq!(shape.dflash_variant.as_deref(), Some("dflash"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dflash_geometry_reads_embedding_target_layers_and_hyper_connections() {
+        let dir = scratch_dir("dflash-geom");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GGUF");
+        push_u32(&mut buf, 3);
+        push_u64(&mut buf, 1); // 1 tensor
+        push_u64(&mut buf, 5); // 5 KVs
+        kv_str(&mut buf, "general.architecture", "dflash");
+        kv_u32(&mut buf, "dflash.block_count", 1);
+        kv_u32(&mut buf, "dflash.embedding_length", 4096);
+        kv_int_array(&mut buf, "dflash.target_layers", &[3, 15, 27, 47]);
+        kv_u32(&mut buf, "dflash.hyper_connection.count", 4);
+        push_str(&mut buf, "markov_w1.weight");
+        push_u32(&mut buf, 1);
+        push_u64(&mut buf, 16);
+        push_u32(&mut buf, 0);
+        push_u64(&mut buf, 0);
+        let path = write_gguf(&dir, "dspark-v4.gguf", &buf);
+
+        let shape = read_shape(&path).expect("shape");
+        assert_eq!(shape.dflash_variant.as_deref(), Some("dspark"));
+        assert_eq!(shape.embedding_length, Some(4096));
+        assert_eq!(shape.dflash_max_target_layer, Some(47));
+        assert_eq!(shape.hyper_connection_count, Some(4));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -734,7 +872,7 @@ pub(crate) mod tests {
             architecture: "qwen35".into(),
             block_count: 48,
             nextn_layers: 2,
-            has_markov_w1: false,
+            dflash_variant: Some("dflash2".into()),
             has_trunk: true,
             has_vocab: true,
             shard_count: 1,
@@ -753,7 +891,7 @@ pub(crate) mod tests {
         for key in [
             "\"nextnLayers\":2",
             "\"archMismatch\":false",
-            "\"hasMarkovW1\":false",
+            "\"dflashVariant\":\"dflash2\"",
             "\"hasTrunk\":true",
             "\"hasVocab\":true",
             "\"block_count\":48",

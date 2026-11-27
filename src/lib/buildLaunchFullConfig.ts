@@ -13,6 +13,7 @@ import type {
 } from "./types";
 import { buildLaunchConfigFromUi, type LayerPlacement } from "./buildLaunchConfig";
 import type { SpecBoostMethod } from "./specProfiles";
+import type { DflashVariant } from "./spec/adapters";
 import type { RunningSlotInfo } from "../services/vram/shared";
 
 export type BuildLaunchFullConfigInput = {
@@ -27,6 +28,8 @@ export type BuildLaunchFullConfigInput = {
   essentialFactoryKeys: Set<string>;
   /** Product Boost method; if omitted, derived from visible profile groups. */
   specMethod?: SpecBoostMethod;
+  /** Exact DFlash-family variant auto-detected from the selected draft GGUF. */
+  dflashVariant?: DflashVariant;
   allParamsResolved: UserEditedTemplateParam[];
   gpus: GpuInfo[];
   runningSlotsForPlan: RunningSlotInfo[];
@@ -54,6 +57,7 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     configView: input.configView,
     essentialFactoryKeys: input.essentialFactoryKeys,
     specMethod: input.specMethod,
+    dflashVariant: input.dflashVariant,
     allParamsResolved: input.allParamsResolved,
     gpus: input.gpus,
     runningSlotsForPlan: input.runningSlotsForPlan,

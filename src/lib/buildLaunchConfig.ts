@@ -43,6 +43,7 @@ import {
   SPEC_CLI_DRAFT,
   SPEC_PROFILE_PARAM_KEYS,
 } from "./specProfiles";
+import type { DflashVariant } from "./spec/adapters";
 import { pickHighNumeric } from "./multiAgentBooster";
 import type { RunningSlotInfo } from "../services/vram/shared";
 
@@ -111,6 +112,8 @@ export type BuildLaunchConfigInput = {
   essentialFactoryKeys: Set<string>;
   /** Product Boost method; if omitted, derived from visible profile groups. */
   specMethod?: SpecBoostMethod;
+  /** Exact DFlash-family variant auto-detected from the selected draft GGUF. */
+  dflashVariant?: DflashVariant;
   allParamsResolved: UserEditedTemplateParam[];
   gpus: GpuInfo[];
   runningSlotsForPlan: RunningSlotInfo[];
@@ -171,6 +174,7 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     fitLaunchSupported,
     essentialFactoryKeys,
     specMethod: specMethodIn,
+    dflashVariant,
     allParamsResolved,
     gpus,
     runningSlotsForPlan,
@@ -236,7 +240,13 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     specActive: method !== "off",
     allParams: allParamsResolved,
     tunedKeys,
-  }).filter((k) => !SPEC_CLI_KEYS.has(k) && !k.startsWith("mtp_") && !k.startsWith("dflash_"));
+  }).filter(
+    (k) =>
+      !SPEC_CLI_KEYS.has(k)
+      && !k.startsWith("ngram_")
+      && !k.startsWith("mtp_")
+      && !k.startsWith("dflash_"),
+  );
 
   // Only emit allowed keys from the merged bag
   const filteredConfig = filterValuesToKeySet(merged, launchKeys);
@@ -271,7 +281,12 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
   if (method !== "off") {
     launchExtra = {
       ...launchExtra,
-      ...buildSpecCliExtraParams(method, { ...merged, ...filteredConfig }, allParamsResolved),
+      ...buildSpecCliExtraParams(
+        method,
+        { ...merged, ...filteredConfig },
+        allParamsResolved,
+        dflashVariant,
+      ),
     };
   }
 

@@ -151,7 +151,7 @@ export function isLaunchPolicyId(value: unknown): value is LaunchPolicyId {
 
 function skipSpecParamForLaunch(p: UserEditedTemplateParam): boolean {
   const g = paramUiGroup(p.ui_group);
-  if (g === "SPECULATIVE-MTP" || g === "SPECULATIVE-DFLASH") return true;
+  if (g === "SPECULATIVE-NGRAM" || g === "SPECULATIVE-MTP" || g === "SPECULATIVE-DFLASH") return true;
   if (g === SPEC_DECODING_UI_GROUP || isModelSpecParamKey(p.key)) return true;
   return false;
 }

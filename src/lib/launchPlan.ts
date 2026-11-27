@@ -121,7 +121,7 @@ export function sparseOverridesFromConfig(
 }
 
 function normalizeBoostMethod(raw: unknown): SpecBoostMethod {
-  if (raw === "mtp" || raw === "dflash" || raw === "dspark" || raw === "off") return raw;
+  if (raw === "ngram" || raw === "mtp" || raw === "dflash" || raw === "off") return raw;
   return "off";
 }
 

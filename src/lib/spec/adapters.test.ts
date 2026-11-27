@@ -25,36 +25,49 @@ describe("spec adapter registry", () => {
     }
   });
 
-  it("resolves each Boost method to the CLI string the engine expects", () => {
+  it("resolves each Boost method and DFlash variant to the CLI string the engine expects", () => {
+    expect(cliTypeForMethod("ngram")).toBe("ngram-mod");
     expect(cliTypeForMethod("mtp")).toBe("draft-mtp");
     expect(cliTypeForMethod("dflash")).toBe("draft-dflash");
-    expect(cliTypeForMethod("dspark")).toBe("draft-dspark");
+    expect(cliTypeForMethod("dflash", "dflash")).toBe("draft-dflash");
+    expect(cliTypeForMethod("dflash", "dflash2")).toBe("draft-dflash2");
+    expect(cliTypeForMethod("dflash", "dspark")).toBe("draft-dspark");
+    expect(cliTypeForMethod("dflash", "lilicorr")).toBe("draft-lilicorr");
     expect(cliTypeForMethod("off")).toBeNull();
   });
 
   it("round-trips every CLI string back to its adapter", () => {
-    for (const method of ["mtp", "dflash", "dspark"] as const) {
+    for (const method of ["ngram", "mtp", "dflash"] as const) {
       const cli = cliTypeForMethod(method);
       expect(cli).toBeTruthy();
       expect(adapterForCliType(cli as string)).toBe(adapterForMethod(method));
     }
+    for (const variant of ["dflash2", "dspark", "lilicorr"] as const) {
+      const cli = cliTypeForMethod("dflash", variant);
+      expect(cli).toBeTruthy();
+      expect(adapterForCliType(cli as string)).toBe(SPEC_ADAPTERS.dflash);
+    }
   });
 
-  it("dspark shares the DFlash adapter and its knobs", () => {
+  it("dflash2, dspark, and lilicorr share the DFlash adapter and its knobs", () => {
     const df = SPEC_ADAPTERS.dflash;
-    expect(adapterForMethod("dspark")).toBe(df);
+    expect(adapterForCliType("draft-dflash2")).toBe(df);
     expect(adapterForCliType("draft-dspark")).toBe(df);
+    expect(adapterForCliType("draft-lilicorr")).toBe(df);
+    expect(df.variants?.dflash2).toBe("draft-dflash2");
     expect(df.variants?.dspark).toBe("draft-dspark");
+    expect(df.variants?.lilicorr).toBe("draft-lilicorr");
   });
 
-  it("only MTP has a constant learnedIncludesDraft", () => {
+  it("only MTP and NGRAM have a constant learnedIncludesDraft", () => {
     for (const adapter of Object.values(SPEC_ADAPTERS)) {
       const constant = adapter.memory.learnedIncludesDraft(true)
         === adapter.memory.learnedIncludesDraft(false);
       expect(constant, `${adapter.id} learnedIncludesDraft should be path-dependent`).toBe(
-        adapter.id === "mtp",
+        adapter.id === "mtp" || adapter.id === "ngram",
       );
     }
+    expect(SPEC_ADAPTERS.ngram.memory.learnedIncludesDraft(false)).toBe(true);
     expect(SPEC_ADAPTERS.mtp.memory.learnedIncludesDraft(false)).toBe(true);
     expect(SPEC_ADAPTERS.dflash.memory.learnedIncludesDraft(false)).toBe(false);
   });

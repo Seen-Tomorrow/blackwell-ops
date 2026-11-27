@@ -8,12 +8,13 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, RepoCompanion } from "../lib/types";
 import type { DraftPickListItem } from "../lib/specDraft";
 import {
-  catalogDraftSignals,
+  dflashVariantBadge,
+  dflashVariantForDraft,
   draftRoleForSpecType,
   draftRoleFromModel,
+  isDraftCompatibleWithTarget,
   resolveDraftPathLabel,
   scoreDraftPair,
-  signalContainsDspark,
   type DraftRole,
 } from "../lib/specDraft";
 import {
@@ -74,7 +75,7 @@ export function useSpecDraft({
   /** The head kind the active SPEC lane accepts (mtp / dflash / eagle3). */
   const laneDraftRole: DraftRole = useMemo(() => {
     const specType =
-      speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
+      speedBoost === "mtp" || speedBoost === "dflash"
         ? cliSpecTypeForMethod(speedBoost)
         : null;
     return (
@@ -83,38 +84,45 @@ export function useSpecDraft({
     );
   }, [speedBoost]);
 
-  /** Local heads for the active lane, sorted by score with the active head pinned to top. */
+  /** Local heads for the active lane, tagged with GGUF geometry compatibility and sorted by match + precision. */
   const specLocalFileRows = useMemo((): DraftPickListItem[] => {
     if (!model || !models?.length) return [];
     const draftKey =
       laneDraftRole === "external_mtp" ? MTP_DRAFT_MODEL : DFLASH_DRAFT_MODEL;
-    const preferDspark = speedBoost === "dspark" && laneDraftRole === "external_dflash";
+    const current = config[draftKey] != null ? String(config[draftKey]) : "";
     const items: DraftPickListItem[] = models
       .filter((m) => {
         if (m.path === model.path) return false;
-        const mRole = draftRoleFromModel(m);
-        if (mRole === laneDraftRole) return true;
-        if (preferDspark && catalogDraftSignals(m).some(signalContainsDspark)) return true;
-        return false;
+        return draftRoleFromModel(m) === laneDraftRole;
       })
       .map((m) => {
-        const isDspark = catalogDraftSignals(m).some(signalContainsDspark);
-        let score = scoreDraftPair(model, m, laneDraftRole);
-        if (preferDspark && isDspark) score = Math.max(score, 90);
+        const score = scoreDraftPair(model, m, laneDraftRole);
+        const compatible =
+          m.path === current || isDraftCompatibleWithTarget(model, m, laneDraftRole);
         const label = resolveDraftPathLabel(m.path);
-        const quant = m.quant || m.metadata?.file_type_str || "";
+        const quant = (m.quant || m.metadata?.file_type_str || "").toUpperCase();
         const author = m.author || m.hfMeta?.author || "";
-        const tag = isDspark ? "dspark" : "";
+        const tag =
+          laneDraftRole === "external_dflash"
+            ? dflashVariantBadge(dflashVariantForDraft(m))
+            : "MTP";
         return {
           id: m.path,
           title: label,
           meta: [author, quant, tag, m.size_str].filter(Boolean).join(" · "),
           score,
+          compatible,
+          quant: quant || undefined,
+          variantTag: tag,
         };
       })
-      .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
+      .sort((a, b) => {
+        if (Boolean(a.compatible) !== Boolean(b.compatible)) {
+          return a.compatible ? -1 : 1;
+        }
+        return (b.score ?? -999) - (a.score ?? -999);
+      });
 
-    const current = config[draftKey] != null ? String(config[draftKey]) : "";
     if (current) {
       items.sort((a, b) => {
         if (a.id === current) return -1;
@@ -123,7 +131,7 @@ export function useSpecDraft({
       });
     }
     return items;
-  }, [model, models, config, speedBoost, laneDraftRole]);
+  }, [model, models, config, laneDraftRole]);
 
   /** Enqueue a Hub draft head download and scan its GGUF metadata when complete. */
   const handlePickRepoDraft = useCallback(async (item: RepoCompanion) => {
@@ -159,7 +167,7 @@ export function useSpecDraft({
     const wasReady = prevDflashReadyRef.current;
     prevDflashReadyRef.current = dflashLibraryReady;
     if (wasReady || !dflashLibraryReady) return;
-    if (speedBoost === "dflash" || speedBoost === "dspark") {
+    if (speedBoost === "dflash") {
       void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {
         powerUser: powerCockpitMode,
       });
@@ -208,11 +216,11 @@ export function useSpecDraft({
     (path: string) => {
       if (!model) return;
       const method =
-        speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark"
+        speedBoost === "mtp" || speedBoost === "dflash"
           ? speedBoost
           : "off";
       const adapter = adapterForMethod(method);
-      const draftKey = adapter?.knobs.draftModel;
+      const draftKey = adapter?.knobs?.draftModel;
       if (!adapter || !draftKey) return;
       updateParam(draftKey, path);
       void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {

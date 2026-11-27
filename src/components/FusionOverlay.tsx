@@ -68,8 +68,11 @@ function shortEffort(level: string): string {
 /** SSE carries acceptance totals but no draft family; fall back to the launch spec type. */
 function specModeLabelFor(launchSpecType: string | undefined): string {
   const raw = (launchSpecType ?? "mtp").toLowerCase();
-  if (raw.includes("dflash")) return "DFLASH2";
+  if (raw.includes("ngram")) return "NGRAM";
+  if (raw.includes("dflash2")) return "DFLASH2";
   if (raw.includes("dspark")) return "DSPARK";
+  if (raw.includes("lilicorr")) return "LILICORR";
+  if (raw.includes("dflash")) return "DFLASH";
   if (raw.includes("mtp")) return "MTP";
   const bare = raw.replace(/^draft-/, "").trim();
   return bare ? bare.toUpperCase() : "MTP";

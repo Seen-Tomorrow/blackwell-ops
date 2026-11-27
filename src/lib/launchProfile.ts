@@ -24,7 +24,7 @@ export const SPEC_DECODING_LAUNCH_KEYS = [
 function skipSpecParamForLaunch(p: UserEditedTemplateParam, _specActive: boolean): boolean {
   // Profile knobs flatten to CLI keys at launch — never emit mtp_*/dflash_* rows as raw extras.
   const g = paramUiGroup(p.ui_group);
-  if (g === "SPECULATIVE-MTP" || g === "SPECULATIVE-DFLASH") return true;
+  if (g === "SPECULATIVE-NGRAM" || g === "SPECULATIVE-MTP" || g === "SPECULATIVE-DFLASH") return true;
   if (g === SPEC_DECODING_UI_GROUP || isModelSpecParamKey(p.key)) return true;
   return false;
 }
