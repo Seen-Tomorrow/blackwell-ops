@@ -125,20 +125,19 @@ pub fn plan_affinity_with(
     mode: AffinityMode,
     thread_hint: Option<usize>,
 ) -> Option<AffinityPlan> {
-    let idx = match mode {
+    let (idx, single_ccd) = match mode {
         AffinityMode::Off => return None,
-        AffinityMode::Auto => {
-            if !topo.is_asymmetric_x3d() {
+        AffinityMode::Compute => (topo.compute_idx?, false),
+        AffinityMode::Auto | AffinityMode::Vcache | AffinityMode::Vcache16 => {
+            if let Some(v) = topo.vcache_idx {
+                (v, false)
+            } else if topo.ccds.len() == 1 {
+                // Single-CCD CPUs (e.g. 7800X3D / 9800X3D): pin to the sole L3 domain
+                // so --cpu-strict 1 stops Windows from shuffling decode across random cores.
+                (0, true)
+            } else {
                 return None;
             }
-            topo.vcache_idx?
-        }
-        AffinityMode::Compute => topo.compute_idx?,
-        AffinityMode::Vcache | AffinityMode::Vcache16 => {
-            if !topo.is_asymmetric_x3d() {
-                return None;
-            }
-            topo.vcache_idx?
         }
     };
     let ccd = topo.ccd(idx)?;
@@ -186,12 +185,15 @@ pub fn plan_affinity_with(
     }
 
     let threads = lps.len().clamp(1, max_threads);
-    let label = match mode {
-        AffinityMode::Vcache => "vcache",
-        AffinityMode::Vcache16 => "vcache16",
-        AffinityMode::Compute => "compute",
-        AffinityMode::Auto => "vcache(auto)",
-        AffinityMode::Off => "off",
+    let label = match (mode, single_ccd) {
+        (AffinityMode::Vcache, false) => "vcache",
+        (AffinityMode::Vcache16, false) => "vcache16",
+        (AffinityMode::Auto, false) => "vcache(auto)",
+        (AffinityMode::Vcache, true) => "ccd0",
+        (AffinityMode::Vcache16, true) => "ccd0-16",
+        (AffinityMode::Auto, true) => "ccd0(auto)",
+        (AffinityMode::Compute, _) => "compute",
+        (AffinityMode::Off, _) => "off",
     };
 
     Some(AffinityPlan {
@@ -892,9 +894,31 @@ mod tests {
     }
 
     #[test]
-    fn symmetric_l3_not_asymmetric() {
+    fn single_ccd_7800x3d_pins_8t_and_16t() {
+        // 7800X3D-shaped: single 96MiB L3 domain, 8C/16T (LP0-15).
         let cores = (0..8u32).map(|i| 0b11u64 << (i * 2)).collect::<Vec<_>>();
-        let t = topology_from_l3_and_cores(&[(0xff, 32 * 1024 * 1024)], &cores);
+        let t = topology_from_l3_and_cores(&[(0xffff, 96 * 1024 * 1024)], &cores);
+        assert!(!t.is_asymmetric_x3d());
+        let p8 = plan_affinity_with(&t, AffinityMode::Auto, None).expect("8T plan on single CCD");
+        assert_eq!(p8.threads, 8);
+        assert_eq!(p8.cpu_mask_hex, "ff00"); // high half LP 8-15
+        assert_eq!(p8.label, "ccd0(auto)");
+        let p16 = plan_affinity_with(&t, AffinityMode::Vcache16, None).expect("16T plan on single CCD");
+        assert_eq!(p16.threads, 16);
+        assert_eq!(p16.cpu_mask_hex, "ffff"); // all LP 0-15
+        assert_eq!(p16.label, "ccd0-16");
+    }
+
+    #[test]
+    fn symmetric_dual_ccd_not_asymmetric() {
+        let cores = (0..16u32).map(|i| 0b11u64 << (i * 2)).collect::<Vec<_>>();
+        let t = topology_from_l3_and_cores(
+            &[
+                (0x0000_ffff, 32 * 1024 * 1024),
+                (0xffff_0000, 32 * 1024 * 1024),
+            ],
+            &cores,
+        );
         assert!(!t.is_asymmetric_x3d());
         assert!(plan_affinity_with(&t, AffinityMode::Auto, None).is_none());
     }
