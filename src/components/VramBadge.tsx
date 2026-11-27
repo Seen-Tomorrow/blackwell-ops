@@ -230,7 +230,7 @@ export default function VramBadge({
           sourceKind: manifest?.memorySource?.kind ?? null,
           sourceExact: manifest?.memorySource?.exact ?? null,
           sourceDetail: manifest?.memorySource?.detail ?? null,
-          vramNeedGb: displayVramNeedGb,
+          vramNeedGb: manifest ? Math.max(0, manifest.vramTotalGb) : null,
           ramNeedGb: manifest?.ramTotalGb ?? null,
           fits: manifest?.fits ?? null,
           needTone: manifest?.style?.vramNeedTone ?? null,
