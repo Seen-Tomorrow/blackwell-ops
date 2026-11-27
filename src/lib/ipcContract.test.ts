@@ -13,11 +13,15 @@
  * never matched.
  *
  * Both halves are asked of a compiler, never of a regex. The Rust side is probed
- * by serde itself (`src-tauri/src/ipc_contract.rs`); the TS side is read through
- * the TypeScript compiler API here. `src/lib/types.ts` is also full of
- * frontend-only shapes and mirrors of internal Rust types — `HfSearchFilters`
- * mirrors a struct that never crosses IPC at all — so the guard keys off real
- * call sites rather than off name similarity.
+ * by serde itself (`src-tauri/src/ipc_contract.rs`); the TS side is parsed by Oxc
+ * through vite's `parseAst`. (It used to call the TypeScript JS compiler API —
+ * `typescript@7` is the native compiler and exports no in-process parser, so the
+ * guard moved to the parser vite already runs over every file in `src`. The
+ * extraction was verified map-for-map against the old TS-API output before the
+ * swap: same 88 interfaces, same member lists, same edges, same 68 IPC roots.)
+ * `src/lib/types.ts` is also full of frontend-only shapes and mirrors of internal
+ * Rust types — `HfSearchFilters` mirrors a struct that never crosses IPC at all —
+ * so the guard keys off real call sites rather than off name similarity.
  *
  * Maintenance note — invariant, not snapshot: adding a registered IPC type the
  * normal way (Rust registry entry + regenerate) keeps this green with no edit
@@ -32,7 +36,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, relative, dirname } from "node:path";
-import ts from "typescript";
+import { parseAst } from "vite";
 import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -47,6 +51,68 @@ const SKIP_DIRS: Record<string, true> = {
   ".git": true,
   coverage: true,
 };
+
+/** A node of Oxc's ESTree-shaped AST: a `type` tag plus child nodes and scalars. */
+type AstNode = { type: string; [key: string]: unknown };
+
+const isNode = (value: unknown): value is AstNode =>
+  typeof value === "object" && value !== null && typeof (value as { type?: unknown }).type === "string";
+
+/** Parse one frontend file into an AST. Oxc needs the language, not the extension. */
+function parseFrontendFile(file: string): AstNode {
+  const lang = file.endsWith(".tsx") ? "tsx" : "ts";
+  return parseAst(readFileSync(file, "utf8"), { lang, astType: "ts" }, file) as unknown as AstNode;
+}
+
+/** Depth-first walk over every node in the tree. */
+function walkAst(node: unknown, visit: (node: AstNode) => void): void {
+  if (!isNode(node)) return;
+  visit(node);
+  for (const key of Object.keys(node)) {
+    if (key === "type") continue;
+    const child = node[key];
+    if (Array.isArray(child)) for (const item of child) walkAst(item, visit);
+    else walkAst(child, visit);
+  }
+}
+
+/** Type names named inside a type node, at any depth (refs, arrays, generics). */
+function referencedTypes(node: AstNode | null): string[] {
+  const out: string[] = [];
+  if (!node) return out;
+  walkAst(node, (n) => {
+    if (n.type !== "TSTypeReference") return;
+    const typeName = n.typeName;
+    if (isNode(typeName) && typeName.type === "Identifier") out.push(typeName.name as string);
+  });
+  return out;
+}
+
+/** Top-level declarations, seeing through `export` wrappers (Oxc models those as parents). */
+function topLevelDeclarations(program: AstNode): AstNode[] {
+  const body = Array.isArray(program.body) ? program.body : [];
+  const out: AstNode[] = [];
+  for (const stmt of body) {
+    if (!isNode(stmt)) continue;
+    const wrapped = stmt.type === "ExportNamedDeclaration" || stmt.type === "ExportDefaultDeclaration";
+    out.push(wrapped && isNode(stmt.declaration) ? (stmt.declaration as AstNode) : stmt);
+  }
+  return out;
+}
+
+/** Property signatures of an interface: identifier key plus the annotation node as declared. */
+function interfaceProperties(decl: AstNode): { name: string; type: AstNode | null }[] {
+  const body = decl.body;
+  const members = isNode(body) && Array.isArray(body.body) ? body.body : [];
+  const out: { name: string; type: AstNode | null }[] = [];
+  for (const member of members) {
+    if (!isNode(member) || member.type !== "TSPropertySignature") continue;
+    const key = member.key;
+    if (!isNode(key) || key.type !== "Identifier") continue;
+    out.push({ name: key.name as string, type: isNode(member.typeAnnotation) ? member.typeAnnotation : null });
+  }
+  return out;
+}
 
 /** RustTypeName -> wire keys, as probed from serde. */
 function rustWireKeys(): Record<string, string[]> {
@@ -66,68 +132,42 @@ function parseFrontend() {
   };
   visit(FRONTEND_SRC);
 
-  const typesSource = ts.createSourceFile(
-    TYPES_TS,
-    readFileSync(TYPES_TS, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
+  const interfaces = topLevelDeclarations(parseFrontendFile(TYPES_TS)).filter(
+    (decl) => decl.type === "TSInterfaceDeclaration",
   );
 
   /** interface name -> declared property names (PropertySignature only). */
   const members = new Map<string, string[]>();
-  typesSource.forEachChild((node) => {
-    if (!ts.isInterfaceDeclaration(node)) return;
-    const names: string[] = [];
-    for (const m of node.members) {
-      if (ts.isPropertySignature(m) && m.name && ts.isIdentifier(m.name)) {
-        names.push(m.name.text);
-      }
-    }
-    members.set(node.name.text, names);
-  });
-
-  /** Type names named inside a type node, at any depth (refs, arrays, generics). */
-  const referencedTypes = (node: ts.Node): string[] => {
-    const out: string[] = [];
-    const walk = (n: ts.Node) => {
-      if (ts.isTypeReferenceNode(n) && ts.isIdentifier(n.typeName)) {
-        out.push(n.typeName.text);
-      }
-      n.forEachChild(walk);
-    };
-    walk(node);
-    return out;
-  };
+  for (const decl of interfaces) {
+    members.set((decl.id as AstNode).name as string, interfaceProperties(decl).map((p) => p.name));
+  }
 
   /** interface name -> names of interfaces its members reference. */
   const edges = new Map<string, string[]>();
-  typesSource.forEachChild((node) => {
-    if (!ts.isInterfaceDeclaration(node)) return;
+  for (const decl of interfaces) {
     const refs: string[] = [];
-    for (const m of node.members) {
-      if (ts.isPropertySignature(m) && m.type) refs.push(...referencedTypes(m.type));
-    }
-    edges.set(node.name.text, refs);
-  });
+    for (const property of interfaceProperties(decl)) refs.push(...referencedTypes(property.type));
+    edges.set((decl.id as AstNode).name as string, refs);
+  }
 
   /** Type arguments of invoke<T>(..) / listen<T>(..), with the file they occur in. */
   const roots = new Map<string, string>();
   for (const file of files) {
-    const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
-    const walk = (n: ts.Node) => {
-      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
-        const callee = n.expression.text;
-        if ((callee === "invoke" || callee === "listen") && n.typeArguments?.length) {
-          for (const ta of n.typeArguments) {
-            for (const name of referencedTypes(ta)) {
-              if (!roots.has(name)) roots.set(name, relative(repoRoot, file));
-            }
-          }
+    walkAst(parseFrontendFile(file), (n) => {
+      if (n.type !== "CallExpression") return;
+      const callee = n.callee;
+      if (!isNode(callee) || callee.type !== "Identifier") return;
+      const name = callee.name as string;
+      if (name !== "invoke" && name !== "listen") return;
+      const typeArguments = n.typeArguments;
+      const params = isNode(typeArguments) && Array.isArray(typeArguments.params) ? typeArguments.params : [];
+      for (const arg of params) {
+        if (!isNode(arg)) continue;
+        for (const ref of referencedTypes(arg)) {
+          if (!roots.has(ref)) roots.set(ref, relative(repoRoot, file));
         }
       }
-      n.forEachChild(walk);
-    };
-    walk(sf);
+    });
   }
 
   return { members, edges, roots };

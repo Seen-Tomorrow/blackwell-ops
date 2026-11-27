@@ -41,7 +41,7 @@ function partitionGroupsByColumn(
   groupColumn: Record<string, number>,
   columnCount: number,
 ): string[][] {
-  const cols: string[][] = Array.from({ length: columnCount }, () => []);
+  const cols: string[][] = Array.from({ length: columnCount }, () => [] as string[]);
   for (const key of keys) {
     const col = resolvePartitionColumn(key, groupColumn, columnCount);
     cols[col]!.push(key);

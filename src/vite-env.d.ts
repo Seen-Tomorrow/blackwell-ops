@@ -1,12 +1,4 @@
-declare module "*.svg" {
-  const src: string;
-  export default src;
-}
-
-declare module "*.webp" {
-  const src: string;
-  export default src;
-}
+/// <reference types="vite/client" />
 
 declare const __TAURI_VERSION__: string;
 declare const __APP_VERSION__: string;

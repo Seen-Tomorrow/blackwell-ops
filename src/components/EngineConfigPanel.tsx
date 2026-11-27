@@ -762,7 +762,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return {
       key: "device",
       label: "DEVICE",
-      flag: null,
+      flag: null as string | null,
       ptype: "arg_select" as const,
       values: gpus.map((g) => `GPU-${g.index}`),
       order: -1,

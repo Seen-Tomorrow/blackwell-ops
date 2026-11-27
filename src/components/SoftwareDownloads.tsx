@@ -51,12 +51,12 @@ export default function SoftwareDownloads() {
   const refresh = useCallback(async () => {
     try {
       const [app, provs, ups, tc] = await Promise.all([
-        invoke<AppUpdateInfo>("check_app_update").catch(() => null),
+        invoke<AppUpdateInfo>("check_app_update").catch(() => null as AppUpdateInfo | null),
         invoke<ProviderConfig[]>("list_providers").catch(() => [] as ProviderConfig[]),
         invoke<BinaryUpdateInfo[]>("check_binary_updates", {
           providerId: DEFAULT_PROVIDER_ID,
         }).catch(() => [] as BinaryUpdateInfo[]),
-        invoke<ToolchainInstallInfo>("foundry_get_toolchain_install_info").catch(() => null),
+        invoke<ToolchainInstallInfo>("foundry_get_toolchain_install_info").catch(() => null as ToolchainInstallInfo | null),
       ]);
       // Identity probe once per mount so rows can show the build, not just "Installed".
       let next = provs;

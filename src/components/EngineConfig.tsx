@@ -60,7 +60,7 @@ export default function EngineConfig({ providers: external, onProvidersChange }:
         invoke<BinaryUpdateInfo[]>("check_binary_updates", {
           providerId: DEFAULT_PROVIDER_ID,
         }).catch(() => [] as BinaryUpdateInfo[]),
-        invoke<ToolchainInstallInfo>("foundry_get_toolchain_install_info").catch(() => null),
+        invoke<ToolchainInstallInfo>("foundry_get_toolchain_install_info").catch(() => null as ToolchainInstallInfo | null),
       ]);
       let next = provs;
       // Inventory scans label unknown binaries "catalog"/"bundled"; probe once so the page
