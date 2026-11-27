@@ -305,6 +305,8 @@ export interface FoundryFlagMode {
   id: string;
   label: string;
   profile: string;
+  /** Why to pick it — the toggle's tooltip (REL/DEV role, build cost). */
+  hint: string;
 }
 
 /** Canonical build-flag defaults: one default, the enforced set, and the mode presets. */

@@ -208,8 +208,10 @@ pub fn get_template_version_for_provider(provider_id: &str) -> u32 {
     serde_json::from_str::<TvOnly>(&content).ok().map(|o| o.tv).unwrap_or(1)
 }
 
-/// Canonical `build_profile` for a provider — the **one** place the UI's default comes
-/// from (RESET, empty-box fallback, badge comparison, and the configure fallback).
+/// Factory `build_profile` for a provider — the **REL** default the BUILD FLAGS panel starts
+/// on (RESET, empty-box fallback, badge comparison), and the shape a provider discovered from
+/// its template is seeded with. A DEV app starts on the PORTABLE ship shape instead, because
+/// that is the seat that packs the engines users download (`cmake::dev_default_build_mode`).
 ///
 /// Factory template first; the compiled-in default is the last resort so a provider
 /// without a template cannot end up flag-less (which would silently build without CUDA).

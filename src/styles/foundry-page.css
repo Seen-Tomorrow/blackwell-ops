@@ -406,6 +406,34 @@
   background: color-mix(in srgb, var(--theme-text) 3%, var(--theme-panel-accent));
 }
 
+.fnd-form__flags {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.fnd-form__flags-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.fnd-form__flags-head .fnd-form__badge {
+  margin-left: 0;
+}
+
+/* The BUILD FLAGS mode toggle lives beside the badge, not inside EDIT: it selects a
+   whole flag shape (REL user build vs DEV ship build), which is not a flag edit. */
+.fnd-mode--inline {
+  padding: 1px;
+}
+
+.fnd-mode--inline .fnd-mode__btn {
+  padding: 0.2rem 0.6rem;
+}
+
 .fnd-form__badge {
   display: inline-block;
   margin-left: 0.5rem;

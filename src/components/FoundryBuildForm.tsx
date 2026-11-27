@@ -228,9 +228,10 @@ export default function FoundryBuildForm({
   // whatever was last saved — that comparison is what made a reset look like a custom edit.
   const factoryMerged = defaultBase ? mergeBuildProfileWithArchitectures(defaultBase, selectedArchs) : "";
   const flagsSummary = factoryMerged && mergedProfile === factoryMerged ? "DEFAULT" : "MODIFIED";
+  const flagModes = flagDefaults?.modes ?? [];
   const normaliseFlags = (value: string) => value.split(/\s+/).filter(Boolean).sort().join(" ");
   const activeModeId =
-    flagDefaults?.modes.find((mode) => normaliseFlags(mode.profile) === normaliseFlags(buildProfile))?.id ??
+    flagModes.find((mode) => normaliseFlags(mode.profile) === normaliseFlags(buildProfile))?.id ??
     null;
   const resetBuildFlags = useCallback(() => setBuildProfile(defaultBase), [defaultBase]);
 
@@ -531,11 +532,31 @@ export default function FoundryBuildForm({
       />
 
       <section className="fnd-form__section fnd-form__section--row">
-        <div>
-          <span className="fnd-form__label">BUILD FLAGS</span>
-          <span className={`fnd-form__badge fnd-form__badge--${flagsSummary === "MODIFIED" ? "warn" : "ok"}`}>
-            {flagsSummary}
-          </span>
+        <div className="fnd-form__flags">
+          <div className="fnd-form__flags-head">
+            <span className="fnd-form__label">BUILD FLAGS</span>
+            <span className={`fnd-form__badge fnd-form__badge--${flagsSummary === "MODIFIED" ? "warn" : "ok"}`}>
+              {flagsSummary}
+            </span>
+            {/* The shape is a mode, not a flag edit: DEV ships (PORTABLE), REL builds for
+                this PC (NATIVE). Only DEV offers more than one, so REL shows no toggle. */}
+            {flagModes.length > 1 && (
+              <div className="fnd-mode fnd-mode--inline" role="group" aria-label="Build flag mode">
+                {flagModes.map((flagMode) => (
+                  <button
+                    key={flagMode.id}
+                    type="button"
+                    className={`fnd-mode__btn${activeModeId === flagMode.id ? " fnd-mode__btn--active" : ""}`}
+                    onClick={() => setBuildProfile(flagMode.profile)}
+                    aria-pressed={activeModeId === flagMode.id}
+                    title={flagMode.hint}
+                  >
+                    {flagMode.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <p className="fnd-form__hint">
             {flagsSummary === "DEFAULT" ? "Canonical default flags." : "Flags differ from the canonical default."}
           </p>
@@ -561,21 +582,6 @@ export default function FoundryBuildForm({
       </section>
       {showFlags && (
         <div className="flex flex-col gap-2">
-          {flagDefaults && flagDefaults.modes.length > 0 && (
-            <div className="flex items-center gap-2">
-              {flagDefaults.modes.map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  className={`fnd-form__btn${activeModeId === mode.id ? " fnd-form__btn--primary" : ""}`}
-                  onClick={() => setBuildProfile(mode.profile)}
-                  aria-pressed={activeModeId === mode.id}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-          )}
           <textarea
             rows={7}
             className="fnd-form__textarea"

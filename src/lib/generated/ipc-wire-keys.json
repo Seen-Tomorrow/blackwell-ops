@@ -20,7 +20,7 @@
   "ExtraFileEntry": ["path", "fileName", "role", "roleEvidence", "sizeBytes", "sizeStr", "lookupDims", "splitNo", "splitCount", "tensorsDeclared", "rootLabel"],
   "FoundryChangelog": ["repo", "tag", "name", "htmlUrl", "body", "publishedAt"],
   "FoundryFlagDefaults": ["defaultProfile", "mandatory", "modes"],
-  "FoundryFlagMode": ["id", "label", "profile"],
+  "FoundryFlagMode": ["id", "label", "profile", "hint"],
   "FoundrySourcePreview": ["status", "branch", "local_commit", "remote_commit", "installed_version", "installed_commit", "message", "banner_tone"],
   "FoundryWorkCacheStatus": ["cacheEnabled", "profileId", "buildDirExists", "cmakeCachePresent", "sizeBytes", "sizeLabel", "workTotalBytes", "workTotalLabel", "sccacheAvailable", "sccachePath", "sccacheVersion", "sccacheSizeBytes", "sccacheSizeLabel"],
   "FusionUpdate": ["alias", "slotIdx", "port", "telemetrySource", "engine_state", "phase", "prefillTpsSession", "prefillTpsInstant", "prefillProgress", "prefillTokens", "prefillTokensTotal", "genTps", "genTpsSession", "genTpsInstant", "genTokensPerRequestSlots", "genTokensPerSession", "ctxUsedSession", "ctxFillPct", "ctxTotal", "ctxPerSlot", "requestElapsedMs", "ttftMs", "prefillMs", "decodeTtftMs", "slotCtx", "parallel", "unified_kv", "specDraftAcceptRate", "specDraftAccepted", "specDraftGenerated", "specDraftAcceptRateLast", "specDraftAcceptedLast", "specDraftGeneratedLast", "requestClosed", "meterLane", "busySlotCount", "concurrentSlots", "genTpsPerSlot", "genTpsPerSlotInstant", "meterSeq"],

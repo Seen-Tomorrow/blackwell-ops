@@ -66,30 +66,42 @@ pub(crate) struct BuildFlagMode {
     pub id: &'static str,
     pub label: &'static str,
     pub profile: &'static str,
+    /// Why anyone would pick this shape — shown as the toggle's tooltip, so the REL/DEV
+    /// distinction is stated where the choice is made instead of only in the docs.
+    pub hint: &'static str,
     pub dev_only: bool,
 }
 
 /// Build modes offered instead of free-text flags.
 ///
-/// `native` is the default and what a user building for their own machine wants — MSVC
-/// `FindSIMD` probes detect this CPU at configure time and compile for it, at 1× cost.
-/// `portable` builds one CPU backend per ISA and is the only shape that may be
-/// distributed; it is a DEV-only mode because only the maintainer ships engines. Neither
-/// pins AVX-512: that is the detector's job.
+/// `native` is what a user building for their own machine wants — MSVC `FindSIMD` probes
+/// detect this CPU at configure time and compile for it, at 1× cost. `portable` builds one
+/// CPU backend per ISA and is the only shape that may be distributed; it is a DEV-only mode
+/// because only the maintainer ships engines. Neither pins AVX-512: that is the detector's job.
 pub(crate) const BUILD_FLAG_MODES: &[BuildFlagMode] = &[
     BuildFlagMode {
         id: "native",
         label: "NATIVE — this PC",
         profile: "-DGGML_CUDA=ON\n-DGGML_NATIVE=ON",
+        hint: "This PC only — the CPU is detected at configure time (1× build cost).",
         dev_only: false,
     },
     BuildFlagMode {
         id: "portable",
         label: "PORTABLE — ship",
         profile: "-DGGML_CUDA=ON\n-DGGML_NATIVE=OFF\n-DGGML_CPU_ALL_VARIANTS=ON\n-DGGML_BACKEND_DL=ON",
+        hint: "Ships to other PCs — one CPU backend per instruction set (≈9× build cost). DEV only.",
         dev_only: true,
     },
 ];
+
+/// The shape **DEV** starts on. DEV is the seat that builds and packs the engines users
+/// download, so its baseline is the shipping (portable) shape. A REL install builds for the
+/// user's own machine and starts on the factory profile instead — see
+/// `templates::default_build_profile_for_provider`.
+pub(crate) fn dev_default_build_mode() -> Option<&'static BuildFlagMode> {
+    BUILD_FLAG_MODES.iter().find(|mode| mode.id == "portable")
+}
 
 pub(crate) fn get_default_cmake_flags(template_type: &str) -> &'static str {
     DEFAULT_CMAKE_FLAGS
@@ -455,6 +467,18 @@ mod tests {
         assert!(
             default.contains("-DGGML_NATIVE=ON") && !default.contains("GGML_CPU_ALL_VARIANTS"),
             "compiled fallback must match the user-facing default: {default}"
+        );
+    }
+
+    #[test]
+    fn the_dev_default_mode_is_the_shipping_shape() {
+        // DEV is the seat that packs what users download, so it starts on the shape that may
+        // ship. A REL install defaults to the factory (native) profile instead.
+        let dev = dev_default_build_mode().expect("DEV default mode");
+        assert_eq!(dev.id, "portable");
+        assert!(
+            dev.dev_only,
+            "the DEV baseline is the shape only a DEV seat may build"
         );
     }
 

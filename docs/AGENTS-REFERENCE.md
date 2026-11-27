@@ -443,11 +443,18 @@ build by nine. The gate lives at the shipping boundary — `scripts/pack-provide
 
 **One default, one resolver.** The BUILD FLAGS panel gets its default, its mode presets
 (`NATIVE — this PC` / `PORTABLE — ship`) and the enforced-flag list from a single command,
-`foundry_flag_defaults`, backed by `templates::default_build_profile_for_provider` (factory
-template JSON, compiled constant as last resort). Do **not** reintroduce a frontend copy of the
-default string — the old `DEFAULT_FOUNDRY_CMAKE_BASE`, the textarea placeholder and the seeded
-config each carried one, which is how a dead `-DGGML_AVX512=ON` stayed visible in the UI after the
-backend had moved on.
+`foundry_flag_defaults`. Which mode is the default is the app **channel's** call
+(`cmake::dev_default_build_mode()`, the `cfg!(debug_assertions)` branch only): DEV is the seat
+that builds and packs what users download, so its baseline is PORTABLE; a REL install can only
+build for the user's own machine, so its baseline is the factory profile —
+`templates::default_build_profile_for_provider` (factory template JSON, compiled constant as last
+resort). PORTABLE stays DEV-only (filtered out of `modes` in a release build), so REL offers no
+toggle at all. The toggle lives in the BUILD FLAGS header next to the `DEFAULT` / `MODIFIED`
+badge, never inside EDIT: it selects a whole shape (a REL user build vs the DEV ship build), and
+badging the DEV shipping shape as MODIFIED was wrong. EDIT holds the textarea and the read-only
+enforced flags. Do **not** reintroduce a frontend copy of the default string — the old
+`DEFAULT_FOUNDRY_CMAKE_BASE`, the textarea placeholder and the seeded config each carried one,
+which is how a dead `-DGGML_AVX512=ON` stayed visible in the UI after the backend had moved on.
 
 **Vendor patches track upstream HEAD.** Check origin for the feature before adding or rebasing
 a patch — upstream may already provide it (upstream PR #32398 added single-model `/models/sse`, so
