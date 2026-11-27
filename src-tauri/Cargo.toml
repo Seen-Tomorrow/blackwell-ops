@@ -24,8 +24,8 @@ dev-ballast = []
 # Floor = the version this app is actually built and tested against, so a deleted
 # Cargo.lock cannot silently drop below the Tauri pair that package.json pins
 # (`tauri build` gates crate vs @tauri-apps/* major/minor — keep the two in step).
-tauri = { version = "2.12.1", features = [] }
-tauri-plugin-shell = "2.4.0"
+tauri = { version = "2.12.7", features = [] }
+tauri-plugin-shell = "2.6.0"
 tauri-plugin-updater = "2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
@@ -51,7 +51,7 @@ futures-util = "0.3"
 trash = "5"
 percent-encoding = "2"
 hex = "0.4"
-lz4_flex = "0.11"
+lz4_flex = "0.14"
 oym-gateway = { path = "../gateway" }
 
 [target.'cfg(windows)'.dependencies]
@@ -59,7 +59,7 @@ keyring = { version = "4", default-features = false, features = ["v1"] }
 windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Threading", "Win32_Foundation", "Win32_System_Performance", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_SystemInformation", "Win32_System_LibraryLoader", "Win32_System_JobObjects", "Win32_System_ErrorReporting"] }
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.7.6", features = [] }
 
 [profile.dev]
 # Day-to-day rebuilds: thin debuginfo -> much faster rust-lld links; full +0 still
