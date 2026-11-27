@@ -25,9 +25,6 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     showLaunchRail,
     enginesInRail,
     onToggleEnginesInRail,
-    hasParams,
-    columnCount,
-    onSetColumnCount,
   } = props;
 
   return (
@@ -124,26 +121,6 @@ export default function EngineToolbar(props: EngineToolbarProps) {
             {hwMonitorDock === "below" ? "BELOW" : "RAIL"}
           </button>
         </div>
-        {hasParams && (
-          <>
-            <span className="config-panel-toolbar__sep" aria-hidden />
-            <div className="config-column-count flex items-center gap-0.5 flex-shrink-0">
-              {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => onSetColumnCount(n)}
-                  className={`config-panel-toolbar-chip config-column-count__btn px-1.5 py-0.5 type-tiny font-mono rounded-sm ${
-                    columnCount === n ? "config-panel-toolbar-chip--active" : ""
-                  }`}
-                  title={`${n} column${n > 1 ? "s" : ""} below display`}
-                >
-                  {n}C
-                </button>
-              ))}
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

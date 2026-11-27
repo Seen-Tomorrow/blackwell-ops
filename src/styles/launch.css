@@ -112,7 +112,7 @@
 
 /* Section divider with glow */
 .section-divider {
-  border-color: rgba(26, 46, 26, 0.5);
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent);
   position: relative;
 }
 

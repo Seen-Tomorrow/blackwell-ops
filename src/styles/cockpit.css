@@ -208,16 +208,16 @@
    no [data-theme] fork. Product green, adapted per theme (dark wash / arctic paper wash). */
 /* Explicit NGRAM tone (cyan, zero-VRAM context speculation) — token-driven across all themes. */
 .full-auto-cockpit__dflash-get--tone-ngram {
-  border-color: color-mix(in srgb, var(--theme-info) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-info) 8%, transparent);
-  color: var(--theme-info);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-info) 16%, transparent);
+  border-color: color-mix(in srgb, var(--fixed-cyan-400) 55%, transparent);
+  background: color-mix(in srgb, var(--fixed-cyan-400) 16%, transparent);
+  color: var(--theme-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fixed-cyan-400) 24%, transparent);
 }
 
 .full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-title,
 .full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-key,
 .full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-sep {
-  color: color-mix(in srgb, var(--theme-info) 82%, transparent);
+  color: color-mix(in srgb, var(--fixed-cyan-400) 85%, var(--theme-text) 15%);
 }
 
 .full-auto-cockpit__dflash-get--tone-mtp {
@@ -366,19 +366,18 @@
   box-shadow: inset 0 1px 0 var(--fixed-white-a04);
 }
 
-/* Higher specificity than base so MTP green / DFlash violet always paint */
-.full-auto-cockpit__dflash-get/* Explicit NGRAM tone (cyan, zero-VRAM context speculation) — token-driven across all themes. */
-.full-auto-cockpit__dflash-get--tone-ngram {
-  border-color: color-mix(in srgb, var(--theme-info) 45%, transparent);
-  background: color-mix(in srgb, var(--theme-info) 8%, transparent);
-  color: var(--theme-info);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-info) 16%, transparent);
+/* Higher specificity than base so NGRAM cyan / MTP green / DFlash violet always paint */
+.full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-ngram {
+  border-color: color-mix(in srgb, var(--fixed-cyan-400) 55%, transparent);
+  background: color-mix(in srgb, var(--fixed-cyan-400) 16%, transparent);
+  color: var(--theme-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fixed-cyan-400) 24%, transparent);
 }
 
 .full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-title,
 .full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-key,
 .full-auto-cockpit__dflash-get--tone-ngram .full-auto-cockpit__spec-extra-sep {
-  color: color-mix(in srgb, var(--theme-info) 82%, transparent);
+  color: color-mix(in srgb, var(--fixed-cyan-400) 85%, var(--theme-text) 15%);
 }
 
 .full-auto-cockpit__dflash-get--tone-mtp {
@@ -2088,11 +2087,10 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 3.5rem minmax(0, 1fr);
-  align-items: center;
+  align-items: stretch;
   gap: 0.6rem;
-  min-height: 5.1rem;
-  margin-top: 0.35rem;
-  padding: 0.45rem 0.65rem 0.4rem;
+  margin-top: 0;
+  padding: 0.3rem 0.65rem 0.25rem;
   border-radius: 3px;
   border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-lo) 60%, var(--theme-border) 40%);
   background-color: var(--theme-panel-accent);
@@ -2106,11 +2104,8 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  /* Both halves share one height so their bands land on the same line. */
-  min-height: 4.6rem;
+  gap: 0.1rem;
   min-width: 0;
-  padding-top: 0.2rem;
 }
 
 .loadout-rail__group--spec,
@@ -2130,6 +2125,14 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   min-width: 0;
 }
 
+.loadout-rail__zone {
+  color: var(--theme-text-muted);
+  font-size: var(--type-hairline);
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 /* One band per half: it owns the badge line and the content, so SPEC and SWAPS
    position their badge, role and value from the same numbers. */
 .loadout-rail__band {
@@ -2143,7 +2146,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* Dotted connector on the track line — reads as one rail, not two widgets. */
 .loadout-rail__bridge {
   align-self: start;
-  margin-top: 3.25rem;
+  margin-top: 2.05rem;
   height: 8px;
   background-image: repeating-linear-gradient(
     90deg,
@@ -2157,7 +2160,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: relative;
   /* Same band as the SPEC slider plus one line: the state sits under the value plate
      with real air between them. */
-  height: 4rem;
+  height: 3.8rem;
   min-width: 0;
 }
 
@@ -2165,7 +2168,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   position: absolute;
   left: 0;
   right: 0;
-  top: 1.45rem;
+  top: 1.55rem;
   height: 6px;
   z-index: 0;
 }
@@ -2175,7 +2178,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
   top: 0;
   transform: translateX(-50%);
   width: 8.2rem;
-  height: 4rem;
+  height: 3.8rem;
   background: transparent;
   border: 0;
   padding: 0;
@@ -2189,7 +2192,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* Role word: same voice and same line as the slider's above-mark label. */
 .loadout-stop__role {
   position: absolute;
-  top: 0.62rem;
+  top: 0.55rem;
   left: 50%;
   transform: translateX(-50%);
   color: color-mix(in srgb, var(--theme-industrial-muted) 60%, transparent);
@@ -2202,7 +2205,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop__thumb {
   position: absolute;
-  top: 1.1rem;
+  top: 1.2rem;
   left: 50%;
   transform: translateX(-50%);
   width: 16px;
@@ -2213,7 +2216,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 /* Value under the thumb — the same filled "T" plate the selected SPEC mark wears. */
 .loadout-stop__value {
   position: absolute;
-  top: 2.05rem;
+  top: 2.2rem;
   left: 50%;
   transform: translateX(-50%);
   color: var(--theme-text-muted);
@@ -2251,7 +2254,7 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
 
 .loadout-stop__state {
   position: absolute;
-  top: 3.2rem;
+  top: 3.15rem;
   left: 50%;
   transform: translateX(-50%);
   color: var(--theme-text-muted);
@@ -2271,11 +2274,9 @@ html[data-harness-open="1"] .launch-rail-engine-chip.harness-engine--brain {
    Surface is --theme-panel-accent (neutral cockpit metal), never --theme-panel. */
 .full-auto-cockpit__grid-stack {
   position: relative;
-  /* The rail lives inside this box (the overlay has to cover both), so the gap the
-     body used to give it is owned here — same 0.75rem, same body height as before. */
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.3rem;
 }
 
 .gp-scrim {
