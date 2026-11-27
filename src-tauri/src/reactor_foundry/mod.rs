@@ -2394,21 +2394,13 @@ pub struct FoundryFlagDefaults {
 /// The panel used to carry its own copy of the default (and a placeholder literal), which
 /// is how a dead `-DGGML_AVX512=ON` survived in the UI long after the backend changed.
 ///
-/// Which shape counts as the default is the app channel's call: a REL install builds for the
-/// user's own machine, so its default is the factory profile; DEV is the seat that builds and
-/// packs what users download, so its default is the PORTABLE ship shape.
+/// Which shape counts as the default is the app channel's call, resolved once in
+/// `templates::default_build_profile_for_provider` (DEV packs the engines users download, so it
+/// starts on the PORTABLE ship shape; a REL install starts on the factory profile).
 #[tauri::command]
 pub fn foundry_flag_defaults(provider_id: String) -> FoundryFlagDefaults {
-    let template_profile = crate::templates::default_build_profile_for_provider(&provider_id);
-    let default_profile = if cfg!(debug_assertions) {
-        cmake::dev_default_build_mode()
-            .map(|mode| mode.profile.to_string())
-            .unwrap_or(template_profile)
-    } else {
-        template_profile
-    };
     FoundryFlagDefaults {
-        default_profile,
+        default_profile: crate::templates::default_build_profile_for_provider(&provider_id),
         mandatory: cmake::FOUNDRY_MANDATORY_CMAKE_FLAGS.trim().to_string(),
         modes: cmake::BUILD_FLAG_MODES
             .iter()

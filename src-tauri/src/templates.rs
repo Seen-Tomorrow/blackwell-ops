@@ -208,14 +208,22 @@ pub fn get_template_version_for_provider(provider_id: &str) -> u32 {
     serde_json::from_str::<TvOnly>(&content).ok().map(|o| o.tv).unwrap_or(1)
 }
 
-/// Factory `build_profile` for a provider — the **REL** default the BUILD FLAGS panel starts
-/// on (RESET, empty-box fallback, badge comparison), and the shape a provider discovered from
-/// its template is seeded with. A DEV app starts on the PORTABLE ship shape instead, because
-/// that is the seat that packs the engines users download (`cmake::dev_default_build_mode`).
+/// Default `build_profile` for a provider — the one place the BUILD FLAGS baseline comes
+/// from: the panel's default, RESET, the DEFAULT/MODIFIED badge, and the seed for a provider
+/// discovered from its template.
 ///
-/// Factory template first; the compiled-in default is the last resort so a provider
-/// without a template cannot end up flag-less (which would silently build without CUDA).
+/// The **app channel** picks the CPU shape. DEV builds and packs the engines users download,
+/// so it starts on the PORTABLE ship shape; a REL install can only build for the user's own
+/// machine, so it starts on the factory template (compiled-in default as the last resort, so a
+/// provider without a template cannot end up flag-less — which would silently build without
+/// CUDA). A profile the user saved for a provider still wins over any of this.
 pub fn default_build_profile_for_provider(provider_id: &str) -> String {
+    if cfg!(debug_assertions) {
+        if let Some(mode) = crate::reactor_foundry::cmake::dev_default_build_mode() {
+            return mode.profile.to_string();
+        }
+    }
+
     let app_root = crate::config::app_root_dir();
     let config_path = app_root
         .join("runtime")

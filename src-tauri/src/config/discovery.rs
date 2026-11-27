@@ -82,8 +82,6 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
         git_url: String,
         branch: String,
         template_type: String,
-        #[serde(default)]
-        build_profile: String,
         /// Template version — bumped in default config JSON when template changes.
         #[serde(default = "default_tv", rename = "templateVersion")]
         template_version: u32,
@@ -162,7 +160,10 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     _original_id: None,
                     git_url: identity.git_url,
                     branch: identity.branch,
-                    build_profile: identity.build_profile.clone(),
+                    // The channel's baseline, not the raw template value: DEV seeds the
+                    // PORTABLE ship shape, REL the factory template. A saved provider config
+                    // still overrides this further down.
+                    build_profile: crate::templates::default_build_profile_for_provider(&identity.id),
                     foundry_generator: String::new(),
                     template_type: identity.template_type,
                     build_info_per_env,
