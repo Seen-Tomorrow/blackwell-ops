@@ -56,29 +56,29 @@
     "check:patches": "node scripts/foundry-patch-health.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.1",
-    "@tauri-apps/plugin-shell": "^2.4.0",
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/plugin-shell": "^2.6.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "ansi-to-html": "^0.7.2",
     "html-to-image": "^1.11.13",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.1",
-    "@types/node": "^25.9.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.1.0",
-    "autoprefixer": "^10.4.20",
-    "knip": "^6.32.1",
+    "@tauri-apps/cli": "^2.12.6",
+    "@types/node": "^26.6.11",
+    "@types/react": "^19.3.3",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "autoprefixer": "^10.7.0",
+    "knip": "^6.48.0",
     "lightningcss": "^1.33.0",
-    "postcss": "^8.5.26",
+    "postcss": "^8.5.34",
     "postcss-load-config": "^6.0.1",
     "tailwindcss": "^3.4.13",
     "typescript": "~5.6.0",
-    "vite": "^8.2.2",
+    "vite": "^8.4.0",
     "vitest": "^4.1.11"
   }
 }
