@@ -29,6 +29,7 @@ import {
 } from "../lib/appNav";
 import HeaderNavSegment from "./HeaderNavSegment";
 import FoundryNavBadge from "./FoundryNavBadge";
+import DownloadNavBadge from "./DownloadNavBadge";
 
 interface HeaderNavProps {
   activeTab: Tab;
@@ -126,6 +127,15 @@ function HeaderNav({
           label: p.label,
           title: "Finish first-run setup first (OPERATIONS, DOWNLOADS, or CONFIG)",
           disabled: true,
+          dataAttrs: Object.keys(dataAttrs).length > 0 ? dataAttrs : undefined,
+        };
+      }
+      if (p.id === "downloads") {
+        return {
+          id: p.id,
+          className: "app-header__primary-option--downloads",
+          label: <DownloadNavBadge />,
+          title: "Downloads — click to open the download manager",
           dataAttrs: Object.keys(dataAttrs).length > 0 ? dataAttrs : undefined,
         };
       }

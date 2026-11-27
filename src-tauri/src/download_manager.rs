@@ -18,7 +18,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::RwLock;
 use crate::types::{
     DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch, TASK_KIND_APP,
-    TASK_KIND_HF, TASK_KIND_PROVIDER, TASK_KIND_TOOLCHAIN,
+    TASK_KIND_HF, TASK_KIND_PROVIDER, TASK_KIND_TOOLCHAIN, TASK_KIND_XET,
 };
 
 /// Persisted manifest entry — survives restart so we can recover orphaned .part files.
@@ -418,6 +418,9 @@ pub struct DownloadManager {
     max_concurrent: usize,
     /// App handle for App update apply / provider pack config activation after download.
     app_update_handle: Option<tauri::AppHandle>,
+    /// Xet delta task IDs that currently have a live async worker in this process.
+    /// Empty after app restart so `resume_download` knows to spawn a fresh Xet worker.
+    active_xet_workers: HashSet<String>,
 }
 
 impl DownloadManager {
@@ -427,6 +430,7 @@ impl DownloadManager {
             quant_batches: load_quant_batches(),
             max_concurrent: DEFAULT_MAX_CONCURRENT,
             app_update_handle: None,
+            active_xet_workers: HashSet::new(),
         }
     }
 
@@ -434,6 +438,121 @@ impl DownloadManager {
     pub fn register_quant_batch(&mut self, batch: QuantDownloadBatch) {
         self.quant_batches.insert(batch.id.clone(), batch);
         save_quant_batches(&self.quant_batches);
+    }
+
+    /// Register a Xet delta-update task so it appears live in the Downloads tab
+    /// and survives app restarts via the persisted download manifest.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_xet_task(
+        &mut self,
+        hf_model_id: String,
+        file_name: String,
+        download_url: String,
+        dest_path: String,
+        hf_author: String,
+        quant_type: String,
+        lfs_oid: String,
+        total_bytes: u64,
+        initial_status: DownloadStatus,
+        status_message: Option<String>,
+    ) -> String {
+        let task_id = generate_task_id();
+        let task = DownloadTask {
+            id: task_id.clone(),
+            hf_model_id,
+            file_name,
+            download_url,
+            total_bytes,
+            downloaded_bytes: 0,
+            status: initial_status,
+            dest_path,
+            hf_author,
+            quant_type,
+            lfs_oid,
+            status_message,
+            task_kind: TASK_KIND_XET.to_string(),
+            ..DownloadTask::default()
+        };
+        persist_task_to_manifest(&task);
+        self.active_xet_workers.insert(task_id.clone());
+        self.tasks.insert(task_id.clone(), task);
+        task_id
+    }
+
+    /// Transition a pre-registered Queued Xet task to Downloading.
+    pub fn set_xet_task_downloading(&mut self, task_id: &str, status_message: Option<String>) {
+        if let Some(t) = self.tasks.get_mut(task_id) {
+            if t.status != DownloadStatus::Failed {
+                t.status = DownloadStatus::Downloading;
+                if status_message.is_some() {
+                    t.status_message = status_message;
+                }
+            }
+        }
+    }
+
+    /// Update progress / speed / status message for an active Xet delta task.
+    pub fn update_xet_task(
+        &mut self,
+        task_id: &str,
+        downloaded_bytes: u64,
+        total_bytes: u64,
+        speed_bps: u64,
+        eta_seconds: u64,
+        status_message: Option<String>,
+    ) {
+        if let Some(t) = self.tasks.get_mut(task_id) {
+            if t.status == DownloadStatus::Failed {
+                return;
+            }
+            t.downloaded_bytes = downloaded_bytes;
+            if total_bytes > 0 {
+                t.total_bytes = total_bytes;
+            }
+            t.speed_bps = speed_bps;
+            t.eta_seconds = eta_seconds;
+            if status_message.is_some() {
+                t.status_message = status_message;
+            }
+        }
+    }
+
+    /// Mark a Xet delta task Completed or Failed and drop it from the recovery manifest.
+    pub fn finish_xet_task(
+        &mut self,
+        task_id: &str,
+        status: DownloadStatus,
+        error: Option<String>,
+        status_message: Option<String>,
+    ) {
+        self.active_xet_workers.remove(task_id);
+        remove_task_from_manifest(task_id);
+        if let Some(t) = self.tasks.get_mut(task_id) {
+            t.status = status;
+            t.error = error;
+            t.status_message = status_message;
+            t.speed_bps = 0;
+            t.eta_seconds = 0;
+            if t.status == DownloadStatus::Completed && t.total_bytes > 0 {
+                t.downloaded_bytes = t.total_bytes;
+            }
+        }
+    }
+
+    /// True if a task was cancelled (marked Failed) or removed.
+    pub fn is_task_cancelled(&self, task_id: &str) -> bool {
+        self.tasks
+            .get(task_id)
+            .map(|t| t.status == DownloadStatus::Failed)
+            .unwrap_or(true)
+    }
+
+    /// True if a task is currently Paused.
+    pub fn is_task_paused(&self, task_id: &str) -> bool {
+        self.tasks
+            .get(task_id)
+            .map(|t| t.status == DownloadStatus::Paused)
+            .unwrap_or(false)
     }
 
     /// Start a quant batch before enqueueing per-shard tasks.
@@ -466,6 +585,9 @@ impl DownloadManager {
         let mut shard_groups = HashSet::new();
 
         for entry in load_manifest().values() {
+            if entry.task_kind == TASK_KIND_XET {
+                continue;
+            }
             let resolved = crate::config::resolve_path(&entry.dest_path)
                 .to_string_lossy()
                 .to_string();
@@ -966,6 +1088,45 @@ impl DownloadManager {
         let mut stale = 0usize;
 
         for (task_id, entry) in manifest {
+            // Xet delta updates operate on an existing local .gguf whose old file size
+            // can be >= the new Hub size; NEVER run `final_file_complete`'s size fallback
+            // on them or untouched shards get silently dropped on restart!
+            if entry.task_kind == TASK_KIND_XET {
+                let already_updated = !entry.lfs_oid.is_empty()
+                    && crate::model_cache::get_hf_metadata(&entry.dest_path)
+                        .is_some_and(|m| m.lfs_oid == entry.lfs_oid);
+                if already_updated || !std::path::Path::new(&entry.dest_path).is_file() {
+                    stale += 1;
+                    remove_task_from_manifest(&task_id);
+                    continue;
+                }
+                recovered.push(DownloadTask {
+                    id: task_id.clone(),
+                    hf_model_id: entry.hf_model_id,
+                    file_name: entry.file_name,
+                    download_url: entry.download_url,
+                    total_bytes: entry.total_bytes,
+                    downloaded_bytes: entry.downloaded_bytes,
+                    status: DownloadStatus::Paused,
+                    dest_path: entry.dest_path,
+                    speed_bps: 0,
+                    pause_offset: 0,
+                    error: None,
+                    status_message: Some("Xet delta · paused (click RESUME to continue)".to_string()),
+                    retry_count: 0,
+                    eta_seconds: 0,
+                    hf_author: entry.hf_author,
+                    quant_type: entry.quant_type,
+                    lfs_oid: entry.lfs_oid,
+                    source_tag: entry.source_tag,
+                    expected_sha256: entry.expected_sha256,
+                    batch_id: entry.batch_id,
+                    task_kind: TASK_KIND_XET.to_string(),
+                    priority: 100,
+                });
+                continue;
+            }
+
             // The final file is already in place: the row is a leftover from a
             // finalize that crashed between rename and manifest cleanup (or a
             // resurrected row). Recovering it as Paused reports "N GB already
@@ -1261,6 +1422,39 @@ impl DownloadManager {
     ) -> Result<(), String> {
         match self.tasks.get_mut(&task_id) {
             Some(task) => match task.status {
+                DownloadStatus::Paused if task.task_kind == TASK_KIND_XET => {
+                    let has_live_worker = self.active_xet_workers.contains(&task_id);
+                    task.status = DownloadStatus::Downloading;
+                    task.error = None;
+                    if !has_live_worker {
+                        task.status_message = Some("Xet delta planning…".to_string());
+                        let dest_path = task.dest_path.clone();
+                        let download_url = task.download_url.clone();
+                        let lfs_oid = task.lfs_oid.clone();
+                        let hf_model_id = task.hf_model_id.clone();
+                        let hf_author = task.hf_author.clone();
+                        let quant_type = task.quant_type.clone();
+                        let file_name = task.file_name.clone();
+                        let app_handle = self.app_update_handle.clone();
+                        self.active_xet_workers.insert(task_id.clone());
+                        tokio::spawn(async move {
+                            crate::downloads::run_recovered_xet_task(
+                                self_arc,
+                                app_handle,
+                                task_id,
+                                dest_path,
+                                download_url,
+                                lfs_oid,
+                                hf_model_id,
+                                hf_author,
+                                quant_type,
+                                file_name,
+                            )
+                            .await;
+                        });
+                    }
+                    Ok(())
+                }
                 DownloadStatus::Paused => {
                     // Re-derive from the file instead of trusting the row. The row only
                     // knows what a previous session saw; the `.part` may have been moved,
@@ -1335,24 +1529,74 @@ impl DownloadManager {
         Ok(priority)
     }
 
-    /// Bump a task's priority up (lower number = higher priority). Step = 10, min 0.
-    pub fn bump_priority_up(&mut self, task_id: &str) -> Result<u32, String> {
-        let task = self.tasks.get_mut(task_id).ok_or("Task not found")?;
-        if !matches!(task.status, crate::types::DownloadStatus::Queued | crate::types::DownloadStatus::Paused) {
+    /// Move a queued/paused task one slot up or down in the active queue by
+    /// normalizing active priorities (10, 20, 30, …) and swapping with its neighbor.
+    fn swap_priority_neighbor(&mut self, task_id: &str, move_up: bool) -> Result<u32, String> {
+        let status = self
+            .tasks
+            .get(task_id)
+            .ok_or_else(|| "Task not found".to_string())?
+            .status
+            .clone();
+        if !matches!(status, DownloadStatus::Queued | DownloadStatus::Paused) {
             return Err("Only queued or paused tasks can be moved".to_string());
         }
-        task.priority = task.priority.saturating_sub(10);
-        Ok(task.priority)
+
+        let mut active: Vec<(String, u32)> = self
+            .tasks
+            .values()
+            .filter(|t| {
+                matches!(
+                    t.status,
+                    DownloadStatus::Downloading
+                        | DownloadStatus::Queued
+                        | DownloadStatus::Paused
+                        | DownloadStatus::Scanning
+                )
+            })
+            .map(|t| (t.id.clone(), t.priority))
+            .collect();
+
+        // Match ModelHubDownloads default sort: priority asc, then id desc.
+        active.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)));
+
+        let Some(pos) = active.iter().position(|(id, _)| id == task_id) else {
+            return Err("Task not in active queue".to_string());
+        };
+
+        let target = if move_up {
+            pos.checked_sub(1)
+        } else if pos + 1 < active.len() {
+            Some(pos + 1)
+        } else {
+            None
+        };
+
+        if let Some(swap_idx) = target {
+            active.swap(pos, swap_idx);
+        }
+
+        let mut new_priority = 100u32;
+        for (idx, (id, _)) in active.iter().enumerate() {
+            let p = ((idx as u32) + 1) * 10;
+            if let Some(t) = self.tasks.get_mut(id) {
+                t.priority = p;
+                if id == task_id {
+                    new_priority = p;
+                }
+            }
+        }
+        Ok(new_priority)
     }
 
-    /// Bump a task's priority down (higher number = lower priority). Step = 10, max 1000.
+    /// Move a task up one slot in the queue (lower priority number = higher priority).
+    pub fn bump_priority_up(&mut self, task_id: &str) -> Result<u32, String> {
+        self.swap_priority_neighbor(task_id, true)
+    }
+
+    /// Move a task down one slot in the queue (higher priority number = lower priority).
     pub fn bump_priority_down(&mut self, task_id: &str) -> Result<u32, String> {
-        let task = self.tasks.get_mut(task_id).ok_or("Task not found")?;
-        if !matches!(task.status, crate::types::DownloadStatus::Queued | crate::types::DownloadStatus::Paused) {
-            return Err("Only queued or paused tasks can be moved".to_string());
-        }
-        task.priority = (task.priority + 10).min(1000);
-        Ok(task.priority)
+        self.swap_priority_neighbor(task_id, false)
     }
 
     /// Remove completed/failed tasks older than the last 20 entries (keeps history).
@@ -2137,6 +2381,13 @@ async fn mark_completed_worker(
         if !is_toolchain && !is_app {
             task.status = DownloadStatus::Completed;
             record_download_history(history_from_task(task, "completed"));
+            if task.task_kind == TASK_KIND_HF {
+                let dest = task.dest_path.clone();
+                let url = task.download_url.clone();
+                tokio::spawn(async move {
+                    crate::xet_client::record_recipe_for_completed_download(dest, url).await;
+                });
+            }
         }
         task.speed_bps = 0;
         task.eta_seconds = 0;
@@ -2658,9 +2909,20 @@ pub fn delete_partial_files(paths: &[String]) {
     }
 }
 
-/// Generate a unique task ID using microsecond timestamp.
+/// Generate a strictly monotonic unique task ID using microsecond timestamp.
+/// Windows clock resolution can return identical micros in tight loops (e.g.
+/// pre-registering multiple shards), so we bump past the previous ID atomically.
 fn generate_task_id() -> String {
-    Utc::now().timestamp_micros().to_string()
+    static LAST_ID: AtomicU64 = AtomicU64::new(0);
+    let now = Utc::now().timestamp_micros().max(0) as u64;
+    let mut prev = LAST_ID.load(Ordering::Relaxed);
+    loop {
+        let next = now.max(prev.saturating_add(1));
+        match LAST_ID.compare_exchange_weak(prev, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return next.to_string(),
+            Err(actual) => prev = actual,
+        }
+    }
 }
 
 /// True when the streamed byte count satisfies the declared file size.

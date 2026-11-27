@@ -824,8 +824,9 @@ pub struct HfSearchFilters {
 
 // ── Download Manager Types ───────────────────────────────────────────────
 
-/// Download task kinds: HF models, Foundry toolchain, app update (7z/NSIS), provider engine pack.
+/// Download task kinds: HF models, Xet delta updates, Foundry toolchain, app update (7z/NSIS), provider engine pack.
 pub const TASK_KIND_HF: &str = "hf";
+pub const TASK_KIND_XET: &str = "xet";
 pub const TASK_KIND_TOOLCHAIN: &str = "toolchain";
 pub const TASK_KIND_APP: &str = "app";
 pub const TASK_KIND_PROVIDER: &str = "provider";

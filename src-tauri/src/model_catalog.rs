@@ -100,7 +100,9 @@ pub fn catalog_exclusions_from_downloads(
     // interrupted model vanish from the catalog the moment its download was paused.
     let _ = batches;
     for task in tasks.values() {
-        if task.status == DownloadStatus::Downloading {
+        if task.status == DownloadStatus::Downloading
+            && task.task_kind != crate::types::TASK_KIND_XET
+        {
             let resolved = crate::config::resolve_path(&task.dest_path)
                 .to_string_lossy()
                 .to_string();

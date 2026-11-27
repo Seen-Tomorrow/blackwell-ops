@@ -3,14 +3,6 @@
    var(--x,#hex) fallback). Sizes = var(--type-*).
    Owner: de-Tailwind pass 1B. */
 
-/* ── HeaderDownloadStrip ─────────────────────────────────── */
-
-/* "+N more" counter next to the primary inline download row (stealth-muted/70) */
-.hdr-dl-strip-count {
-  font-size: var(--type-micro);
-  color: color-mix(in srgb, var(--theme-text-muted) 70%, transparent);
-}
-
 /* ── HeaderMaintenanceStrip — background metadata / VRAM fit pass ───────── */
 
 .hdr-maint-strip {

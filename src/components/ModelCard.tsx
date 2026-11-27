@@ -1,6 +1,8 @@
-import type { ModelEntry, ModelMetadata, CatalogUpdateEntry } from "../lib/types";
+import { useEffect, useState } from "react";
+import type { ModelEntry, ModelMetadata, CatalogUpdateEntry, DownloadTask } from "../lib/types";
 import { BAKED_MTP_BADGE, draftRoleBadge, draftRoleFromModel, hasBakedMtp, isAttachmentModel, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
+import { dispatchNavigateModelHub } from "../lib/events";
 import { ENDPOINT_ROLE_LABEL, type EndpointRole } from "../lib/catalogQuickAccess";
 
 /**
@@ -105,6 +107,10 @@ interface ModelCardProps {
   checkBusy?: boolean;
   /** Another card's check is running — keep the action disabled, no spinner. */
   checkDisabled?: boolean;
+  /** Manually pair an unpaired model with an HF owner/repo ID. */
+  onPairHfRepo?: (repoId: string) => Promise<void>;
+  /** Live active download/Xet update for this model (renders mini progress widget). */
+  activeDownload?: DownloadTask | null;
 }
 
 export default function ModelCard({
@@ -122,6 +128,8 @@ export default function ModelCard({
   onCheckUpdate,
   checkBusy = false,
   checkDisabled = false,
+  onPairHfRepo,
+  activeDownload = null,
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const draftRole = draftRoleFromModel(model);
@@ -193,13 +201,38 @@ export default function ModelCard({
   // Update-check verdict for this card: UP TO DATE / NOT PAIRED / HEADER / FULL.
   // Persistent until applied or dismissed — a verdict that vanishes after 6 s cannot be
   // re-read, which made the check feel like it had done nothing.
+  const [pairInput, setPairInput] = useState(model.hfModelId || "");
+  const [pairBusy, setPairBusy] = useState(false);
+  const [pairError, setPairError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (checkVerdict?.noRemote) {
+      setPairInput(model.hfModelId || "");
+      setPairError(null);
+    }
+  }, [checkVerdict?.noRemote, model.hfModelId]);
+
+  const submitPair = async () => {
+    const trimmed = pairInput.trim();
+    if (!trimmed || !onPairHfRepo || pairBusy) return;
+    setPairBusy(true);
+    setPairError(null);
+    try {
+      await onPairHfRepo(trimmed);
+    } catch (err) {
+      setPairError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPairBusy(false);
+    }
+  };
+
   const checkBubble = (() => {
     if (!checkVerdict) return null;
     if (checkVerdict.kind === "full") {
       return { text: "UPDATE · FULL", variant: "full" as const, icon: "▲", actionable: true, btnLabel: hfUpdateBusy ? "QUEUING…" : "DOWNLOAD" };
     }
     if (checkVerdict.kind === "header") {
-      return { text: "UPDATE · METADATA", variant: "header" as const, icon: "◆", actionable: true, btnLabel: hfUpdateBusy ? "PATCHING…" : "PATCH" };
+      return { text: "UPDATE · XET", variant: "header" as const, icon: "◆", actionable: true, btnLabel: hfUpdateBusy ? "UPDATING…" : "UPDATE" };
     }
     // kind === "current"
     if (checkVerdict.noRemote) {
@@ -227,38 +260,185 @@ export default function ModelCard({
           : undefined
       }
     >
-      {checkBubble && (
+      {activeDownload ? (
+        (() => {
+          const pct =
+            activeDownload.totalBytes > 0
+              ? Math.max(0, Math.min(100, (activeDownload.downloadedBytes / activeDownload.totalBytes) * 100))
+              : 0;
+          const fmtGb = (b: number) =>
+            b >= 1_073_741_824 ? `${(b / 1_073_741_824).toFixed(1)} GB` : `${Math.round(b / 1_048_576)} MB`;
+          const speed =
+            activeDownload.status === "downloading" && activeDownload.speedBps > 0
+              ? activeDownload.speedBps >= 1_048_576
+                ? `${(activeDownload.speedBps / 1_048_576).toFixed(1)} MB/s`
+                : `${Math.round(activeDownload.speedBps / 1024)} KB/s`
+              : activeDownload.status.toUpperCase();
+          const shardHint = activeDownload.statusMessage || activeDownload.fileName;
+          return (
+            <div
+              className="model-card-update-tray model-card-update-tray--progress"
+              role="status"
+              aria-live="polite"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="model-card-update-tray__row">
+                <span className="model-card-update-tray__label truncate" title={shardHint}>
+                  {shardHint}
+                </span>
+                <span className="model-card-update-tray__meta">
+                  {activeDownload.totalBytes > 0
+                    ? `${fmtGb(activeDownload.downloadedBytes)} / ${fmtGb(activeDownload.totalBytes)}`
+                    : ""}
+                  {speed ? ` · ${speed}` : ""}
+                </span>
+                <span className="model-card-update-tray__pct">{Math.round(pct)}%</span>
+              </div>
+              <div className="model-card-update-tray__row">
+                <span
+                  className="model-card-update-tray__track"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(pct)}
+                >
+                  <span
+                    className={`model-card-update-tray__fill${
+                      activeDownload.status === "paused" ? " model-card-update-tray__fill--paused" : ""
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </span>
+                <button
+                  type="button"
+                  className="model-card-check-bubble__btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatchNavigateModelHub();
+                  }}
+                  title="Open Download Manager"
+                >
+                  QUEUE ↗
+                </button>
+              </div>
+            </div>
+          );
+        })()
+      ) : checkVerdict?.noRemote && onPairHfRepo ? (
         <div
-          className={`model-card-check-bubble model-card-check-bubble--${checkBubble.variant}${
-            checkBubble.actionable ? " model-card-check-bubble--actionable" : ""
-          }`}
-          role="status"
-          aria-live="polite"
-          title={checkVerdict?.reason || undefined}
-          onClick={
-            checkBubble.actionable
-              ? undefined
-              : (e) => {
-                  e.stopPropagation();
+          className="model-card-update-tray model-card-update-tray--pair"
+          role="dialog"
+          aria-label="Pair model with Hugging Face repository"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="model-card-update-tray__row">
+            <input
+              type="text"
+              className="model-card-check-bubble__input"
+              value={pairInput}
+              placeholder="owner/repo-GGUF"
+              autoFocus
+              disabled={pairBusy}
+              onChange={(e) => {
+                setPairInput(e.target.value);
+                if (pairError) setPairError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void submitPair();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
                   onBubbleDismiss?.();
                 }
-          }
-        >
-          <span className="model-card-check-bubble__icon" aria-hidden>{checkBubble.icon}</span>
-          {checkBubble.text}
-          {checkBubble.actionable && onApplyHfUpdate && (
+              }}
+            />
             <button
               type="button"
               className="model-card-check-bubble__btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onApplyHfUpdate();
-              }}
-              disabled={hfUpdateBusy}
+              onClick={() => void submitPair()}
+              disabled={pairBusy || !pairInput.trim()}
             >
-              {checkBubble.btnLabel}
+              {pairBusy ? "…" : "PAIR"}
             </button>
-          )}
+            <button
+              type="button"
+              className="model-card-check-bubble__dismiss"
+              onClick={() => onBubbleDismiss?.()}
+              aria-label="Dismiss"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="model-card-update-tray__row">
+            {pairError ? (
+              <span className="model-card-check-bubble__err" title={pairError}>
+                {pairError}
+              </span>
+            ) : (
+              <span className="model-card-update-tray__hint">
+                Not paired — enter Hugging Face owner/repo ID
+              </span>
+            )}
+          </div>
+        </div>
+      ) : checkBubble && checkBubble.actionable ? (
+        <div
+          className={`model-card-update-tray model-card-update-tray--${checkBubble.variant}`}
+          role="status"
+          aria-live="polite"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="model-card-update-tray__row">
+            <span className="model-card-check-bubble__icon" aria-hidden>{checkBubble.icon}</span>
+            <span className="model-card-update-tray__title">{checkBubble.text}</span>
+          </div>
+          <div className="model-card-update-tray__row model-card-update-tray__row--split">
+            {checkVerdict?.reason && (
+              <span className="model-card-update-tray__meta model-card-update-tray__meta--grow truncate" title={checkVerdict.reason}>
+                {checkVerdict.reason}
+              </span>
+            )}
+            <span className="model-card-update-tray__actions">
+              {onApplyHfUpdate && (
+                <button
+                  type="button"
+                  className="model-card-check-bubble__btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onApplyHfUpdate();
+                  }}
+                  disabled={hfUpdateBusy}
+                >
+                  {checkBubble.btnLabel}
+                </button>
+              )}
+              <button
+                type="button"
+                className="model-card-check-bubble__dismiss"
+                onClick={() => onBubbleDismiss?.()}
+                aria-label="Dismiss"
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        </div>
+      ) : checkBubble && (
+        <div
+          className={`model-card-check-bubble model-card-check-bubble--${checkBubble.variant}`}
+          role="status"
+          aria-live="polite"
+          title={checkVerdict?.reason || undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBubbleDismiss?.();
+          }}
+        >
+          <span className="model-card-check-bubble__icon" aria-hidden>{checkBubble.icon}</span>
+          {checkBubble.text}
         </div>
       )}
       {isBlockedMain && (
@@ -349,11 +529,11 @@ export default function ModelCard({
                 onCheckUpdate();
               }}
               disabled={checkBusy || checkDisabled}
-              className="mcard-check"
-              title="Check this model against Hugging Face"
+              className={`mcard-check${checkBusy ? " mcard-check--busy" : ""}`}
+              title={checkBusy ? "Checking Hugging Face…" : "Check this model against Hugging Face"}
               aria-label={`Check ${model.name} for updates`}
             >
-              {checkBusy ? "…" : "\u21bb"}
+              <span className="mcard-check__glyph" aria-hidden>{"\u21bb"}</span>
             </button>
           )}
           {hfUpdateKind === "header" && (
@@ -365,9 +545,9 @@ export default function ModelCard({
               }}
               disabled={hfUpdateBusy}
               className="mcard-hf type-micro font-mono px-1 py-0.5 rounded-sm border mcard-hf--header disabled:opacity-40"
-              title="Metadata / jinja template only — small download"
+              title="Xet chunk-level delta update — downloads only changed chunks"
             >
-              {hfUpdateBusy ? "PATCHING…" : "HEADER"}
+              {hfUpdateBusy ? "UPDATING…" : "XET"}
             </button>
           )}
           {hfUpdateKind === "full" && (

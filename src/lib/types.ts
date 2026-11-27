@@ -1241,7 +1241,7 @@ export interface DownloadTask {
   quantType?: string;
   lfsOid?: string;     // LFS content hash for incremental scan
   /** `hf` (default), `toolchain`, or `app` (NSIS installer) */
-  taskKind?: 'hf' | 'toolchain' | 'app' | 'provider';
+  taskKind?: 'hf' | 'xet' | 'toolchain' | 'app' | 'provider';
   /** Queue priority — lower number = higher priority. Default 100. */
   priority?: number;
 }
@@ -1301,7 +1301,7 @@ export interface DownloadHistoryEntry {
   hfModelId: string;
   file_name: string;
   quantType: string;
-  kind: 'header' | 'full';
+  kind: 'header' | 'full' | 'xet-delta';
   status: string;
   bytes: number;
   finishedAt: number;

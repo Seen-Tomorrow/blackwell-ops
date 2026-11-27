@@ -8,6 +8,7 @@ import ModelSearchPalette from "./ModelSearchPalette";
 import CatalogQuickStrip from "./CatalogQuickStrip";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
+import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import type { ModelScanPatch } from "../lib/libraryJobs";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
@@ -43,6 +44,7 @@ interface ModelCatalogProps {
   onCheckModelUpdate?: (path: string) => void;
   catalogCheckVerdicts?: Record<string, CatalogUpdateEntry>;
   onDismissCheckVerdict?: (path: string) => void;
+  onPairModelHfRepo?: (path: string, repoId: string) => Promise<void>;
 }
 
 /** Sort chips — no NAME (search covers free-text); keep one row when rail is narrow. */
@@ -70,10 +72,46 @@ const draftFilterLabels: Record<CatalogDraftFilter, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, extras = [], onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, onModelScanned, catalogHfUpdates, catalogUpdatesBusy, onCheckModelUpdate, catalogCheckVerdicts, onDismissCheckVerdict, pathScans } = props;
+  const { models, extras = [], onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, onModelScanned, catalogHfUpdates, catalogUpdatesBusy, onCheckModelUpdate, catalogCheckVerdicts, onDismissCheckVerdict, onPairModelHfRepo, pathScans } = props;
   const [updatesOnly, setUpdatesOnly] = useState(false);
   const [fullConfirm, setFullConfirm] = useState<CatalogUpdateEntry | null>(null);
   const [updateBusyPath, setUpdateBusyPath] = useState<string | null>(null);
+  const [checkingPath, setCheckingPath] = useState<string | null>(null);
+  const liveDownloads = useDownloadTasks();
+
+  const activeDownloadForModel = useMemo(() => {
+    const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+    const shardKey = (p: string): string | null => {
+      const n = norm(p);
+      const m = n.match(/^(.*)-\d{4,5}-of-\d{4,5}\.gguf$/);
+      return m ? m[1] : null;
+    };
+    const rank = (s: string) =>
+      s === "downloading" ? 0 : s === "scanning" ? 1 : s === "paused" ? 2 : s === "queued" ? 3 : 9;
+    const active = liveDownloads.filter(
+      (d) =>
+        d.status === "downloading" ||
+        d.status === "scanning" ||
+        d.status === "paused" ||
+        d.status === "queued",
+    );
+    return (modelPath: string) => {
+      if (active.length === 0) return null;
+      const target = norm(modelPath);
+      const targetShardKey = shardKey(modelPath);
+      const matches = active.filter((d) => {
+        if (!d.destPath) return false;
+        const dest = norm(d.destPath);
+        if (dest === target) return true;
+        // Sharded models only: match sibling shards sharing the exact same shard-set prefix.
+        if (!targetShardKey) return false;
+        return shardKey(dest) === targetShardKey;
+      });
+      if (matches.length === 0) return null;
+      matches.sort((a, b) => rank(a.status) - rank(b.status) || (b.id > a.id ? 1 : -1));
+      return matches[0];
+    };
+  }, [liveDownloads]);
 
   const updateByPath = useMemo(() => {
     const map = new Map<string, CatalogUpdateEntry>();
@@ -116,22 +154,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   /** Portable CUDA runtime required for llama-server GGUF probe (backend hard gate). */
   const scanBlockedByToolchain = !setupGuide.runtimeReady;
 
-  const applyHeaderUpdate = useCallback(async (row: CatalogUpdateEntry) => {
-    setUpdateBusyPath(row.path);
-    try {
-      await invoke<string>("patch_model_metadata", {
-        localPath: row.path,
-        remoteUrl: row.remoteUrl ?? "",
-        remoteTotalSize: row.remoteTotalSize ?? 0,
-      });
-      onDismissCheckVerdict?.(row.path);
-    } catch (e) {
-      console.error("Header patch failed:", e);
-    } finally {
-      setUpdateBusyPath(null);
-    }
-  }, [onDismissCheckVerdict]);
-
   const applyFullUpdate = useCallback(async (row: CatalogUpdateEntry) => {
     setUpdateBusyPath(row.path);
     try {
@@ -156,6 +178,30 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       setUpdateBusyPath(null);
     }
   }, [onDismissCheckVerdict]);
+
+  const applyXetUpdate = useCallback(async (row: CatalogUpdateEntry) => {
+    setUpdateBusyPath(row.path);
+    try {
+      const report = await invoke<{ status: string }>("xet_update_model_file", {
+        localPath: row.path,
+        remoteUrl: row.remoteUrl ?? "",
+        expectedSha256: null,
+      });
+      if (report.status === "fallback_full") {
+        await applyFullUpdate(row);
+        return;
+      }
+      if (onCheckModelUpdate) {
+        void onCheckModelUpdate(row.path);
+      } else {
+        onDismissCheckVerdict?.(row.path);
+      }
+    } catch (e) {
+      console.error("Xet delta update failed:", e);
+    } finally {
+      setUpdateBusyPath(null);
+    }
+  }, [applyFullUpdate, onCheckModelUpdate, onDismissCheckVerdict]);
 
   const { search, setSearch, draftFilter, setCatalogDraftFilter, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels: catalogModelsRaw, runningModelPaths,
@@ -992,23 +1038,38 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                           const row = catalogCheckVerdicts?.[model.path] ?? updateByPath.get(model.path);
                           if (!row) return;
                           if (row.kind === "full") setFullConfirm(row);
-                          else void applyHeaderUpdate(row);
+                          else void applyXetUpdate(row);
                         }}
                         onBubbleDismiss={() => onDismissCheckVerdict?.(model.path)}
+                        onPairHfRepo={
+                          onPairModelHfRepo
+                            ? (repoId) => onPairModelHfRepo(model.path, repoId)
+                            : undefined
+                        }
+                        activeDownload={activeDownloadForModel(model.path)}
                         onCheckUpdate={
                           onCheckModelUpdate
-                            ? () => onCheckModelUpdate(model.path)
+                            ? () => {
+                                setCheckingPath(model.path);
+                                void Promise.resolve(onCheckModelUpdate(model.path)).finally(() => {
+                                  setCheckingPath((cur) => (cur === model.path ? null : cur));
+                                });
+                              }
                             : undefined
                         }
                         checkBusy={
-                          catalogUpdatesBusy
-                          && (catalogSelectedModel?.path === model.path
-                            || panelActiveModel?.path === model.path)
+                          checkingPath === model.path
+                          || (catalogUpdatesBusy
+                            && checkingPath === null
+                            && (catalogSelectedModel?.path === model.path
+                              || panelActiveModel?.path === model.path))
                         }
                         checkDisabled={
-                          catalogUpdatesBusy
-                          && catalogSelectedModel?.path !== model.path
-                          && panelActiveModel?.path !== model.path
+                          (checkingPath !== null && checkingPath !== model.path)
+                          || (catalogUpdatesBusy
+                            && checkingPath === null
+                            && catalogSelectedModel?.path !== model.path
+                            && panelActiveModel?.path !== model.path)
                         }
                         pinned={isPinned(model.path)}
                         onTogglePin={handleTogglePin}

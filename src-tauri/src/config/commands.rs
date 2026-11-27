@@ -79,6 +79,18 @@ pub fn dev_reset_first_run(
     #[cfg(debug_assertions)]
     {
         crate::model_cache::clear_cache()?;
+        crate::xet_client::clear_in_memory_caches();
+
+        // Wipe all regenerable cache files directly under `config/cache/` (preserving
+        // subdirectories such as `sccache/` and `nvram/`).
+        if let Ok(entries) = std::fs::read_dir(cache_dir()) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() {
+                    let _ = std::fs::remove_file(&p);
+                }
+            }
+        }
 
         let mut fresh = build_fresh_config();
         fresh.setup_completed = false;

@@ -491,52 +491,664 @@ pub async fn recover_orphaned_batch_parts(
     Ok(created)
 }
 
-/// Patch a local GGUF file with new metadata from HF when only the header
-/// (metadata section) has changed. Avoids re-downloading the entire file.
-///
-/// - `local_path` — full path to the local .gguf file
-/// - `remote_url` — HF download URL for the same quant
-/// - `remote_total_size` — total file size of the remote file (from HF API)
+/// Update a local GGUF file against Hugging Face via Xet CAS chunk-level delta.
+/// Reuses all unchanged 64 KiB chunks directly from `local_path` on disk and downloads
+/// only changed Xorb ranges. Returns `status = "fallback_full"` for non-Xet files.
+fn make_xet_progress_hook(
+    manager: Arc<RwLock<DownloadManager>>,
+    app: Option<tauri::AppHandle>,
+    task_id: String,
+    shard_prefix: Option<String>,
+) -> crate::xet_client::XetProgressHook {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    let start = std::time::Instant::now();
+    let base_reused = Arc::new(AtomicU64::new(u64::MAX));
+    let last_emit_ms = Arc::new(AtomicU64::new(0));
+    let cancelled = Arc::new(AtomicBool::new(false));
+
+    let mgr_p = Arc::clone(&manager);
+    let app_p = app.clone();
+    let tid_p = task_id.clone();
+    let cancel_p = Arc::clone(&cancelled);
+    let on_progress = Arc::new(move |done: u64, total: u64, msg: Option<String>| {
+        let base = {
+            let cur = base_reused.load(Ordering::Relaxed);
+            if cur == u64::MAX {
+                base_reused.store(done, Ordering::Relaxed);
+                done
+            } else {
+                cur
+            }
+        };
+        let elapsed_ms = start.elapsed().as_millis() as u64;
+        let prev_ms = last_emit_ms.load(Ordering::Relaxed);
+        if msg.is_none() && elapsed_ms.saturating_sub(prev_ms) < 250 && done < total {
+            return;
+        }
+        last_emit_ms.store(elapsed_ms, Ordering::Relaxed);
+
+        let fetched = done.saturating_sub(base);
+        let elapsed_secs = start.elapsed().as_secs_f64();
+        let speed_bps = if elapsed_secs > 0.2 && fetched > 0 {
+            (fetched as f64 / elapsed_secs) as u64
+        } else {
+            0
+        };
+        let eta_seconds = if speed_bps > 0 && total > done {
+            (total - done) / speed_bps
+        } else {
+            0
+        };
+        let formatted_msg = msg.map(|m| match &shard_prefix {
+            Some(p) => format!("{p} · {m}"),
+            None => m,
+        });
+
+        let mgr = Arc::clone(&mgr_p);
+        let app_c = app_p.clone();
+        let tid = tid_p.clone();
+        let cancel_flag = Arc::clone(&cancel_p);
+        tokio::spawn(async move {
+            let mut dm = mgr.write().await;
+            if dm.is_task_cancelled(&tid) {
+                cancel_flag.store(true, Ordering::Relaxed);
+                return;
+            }
+            dm.update_xet_task(&tid, done, total, speed_bps, eta_seconds, formatted_msg);
+            drop(dm);
+            if let Some(ref handle) = app_c {
+                crate::ipc_emit::emit_guarded(
+                    handle,
+                    "download-event",
+                    serde_json::json!({ "type": "progress", "taskId": tid }),
+                );
+            }
+        });
+    });
+
+    let mgr_c = Arc::clone(&manager);
+    let tid_c = task_id.clone();
+    let cancel_c = Arc::clone(&cancelled);
+    let is_cancelled = Arc::new(move || {
+        if cancel_c.load(Ordering::Relaxed) {
+            return true;
+        }
+        if let Ok(dm) = mgr_c.try_read() {
+            if dm.is_task_cancelled(&tid_c) {
+                cancel_c.store(true, Ordering::Relaxed);
+                return true;
+            }
+        }
+        false
+    });
+
+    let mgr_pause = Arc::clone(&manager);
+    let tid_pause = task_id;
+    let is_paused = Arc::new(move || {
+        mgr_pause
+            .try_read()
+            .map(|dm| dm.is_task_paused(&tid_pause))
+            .unwrap_or(false)
+    });
+
+    crate::xet_client::XetProgressHook {
+        on_progress,
+        is_cancelled,
+        is_paused,
+    }
+}
+
+/// Re-run a recovered Xet delta task when the user clicks RESUME after an app restart.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_recovered_xet_task(
+    manager: Arc<RwLock<DownloadManager>>,
+    app: Option<tauri::AppHandle>,
+    task_id: String,
+    dest_path: String,
+    download_url: String,
+    lfs_oid: String,
+    hf_model_id: String,
+    hf_author: String,
+    quant_type: String,
+    file_name: String,
+) {
+    let hook = make_xet_progress_hook(Arc::clone(&manager), app.clone(), task_id.clone(), None);
+    let expected = (!lfs_oid.is_empty()).then_some(lfs_oid.as_str());
+    let res = crate::xet_client::xet_delta_update_with_progress(
+        &dest_path,
+        &download_url,
+        expected,
+        Some(hook),
+    )
+    .await;
+
+    match res {
+        Ok(r) => {
+            if r.status == "updated" || r.status == "already_current" {
+                let size_bytes = std::fs::metadata(&dest_path).map(|m| m.len()).unwrap_or(0);
+                let mut meta = crate::model_cache::get_hf_metadata(&dest_path).unwrap_or_else(|| {
+                    let slash = hf_model_id.find('/').unwrap_or(0);
+                    crate::types::HfMetadata {
+                        hf_model_id: hf_model_id.clone(),
+                        author: if hf_author.is_empty() && slash > 0 {
+                            hf_model_id[..slash].to_string()
+                        } else {
+                            hf_author.clone()
+                        },
+                        repo_name: if slash > 0 {
+                            hf_model_id[slash + 1..].to_string()
+                        } else {
+                            String::new()
+                        },
+                        tags: Vec::new(),
+                        downloads: 0,
+                        likes_count: 0,
+                        quant_type: quant_type.clone(),
+                        file_size_bytes: size_bytes,
+                        last_modified: String::new(),
+                        lfs_oid: String::new(),
+                    }
+                });
+                meta.file_size_bytes = size_bytes;
+                if !lfs_oid.is_empty() {
+                    meta.lfs_oid = lfs_oid;
+                }
+                let _ = crate::model_cache::set_hf_metadata(&dest_path, meta);
+            }
+            if r.status == "updated" {
+                crate::download_manager::record_download_history(
+                    crate::download_manager::DownloadHistoryEntry {
+                        id: format!("xet-{}", chrono::Utc::now().timestamp_micros()),
+                        hf_model_id,
+                        file_name,
+                        quant_type,
+                        kind: "xet-delta".into(),
+                        status: "updated".into(),
+                        bytes: r.bytes_downloaded,
+                        finished_at: chrono::Utc::now().timestamp(),
+                    },
+                );
+            }
+            let mut dm = manager.write().await;
+            dm.finish_xet_task(
+                &task_id,
+                if r.status == "fallback_full" {
+                    crate::types::DownloadStatus::Failed
+                } else {
+                    crate::types::DownloadStatus::Completed
+                },
+                r.reason,
+                Some(if r.status == "already_current" {
+                    "Up to date".to_string()
+                } else {
+                    "Xet delta complete".to_string()
+                }),
+            );
+            drop(dm);
+            if let Some(ref handle) = app {
+                crate::ipc_emit::emit_guarded(
+                    handle,
+                    "download-event",
+                    serde_json::json!({ "type": "completed", "taskId": task_id }),
+                );
+            }
+        }
+        Err(e) => {
+            let mut dm = manager.write().await;
+            dm.finish_xet_task(
+                &task_id,
+                crate::types::DownloadStatus::Failed,
+                Some(e),
+                None,
+            );
+            drop(dm);
+            if let Some(ref handle) = app {
+                crate::ipc_emit::emit_guarded(
+                    handle,
+                    "download-event",
+                    serde_json::json!({ "type": "failed", "taskId": task_id }),
+                );
+            }
+        }
+    }
+}
+
 #[tauri::command]
-pub async fn patch_model_metadata(
+pub async fn xet_update_model_file(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
     local_path: String,
     remote_url: String,
-    remote_total_size: u64,
-) -> Result<String, String> {
-    match crate::gguf_patch::patch_metadata(&local_path, &remote_url, remote_total_size).await {
-        crate::gguf_patch::PatchResult::AlreadyCurrent => Ok("already_current".to_string()),
-        crate::gguf_patch::PatchResult::Patched { header_bytes_downloaded, local_io_bytes } => {
-            log::info!(
-                "[patch-model] Patched {}: downloaded {} header bytes, {} local I/O",
-                local_path,
-                header_bytes_downloaded,
-                local_io_bytes
-            );
-            let name = std::path::Path::new(&local_path)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("model.gguf")
-                .to_string();
-            crate::download_manager::record_download_history(
-                crate::download_manager::DownloadHistoryEntry {
-                    id: format!("patch-{}", chrono::Utc::now().timestamp_micros()),
-                    hf_model_id: String::new(),
-                    file_name: name,
-                    quant_type: String::new(),
-                    kind: "header".into(),
-                    status: "patched".into(),
-                    bytes: header_bytes_downloaded,
-                    finished_at: chrono::Utc::now().timestamp(),
-                },
-            );
-            let _ = local_io_bytes;
-            Ok("patched".to_string())
+    expected_sha256: Option<String>,
+) -> Result<crate::xet_client::XetDeltaReport, String> {
+    let dm_arc = Arc::clone(&*manager);
+    let path = std::path::Path::new(&local_path);
+    let cached_meta = crate::model_cache::get_hf_metadata(&local_path);
+    let repo_id = cached_meta
+        .as_ref()
+        .map(|m| m.hf_model_id.clone())
+        .filter(|id| id.contains('/'))
+        .or_else(|| {
+            remote_url
+                .strip_prefix("https://huggingface.co/")
+                .or_else(|| remote_url.strip_prefix("http://huggingface.co/"))
+                .and_then(|rest| {
+                    let mut segs = rest.splitn(4, '/');
+                    let owner = segs.next()?;
+                    let repo = segs.next()?;
+                    (!owner.is_empty() && !repo.is_empty()).then(|| format!("{owner}/{repo}"))
+                })
+        });
+
+    if let (Some(repo_id), Some(filename), Some(dir)) = (
+        repo_id,
+        path.file_name().and_then(|s| s.to_str()),
+        path.parent(),
+    ) {
+        let hf_token = crate::secrets::get_secret("hf_token")?;
+        if let Ok(files) = crate::hf_api::list_repo_gguf_files(&repo_id, hf_token.as_deref()).await {
+            let quant = crate::model_catalog::extract_quant(filename);
+            let matched = files
+                .iter()
+                .filter(|g| g.role.is_quant())
+                .find(|g| {
+                    g.download_parts()
+                        .iter()
+                        .any(|p| p.file_name.eq_ignore_ascii_case(filename))
+                })
+                .or_else(|| files.iter().find(|g| g.role.is_quant() && g.r#type == quant));
+
+            if let Some(hf) = matched {
+                let parts = hf.download_parts();
+                if !parts.is_empty() {
+                    let model_cache = crate::model_cache::load_cache();
+                    let slash = repo_id.find('/').unwrap_or(0);
+                    let author = repo_id[..slash].to_string();
+                    let repo_name = repo_id[slash + 1..].to_string();
+
+                    let mut total_downloaded = 0u64;
+                    let mut total_reused = 0u64;
+                    let mut total_bytes = 0u64;
+                    let mut all_verified = true;
+                    let mut any_updated = false;
+
+                    // Collect all stale shards first, pre-plan reused bytes (fast recipe JSON
+                    // only, 0 weight bytes), and pre-register them as Queued so every queued
+                    // shard immediately shows its reused % and delta size in the Downloads tab.
+                    let mut stale_candidates: Vec<(usize, &crate::types::GgufShard, std::path::PathBuf, String)> = Vec::new();
+                    for (idx, part) in parts.iter().enumerate() {
+                        let sibling = dir.join(&part.file_name);
+                        let sibling_str = sibling.to_string_lossy().to_string();
+                        let already_current = sibling.is_file()
+                            && !part.lfs_oid.is_empty()
+                            && crate::model_cache::get_hf_metadata_with_cache(
+                                &model_cache,
+                                &sibling_str,
+                            )
+                            .is_some_and(|m| m.lfs_oid == part.lfs_oid);
+                        if already_current {
+                            total_reused += part.size_bytes;
+                            total_bytes += part.size_bytes;
+                            continue;
+                        }
+                        stale_candidates.push((idx, part, sibling, sibling_str));
+                    }
+
+                    let batch_items: Vec<(String, String)> = stale_candidates
+                        .iter()
+                        .map(|(_, part, _, sibling_str)| (sibling_str.clone(), part.url.clone()))
+                        .collect();
+                    let estimates =
+                        crate::xet_client::estimate_xet_deltas_batch(&repo_id, &batch_items).await;
+
+                    let mut queued_shards: Vec<(usize, &crate::types::GgufShard, std::path::PathBuf, String, String)> = Vec::new();
+                    {
+                        let mut dm = dm_arc.write().await;
+                        for ((idx, part, sibling, sibling_str), est) in
+                            stale_candidates.into_iter().zip(estimates.into_iter())
+                        {
+                            let shard_prefix = (parts.len() > 1)
+                                .then(|| format!("Shard {}/{}", idx + 1, parts.len()));
+                            let status_msg = match &est {
+                                Some(e) if e.is_xet && e.reused_bytes > 0 && e.total_bytes > 0 => {
+                                    let pct = (e.reused_bytes as f64 / e.total_bytes as f64) * 100.0;
+                                    let reused_str = crate::model_catalog::calc_size_str_from_bytes(e.reused_bytes);
+                                    let detail = format!("Queued · {reused_str} reused ({pct:.0}%)");
+                                    match &shard_prefix {
+                                        Some(p) => format!("{p} · {detail}"),
+                                        None => detail,
+                                    }
+                                }
+                                Some(e) if e.reused_bytes == 0 => {
+                                    let detail = "Queued · full download (0% reused)";
+                                    match &shard_prefix {
+                                        Some(p) => format!("{p} · {detail}"),
+                                        None => detail.to_string(),
+                                    }
+                                }
+                                _ => shard_prefix
+                                    .as_deref()
+                                    .map(|p| format!("{p} · Queued (Xet delta)"))
+                                    .unwrap_or_else(|| "Queued (Xet delta)".to_string()),
+                            };
+                            let task_id = dm.register_xet_task(
+                                repo_id.clone(),
+                                part.file_name.clone(),
+                                part.url.clone(),
+                                sibling_str.clone(),
+                                author.clone(),
+                                hf.r#type.clone(),
+                                part.lfs_oid.clone(),
+                                part.size_bytes,
+                                crate::types::DownloadStatus::Queued,
+                                Some(status_msg),
+                            );
+                            if let Some(ref e) = est {
+                                if e.reused_bytes > 0 {
+                                    dm.update_xet_task(&task_id, e.reused_bytes, e.total_bytes, 0, 0, None);
+                                }
+                            }
+                            queued_shards.push((idx, part, sibling, sibling_str, task_id));
+                        }
+                    }
+                    for (_, _, _, _, tid) in &queued_shards {
+                        crate::ipc_emit::emit_guarded(
+                            &app,
+                            "download-event",
+                            serde_json::json!({ "type": "queued", "taskId": tid }),
+                        );
+                    }
+
+                    for (q_pos, (idx, part, sibling, sibling_str, task_id)) in queued_shards.iter().enumerate() {
+                        let shard_prefix = (parts.len() > 1)
+                            .then(|| format!("Shard {}/{}", idx + 1, parts.len()));
+                        if parts.len() > 1 {
+                            crate::output_console::emit_blackwell_output_console_utils_line(
+                                format!(
+                                    "[xet-delta] shard {}/{}: {}",
+                                    idx + 1,
+                                    parts.len(),
+                                    part.file_name
+                                ),
+                                crate::output_console::BlackwellOutputConsoleLineStyle::Highlight,
+                            );
+                        }
+
+                        {
+                            let mut dm = dm_arc.write().await;
+                            dm.set_xet_task_downloading(
+                                task_id,
+                                Some(
+                                    shard_prefix
+                                        .as_deref()
+                                        .map(|p| format!("{p} · Xet delta planning…"))
+                                        .unwrap_or_else(|| "Xet delta planning…".to_string()),
+                                ),
+                            );
+                        }
+                        crate::ipc_emit::emit_guarded(
+                            &app,
+                            "download-event",
+                            serde_json::json!({ "type": "progress", "taskId": task_id }),
+                        );
+
+                        let hook = make_xet_progress_hook(
+                            Arc::clone(&dm_arc),
+                            Some(app.clone()),
+                            task_id.clone(),
+                            shard_prefix,
+                        );
+                        let expected = (!part.lfs_oid.is_empty()).then_some(part.lfs_oid.as_str());
+                        let res = crate::xet_client::xet_delta_update_with_progress(
+                            sibling_str,
+                            &part.url,
+                            expected,
+                            Some(hook),
+                        )
+                        .await;
+
+                        let r = match res {
+                            Ok(r) => {
+                                let mut dm = dm_arc.write().await;
+                                if r.status == "fallback_full" {
+                                    dm.finish_xet_task(
+                                        task_id,
+                                        crate::types::DownloadStatus::Failed,
+                                        r.reason.clone(),
+                                        None,
+                                    );
+                                } else {
+                                    dm.finish_xet_task(
+                                        task_id,
+                                        crate::types::DownloadStatus::Completed,
+                                        None,
+                                        Some(if r.status == "already_current" {
+                                            "Up to date".to_string()
+                                        } else {
+                                            "Xet delta complete".to_string()
+                                        }),
+                                    );
+                                }
+                                drop(dm);
+                                crate::ipc_emit::emit_guarded(
+                                    &app,
+                                    "download-event",
+                                    serde_json::json!({ "type": "completed", "taskId": task_id }),
+                                );
+                                r
+                            }
+                            Err(e) => {
+                                let mut dm = dm_arc.write().await;
+                                dm.finish_xet_task(
+                                    task_id,
+                                    crate::types::DownloadStatus::Failed,
+                                    Some(e.clone()),
+                                    None,
+                                );
+                                // Also cancel remaining pre-queued shards in this set.
+                                for (_, _, _, _, rem_id) in &queued_shards[q_pos + 1..] {
+                                    dm.finish_xet_task(
+                                        rem_id,
+                                        crate::types::DownloadStatus::Failed,
+                                        Some(e.clone()),
+                                        None,
+                                    );
+                                }
+                                drop(dm);
+                                crate::ipc_emit::emit_guarded(
+                                    &app,
+                                    "download-event",
+                                    serde_json::json!({ "type": "failed", "taskId": task_id }),
+                                );
+                                return Err(e);
+                            }
+                        };
+
+                        if r.status == "fallback_full" {
+                            return Ok(r);
+                        }
+
+                        total_downloaded += r.bytes_downloaded;
+                        total_reused += r.bytes_reused;
+                        total_bytes += r.total_bytes;
+                        all_verified &= r.sha256_verified;
+                        if r.status == "updated" {
+                            any_updated = true;
+                        }
+
+                        if r.status == "updated" || r.status == "already_current" {
+                            let size_bytes = std::fs::metadata(sibling)
+                                .map(|m| m.len())
+                                .unwrap_or(part.size_bytes);
+                            let mut updated_meta = crate::model_cache::get_hf_metadata_with_cache(
+                                &model_cache,
+                                sibling_str,
+                            )
+                            .unwrap_or_else(|| crate::types::HfMetadata {
+                                hf_model_id: repo_id.clone(),
+                                author: author.clone(),
+                                repo_name: repo_name.clone(),
+                                tags: Vec::new(),
+                                downloads: 0,
+                                likes_count: 0,
+                                quant_type: hf.r#type.clone(),
+                                file_size_bytes: size_bytes,
+                                last_modified: String::new(),
+                                lfs_oid: String::new(),
+                            });
+                            updated_meta.file_size_bytes = size_bytes;
+                            if !part.lfs_oid.is_empty() {
+                                updated_meta.lfs_oid = part.lfs_oid.clone();
+                            }
+                            let _ = crate::model_cache::set_hf_metadata(sibling_str, updated_meta);
+                        }
+                    }
+
+                    if any_updated {
+                        crate::download_manager::record_download_history(
+                            crate::download_manager::DownloadHistoryEntry {
+                                id: format!("xet-{}", chrono::Utc::now().timestamp_micros()),
+                                hf_model_id: repo_id,
+                                file_name: filename.to_string(),
+                                quant_type: hf.r#type.clone(),
+                                kind: "xet-delta".into(),
+                                status: "updated".into(),
+                                bytes: total_downloaded,
+                                finished_at: chrono::Utc::now().timestamp(),
+                            },
+                        );
+                    }
+
+                    return Ok(crate::xet_client::XetDeltaReport {
+                        status: if any_updated {
+                            "updated".into()
+                        } else {
+                            "already_current".into()
+                        },
+                        bytes_downloaded: total_downloaded,
+                        bytes_reused: total_reused,
+                        total_bytes,
+                        sha256_verified: all_verified,
+                        reason: None,
+                    });
+                }
+            }
         }
-        crate::gguf_patch::PatchResult::RequiresFullDownload { reason } => {
-            Err(format!("Requires full re-download: {}", reason))
-        }
-        crate::gguf_patch::PatchResult::Error(e) => Err(e),
     }
+
+    let file_name = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model.gguf")
+        .to_string();
+    let total_guess = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let task_id = {
+        let mut dm = dm_arc.write().await;
+        dm.register_xet_task(
+            cached_meta
+                .as_ref()
+                .map(|m| m.hf_model_id.clone())
+                .unwrap_or_default(),
+            file_name.clone(),
+            remote_url.clone(),
+            local_path.clone(),
+            cached_meta
+                .as_ref()
+                .map(|m| m.author.clone())
+                .unwrap_or_default(),
+            cached_meta
+                .as_ref()
+                .map(|m| m.quant_type.clone())
+                .unwrap_or_default(),
+            expected_sha256.clone().unwrap_or_default(),
+            total_guess,
+            crate::types::DownloadStatus::Downloading,
+            Some("Xet delta planning…".to_string()),
+        )
+    };
+    crate::ipc_emit::emit_guarded(
+        &app,
+        "download-event",
+        serde_json::json!({ "type": "queued", "taskId": task_id }),
+    );
+    let hook = make_xet_progress_hook(Arc::clone(&dm_arc), Some(app.clone()), task_id.clone(), None);
+    let res = crate::xet_client::xet_delta_update_with_progress(
+        &local_path,
+        &remote_url,
+        expected_sha256.as_deref(),
+        Some(hook),
+    )
+    .await;
+
+    let report = match res {
+        Ok(r) => {
+            let mut dm = dm_arc.write().await;
+            dm.finish_xet_task(
+                &task_id,
+                if r.status == "fallback_full" {
+                    crate::types::DownloadStatus::Failed
+                } else {
+                    crate::types::DownloadStatus::Completed
+                },
+                r.reason.clone(),
+                Some("Xet delta complete".to_string()),
+            );
+            drop(dm);
+            crate::ipc_emit::emit_guarded(
+                &app,
+                "download-event",
+                serde_json::json!({ "type": "completed", "taskId": task_id }),
+            );
+            r
+        }
+        Err(e) => {
+            let mut dm = dm_arc.write().await;
+            dm.finish_xet_task(
+                &task_id,
+                crate::types::DownloadStatus::Failed,
+                Some(e.clone()),
+                None,
+            );
+            drop(dm);
+            crate::ipc_emit::emit_guarded(
+                &app,
+                "download-event",
+                serde_json::json!({ "type": "failed", "taskId": task_id }),
+            );
+            return Err(e);
+        }
+    };
+
+    if report.status == "updated" || report.status == "already_current" {
+        if let Some(mut meta) = cached_meta {
+            if let Ok(md) = std::fs::metadata(path) {
+                meta.file_size_bytes = md.len();
+            }
+            if let Some(ref oid) = expected_sha256 {
+                if !oid.is_empty() {
+                    meta.lfs_oid = oid.clone();
+                }
+            }
+            let _ = crate::model_cache::set_hf_metadata(&local_path, meta);
+        }
+    }
+
+    if report.status == "updated" {
+        crate::download_manager::record_download_history(
+            crate::download_manager::DownloadHistoryEntry {
+                id: format!("xet-{}", chrono::Utc::now().timestamp_micros()),
+                hf_model_id: String::new(),
+                file_name,
+                quant_type: String::new(),
+                kind: "xet-delta".into(),
+                status: "updated".into(),
+                bytes: report.bytes_downloaded,
+                finished_at: chrono::Utc::now().timestamp(),
+            },
+        );
+    }
+
+    Ok(report)
 }
 
 /// Adjust queue priority for a download task — lower number = higher priority.

@@ -531,7 +531,7 @@
   overflow: hidden;
 }
 
-.model-catalog-card > *:not(.model-card-draft-hatch):not(.model-card-check-bubble) {
+.model-catalog-card > *:not(.model-card-draft-hatch):not(.model-card-check-bubble):not(.model-card-update-tray) {
   position: relative;
   z-index: 1;
 }
@@ -2114,6 +2114,174 @@
   color: var(--theme-text-muted);
 }
 
+/* Full-width 2-row bottom overlay on ModelCard — leaves Row 1 (model name) readable
+   and covers Rows 2–3 with pairing input, update action, or live mini download widget. */
+.model-card-update-tray {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 3px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--theme-border);
+  background: color-mix(in srgb, var(--theme-panel) 96%, var(--theme-bg));
+  color: var(--theme-text);
+  box-shadow: 0 2px 8px var(--fixed-black-a4);
+  font-family: ui-monospace, monospace;
+  animation: model-card-check-bubble-in 0.16s ease both;
+}
+
+.model-card-update-tray--header,
+.model-card-update-tray--progress {
+  border-color: color-mix(in srgb, var(--theme-info) 55%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-panel) 94%, var(--theme-info));
+  color: var(--theme-info);
+}
+
+.model-card-update-tray--full {
+  border-color: color-mix(in srgb, var(--theme-warn) 55%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-panel) 94%, var(--theme-warn));
+  color: var(--theme-warn);
+}
+
+.model-card-update-tray--pair {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border));
+}
+
+.model-card-update-tray__row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.model-card-update-tray__row--split {
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.model-card-update-tray__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.model-card-update-tray__meta--grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.model-card-update-tray__title {
+  flex-shrink: 0;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.model-card-update-tray__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--type-micro);
+  font-weight: 600;
+  color: var(--theme-text);
+}
+
+.model-card-update-tray__meta {
+  flex-shrink: 0;
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.model-card-update-tray__pct {
+  flex-shrink: 0;
+  font-size: var(--type-tiny);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-card-update-tray__hint {
+  font-size: var(--type-micro);
+  color: var(--theme-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-card-update-tray__track {
+  flex: 1 1 auto;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text) 16%, transparent);
+}
+
+.model-card-update-tray__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--theme-info);
+  transition: width 0.25s ease;
+}
+
+.model-card-update-tray__fill--paused {
+  background: var(--theme-warn);
+}
+
+.model-card-check-bubble__input {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid var(--theme-border);
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  outline: none;
+}
+
+.model-card-check-bubble__input:focus {
+  border-color: var(--theme-accent);
+}
+
+.model-card-check-bubble__dismiss {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-tiny);
+  line-height: 1;
+  padding: 1px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--theme-text-muted);
+  cursor: pointer;
+}
+
+.model-card-check-bubble__dismiss:hover {
+  color: var(--theme-text);
+}
+
+.model-card-check-bubble__err {
+  font-family: ui-monospace, monospace;
+  font-size: var(--type-micro);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--theme-danger);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @keyframes model-card-check-bubble-fade {
   0% { opacity: 0; transform: translateY(-3px); }
   8% { opacity: 1; transform: translateY(0); }
@@ -2124,6 +2292,25 @@
 @keyframes model-card-check-bubble-in {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mcard-check-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.mcard-check__glyph {
+  display: inline-block;
+  line-height: 1;
+}
+
+.mcard-check--busy {
+  color: var(--theme-info);
+  opacity: 1;
+}
+
+.mcard-check--busy .mcard-check__glyph {
+  animation: mcard-check-spin 0.85s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

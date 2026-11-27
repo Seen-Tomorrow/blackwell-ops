@@ -129,9 +129,9 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
                     {row.hfModelId || row.file_name}
                   </span>
                   <span className={`dl-mgr-history-kind shrink-0 font-mono ${
-                    row.kind === 'header' ? 'dl-mgr-history-kind--header' : 'dl-mgr-history-kind--full'
+                    row.kind === 'xet-delta' || row.kind === 'header' ? 'dl-mgr-history-kind--header' : 'dl-mgr-history-kind--full'
                   }`}>
-                    {row.kind === 'header' ? 'HEADER' : 'FULL'}
+                    {row.kind === 'xet-delta' ? 'XET' : row.kind === 'header' ? 'HEADER' : 'FULL'}
                   </span>
                 </div>
                 <div className="dl-mgr-history-meta mt-0.5 flex items-center justify-between font-mono">

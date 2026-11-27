@@ -42,6 +42,7 @@ mod bench_pp_burst;
 mod bench_cancel;
 mod llama_bench_cmd;
 mod gguf_patch;
+mod xet_client;
 mod gguf_meta;
 mod gpu_process_mem;
 mod gpu_calibration;
@@ -672,7 +673,7 @@ async fn main() {
             downloads::set_download_priority,
             downloads::move_download_up,
             downloads::move_download_down,
-            downloads::patch_model_metadata,
+            downloads::xet_update_model_file,
             downloads::check_download_target,
             downloads::check_hf_files_against_disk,
             // HF Search commands
@@ -682,6 +683,7 @@ async fn main() {
             hf_search::check_hf_repo_updates,
             hf_search::check_model_hf_update,
             hf_search::verify_hf_pairing,
+            hf_search::pair_model_hf_repo,
             secrets::list_app_secrets,
             swap_store::swap_store_info,
             swap_store::set_swap_store,

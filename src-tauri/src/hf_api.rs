@@ -887,64 +887,111 @@ pub async fn check_local_model_update(
         if part.lfs_oid.is_empty() {
             return md.len() == part.size_bytes;
         }
-        crate::model_cache::get_hf_metadata_with_cache(&model_cache, &sibling.to_string_lossy())
-            .map(|m| m.lfs_oid == part.lfs_oid)
-            .unwrap_or(false)
-    };
-
-    let checked_part = artifact_parts
-        .iter()
-        .find(|p| p.file_name.eq_ignore_ascii_case(filename));
-    let stale = artifact_parts.iter().filter(|p| !part_matches(p)).count();
-
-    let kind = if stale == 0 {
-        QuantUpdateKind::Current
-    } else {
-        // Only the file in front of us can be header-patched. A stale *sibling* means
-        // the quant (re)enters the download queue — which already skips complete parts.
-        let checked_stale = checked_part.map(|p| !part_matches(p)).unwrap_or(false);
-        match (checked_stale, checked_part) {
-            (true, Some(part)) => {
-                let local_oid = if meta.lfs_oid.is_empty() {
-                    None
-                } else {
-                    Some(meta.lfs_oid.as_str())
-                };
-                match crate::gguf_patch::classify_update(
-                    local_path,
-                    &part.url,
-                    part.size_bytes,
-                    &part.lfs_oid,
-                    local_oid,
-                    false,
-                )
-                .await
-                {
-                    Ok(QuantUpdateKind::Header) => QuantUpdateKind::Header,
-                    Ok(QuantUpdateKind::Current) => QuantUpdateKind::Full,
-                    Ok(QuantUpdateKind::Full) => QuantUpdateKind::Full,
-                    Err(e) => {
-                        log::warn!("[hf-update] classify {local_path} failed: {e}");
-                        QuantUpdateKind::Full
-                    }
-                }
-            }
-            _ => QuantUpdateKind::Full,
+        // Only require exact LFS OID when `model_cache` actually has one recorded for
+        // this shard (downloaded through Blackwell OPS or previously Xet-updated).
+        // Pre-existing / manually paired sibling shards have no cached OID yet, so fall
+        // back to byte-size comparison rather than falsely flagging every untouched shard.
+        match crate::model_cache::get_hf_metadata_with_cache(
+            &model_cache,
+            &sibling.to_string_lossy(),
+        ) {
+            Some(m) if !m.lfs_oid.is_empty() => m.lfs_oid == part.lfs_oid,
+            _ => md.len() == part.size_bytes,
         }
     };
 
-    let (reason, has_update) = match kind {
-        QuantUpdateKind::Current => ("Up to date — matches the Hub file".to_string(), false),
-        QuantUpdateKind::Header => ("Metadata / template only — small download".to_string(), true),
-        QuantUpdateKind::Full if artifact_parts.len() > 1 => (
-            format!(
-                "{} of {} parts differ from the Hub — download fills only the missing ones",
-                stale,
-                artifact_parts.len()
-            ),
-            true,
-        ),
-        QuantUpdateKind::Full => ("Weights differ — full re-download".to_string(), true),
+    let _ = filename;
+    let checked_part = artifact_parts.first();
+    let stale_parts: Vec<&GgufShard> = artifact_parts.iter().filter(|p| !part_matches(p)).collect();
+    let stale = stale_parts.len();
+
+    let (kind, reason, has_update) = if stale == 0 {
+        (
+            QuantUpdateKind::Current,
+            "Up to date — matches the Hub file".to_string(),
+            false,
+        )
+    } else {
+        // Run a fast batched Xet dry-run estimate (1 commit list + 1 token per repo,
+        // parallelized across stale shards, 0 weight bytes downloaded) so the card tells
+        // the user upfront how much will be downloaded vs reused.
+        let batch_items: Vec<(String, String)> = stale_parts
+            .iter()
+            .map(|p| (dir.join(&p.file_name).to_string_lossy().to_string(), p.url.clone()))
+            .collect();
+        let estimates = crate::xet_client::estimate_xet_deltas_batch(&meta.hf_model_id, &batch_items).await;
+
+        let mut est_total = 0u64;
+        let mut est_reused = 0u64;
+        let mut est_fetch = 0u64;
+        let mut any_xet = false;
+        let mut est_ok = true;
+
+        for (part, est) in stale_parts.iter().zip(estimates.into_iter()) {
+            let sibling = dir.join(&part.file_name);
+            if !sibling.is_file() {
+                est_total += part.size_bytes;
+                est_fetch += part.size_bytes;
+                continue;
+            }
+            match est {
+                Some(e) => {
+                    est_total += e.total_bytes;
+                    est_reused += e.reused_bytes;
+                    est_fetch += e.fetch_bytes;
+                    any_xet |= e.is_xet;
+                }
+                None => {
+                    est_ok = false;
+                    est_total += part.size_bytes;
+                    est_fetch += part.size_bytes;
+                }
+            }
+        }
+
+        if est_ok && est_fetch == 0 {
+            (
+                QuantUpdateKind::Current,
+                "Up to date — Xet hash matches the Hub file".to_string(),
+                false,
+            )
+        } else if est_ok && (est_reused == 0 || !any_xet) {
+            let size_label = model_catalog::calc_size_str_from_bytes(est_fetch);
+            let msg = if artifact_parts.len() > 1 {
+                format!("{stale}/{} shards · {size_label} (0% reused)", artifact_parts.len())
+            } else {
+                format!("Full re-download · {size_label} (0% reused)")
+            };
+            (QuantUpdateKind::Full, msg, true)
+        } else if est_ok && est_reused > 0 {
+            let pct = if est_total > 0 {
+                (est_reused as f64 / est_total as f64) * 100.0
+            } else {
+                0.0
+            };
+            let fetch_label = model_catalog::calc_size_str_from_bytes(est_fetch);
+            let msg = if artifact_parts.len() > 1 {
+                format!(
+                    "{stale}/{} shards · {fetch_label} to fetch ({pct:.0}% reused)",
+                    artifact_parts.len()
+                )
+            } else {
+                format!("{fetch_label} to fetch ({pct:.0}% reused)")
+            };
+            (QuantUpdateKind::Header, msg, true)
+        } else if artifact_parts.len() > 1 {
+            (
+                QuantUpdateKind::Header,
+                format!("{stale} of {} shard(s) differ — Xet delta", artifact_parts.len()),
+                true,
+            )
+        } else {
+            (
+                QuantUpdateKind::Header,
+                "Update available — Xet delta download".to_string(),
+                true,
+            )
+        }
     };
 
     crate::output_console::emit_blackwell_output_console_utils_line(

@@ -319,6 +319,28 @@ function App() {
     });
   }, []);
 
+  const pairModelHfRepo = useCallback(async (path: string, repoId: string) => {
+    try {
+      const entry = await invoke<CatalogUpdateEntry>("pair_model_hf_repo", {
+        modelPath: path,
+        repoId,
+      });
+      setCatalogCheckVerdicts((prev) => ({ ...prev, [path]: entry }));
+      setModels((prev) =>
+        prev.map((m) => (m.path === path ? { ...m, hfModelId: entry.hfModelId || repoId } : m)),
+      );
+    } catch (err) {
+      const msg = typeof err === "string" ? err : JSON.stringify(err);
+      console.error("Model HF manual pairing failed:", msg);
+      void invoke("emit_to_blackwell_console", {
+        category: "utils",
+        content: `[hf-update] pair ${path} (${repoId}) → ${msg}`,
+        style: "Warning",
+      });
+      throw new Error(msg);
+    }
+  }, []);
+
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
@@ -650,7 +672,7 @@ function App() {
             aria-hidden={activeTab !== "catalog"}
             inert={activeTab !== "catalog" ? true : undefined}
           >
-            <ModelCatalog models={models} extras={extras} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} onModelScanned={patchScannedModel} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckModelUpdate={checkModelHfUpdate} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} />
+            <ModelCatalog models={models} extras={extras} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} onModelScanned={patchScannedModel} pathScans={pathScans} catalogHfUpdates={catalogHfUpdates} catalogUpdatesBusy={catalogUpdatesBusy} onCheckModelUpdate={checkModelHfUpdate} catalogCheckVerdicts={catalogCheckVerdicts} onDismissCheckVerdict={dismissCatalogCheckVerdict} onPairModelHfRepo={pairModelHfRepo} />
           </div>
         )}
 

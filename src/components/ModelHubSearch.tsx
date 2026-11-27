@@ -275,14 +275,16 @@ function HubFileRow({
           <button
             onClick={onPatch}
             className="hub-file-patch px-2 py-1 font-mono tracking-wider border rounded-sm transition-all"
+            title="Verify against HF Xet and delta-update any changed chunks"
           >
-            PATCH
+            UPDATE
           </button>
         </div>
       ) : quant && matchType === 'mismatch' ? (
         <button
-          onClick={onDownload}
+          onClick={onPatch}
           className="hub-file-update shrink-0 px-3 py-1 font-mono tracking-wider border rounded-sm transition-all"
+          title="Delta-update via HF Xet (falls back to full download if needed)"
         >
           UPDATE
         </button>
@@ -460,43 +462,61 @@ export default function ModelHubSearch() {
     }
   }, [showToast]);
 
-  const handlePatchMetadata = useCallback(async (modelId: string, file: GgufFile) => {
+  const handleXetUpdate = useCallback(async (modelId: string, file: GgufFile) => {
     const parts = getDownloadParts(file);
-    showToast(`PATCHING ${file.type}…`);
-    void invoke('emit_to_blackwell_console', {
-      category: 'utils',
-      content: `[gguf-patch] UI click  quant=${file.type}  parts=${parts.length}`,
-      style: 'Highlight',
-    });
+    showToast(`CHECKING XET DELTA FOR ${file.type}…`);
     try {
-      let patched = 0;
+      let updated = 0;
       let current = 0;
+      let totalDl = 0;
+      let totalReused = 0;
       for (const part of parts) {
         const localPath = await buildDownloadDestPath(modelId, part.pathInRepo);
-        void invoke('emit_to_blackwell_console', {
-          category: 'utils',
-          content: `[gguf-patch] UI invoke  ${localPath}`,
-          style: 'Command',
-        });
-        const result = await invoke<string>('patch_model_metadata', {
+        const report = await invoke<{
+          status: string;
+          bytesDownloaded: number;
+          bytesReused: number;
+          totalBytes: number;
+          sha256Verified: boolean;
+          reason?: string;
+        }>('xet_update_model_file', {
           localPath,
           remoteUrl: part.url,
-          remoteTotalSize: part.size_bytes,
+          expectedSha256: part.lfsOid || null,
         });
-        if (result === 'patched') patched += 1;
-        else if (result === 'already_current') current += 1;
+        if (report.status === 'fallback_full') {
+          showToast(`${file.type}: ${report.reason ?? 'using standard download'}`);
+          await invoke<string[]>('start_quant_download', {
+            hfModelId: modelId,
+            hfAuthor: modelId.split('/')[0] || 'unknown',
+            quantType: file.type,
+            ggufFile: file,
+          });
+          return;
+        }
+        if (report.status === 'updated') {
+          updated += 1;
+          totalDl += report.bytesDownloaded;
+          totalReused += report.bytesReused;
+        } else if (report.status === 'already_current') {
+          current += 1;
+        }
       }
-      if (patched > 0) {
-        showToast(`PATCHED ${file.type} METADATA`);
+      if (updated > 0) {
+        const total = totalDl + totalReused;
+        const pct = total > 0 ? ((totalReused / total) * 100).toFixed(1) : '0.0';
+        showToast(
+          `UPDATED ${file.type} · ${formatSize(totalDl)} DL / ${formatSize(totalReused)} REUSED (${pct}%)`,
+        );
       } else if (current > 0) {
-        showToast(`${file.type} ALREADY CURRENT`);
+        showToast(`${file.type} ALREADY UP TO DATE`);
       } else {
-        showToast(`${file.type} PATCH FINISHED`);
+        showToast(`${file.type} UPDATE FINISHED`);
       }
     } catch (e) {
-      console.error('Patch failed:', e);
-      const msg = typeof e === 'string' ? e : 'patch failed';
-      showToast(`PATCH FAILED: ${msg}`);
+      console.error('Xet update failed:', e);
+      const msg = typeof e === 'string' ? e : 'update failed';
+      showToast(`UPDATE FAILED: ${msg}`);
     }
   }, [showToast]);
 
@@ -956,7 +976,7 @@ export default function ModelHubSearch() {
                           selected={selectedFiles.has(fileKey(file))}
                           onToggle={() => toggleSelect(file)}
                           onDownload={() => { void openConfirm([file], detailInfo.id); }}
-                          onPatch={() => { void handlePatchMetadata(detailInfo.id, file); }}
+                          onPatch={() => { void handleXetUpdate(detailInfo.id, file); }}
                         />
                       );
                     })}
